@@ -1,0 +1,26 @@
+{
+  "name": "@alarm-calendar/electron",
+  "version": "0.1.0",
+  "private": true,
+  "productName": "Alarm Calendar",
+  "description": "Electron main process: scheduler, alarm window, tray",
+  "main": "dist/main.cjs",
+  "scripts": {
+    "build": "node build.mjs",
+    "dev": "node scripts/dev.mjs",
+    "start": "node build.mjs && electron .",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "generate-assets": "node scripts/generate-assets.mjs"
+  },
+  "dependencies": {
+    "@alarm-calendar/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "electron": "^44.5.1",
+    "esbuild": "^0.28.2",
+    "typescript": "^5.9.0",
+    "vitest": "^4.1.11"
+  }
+}

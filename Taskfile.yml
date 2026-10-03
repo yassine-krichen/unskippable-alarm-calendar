@@ -1,0 +1,36 @@
+version: '3'
+
+# Alarm calendar: pnpm monorepo (packages/core, app, electron, android).
+# Data layer is Supabase (cloud), no local DB. Vite dev port 3021 is reserved
+# in the root PORTS.md. Full spec: docs/spec.md.
+
+vars:
+  PORT: '3021'
+
+tasks:
+  install:
+    desc: Install workspace dependencies
+    cmds:
+      - pnpm install
+
+  test:
+    desc: Run every workspace test suite (core recurrence/snooze/wallet logic)
+    cmds:
+      - pnpm -r test
+
+  dev:
+    desc: Run the React app in the browser on port {{.PORT}}
+    cmds:
+      - pnpm --filter app dev --port {{.PORT}} --strictPort
+
+  electron:
+    desc: Run the Electron app with dev seed events (seeded on first run, kept across relaunches)
+    cmds:
+      - pnpm --filter @alarm-calendar/electron dev
+
+  electron:reset:
+    desc: Wipe the Electron dev cache and re-seed alarms about 1 and 1.5 min after launch
+    env:
+      ALARM_DEV_SEED_RESET: '1'
+    cmds:
+      - pnpm --filter @alarm-calendar/electron dev

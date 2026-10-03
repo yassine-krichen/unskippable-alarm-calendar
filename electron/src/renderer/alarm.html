@@ -1,0 +1,28 @@
+<!doctype html>
+<!-- TEMPORARY HARNESS, replaced by the React /alarm route in build-order step 5. -->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self'; media-src 'self'"
+    />
+    <title>Alarm</title>
+    <link rel="stylesheet" href="alarm.css" />
+  </head>
+  <body>
+    <main>
+      <p id="time"></p>
+      <h1 id="title"></h1>
+      <p id="notes"></p>
+      <div class="actions">
+        <button id="done" type="button" disabled>Done</button>
+        <button id="snooze" type="button" class="secondary" disabled hidden></button>
+      </div>
+      <p id="notice"></p>
+      <p id="status" role="status"></p>
+    </main>
+    <script src="alarm.js"></script>
+  </body>
+</html>

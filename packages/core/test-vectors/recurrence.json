@@ -1,0 +1,230 @@
+{
+  "description": "Shared recurrence vectors for the TypeScript and Kotlin suites. Expected values were worked out by hand from the rules in docs/spec.md section 5. occurrencesBetween covers the half-open range [from, to). nextOccurrence returns the first instant strictly after 'after', or null. Wall-clock times that fall in a spring-forward gap move forward by the gap; times that occur twice in autumn use the earlier instant (java.time ofLocal defaults). Weekdays are Monday = 0.",
+  "vectors": [
+    {
+      "name": "every 12 hours keeps exact 12h spacing across the Paris spring DST change",
+      "tz": "Europe/Paris",
+      "event": { "start_at": "2026-03-28T07:00:00Z", "repeat_unit": "hour", "repeat_interval": 12, "repeat_weekdays": null, "ends_at": null, "active": true },
+      "from": "2026-03-28T00:00:00Z",
+      "to": "2026-03-30T12:00:00Z",
+      "expected": ["2026-03-28T07:00:00Z", "2026-03-28T19:00:00Z", "2026-03-29T07:00:00Z", "2026-03-29T19:00:00Z", "2026-03-30T07:00:00Z"],
+      "next": [
+        { "after": "2026-03-28T07:00:00Z", "expected": "2026-03-28T19:00:00Z" },
+        { "after": "2026-03-29T07:00:00Z", "expected": "2026-03-29T19:00:00Z" }
+      ]
+    },
+    {
+      "name": "every 12 hours keeps exact 12h spacing across the Paris autumn DST change",
+      "tz": "Europe/Paris",
+      "event": { "start_at": "2026-10-24T06:00:00Z", "repeat_unit": "hour", "repeat_interval": 12, "repeat_weekdays": null, "ends_at": null, "active": true },
+      "from": "2026-10-24T00:00:00Z",
+      "to": "2026-10-26T12:00:00Z",
+      "expected": ["2026-10-24T06:00:00Z", "2026-10-24T18:00:00Z", "2026-10-25T06:00:00Z", "2026-10-25T18:00:00Z", "2026-10-26T06:00:00Z"]
+    },
+    {
+      "name": "hourly series started years ago jumps straight to the requested range",
+      "tz": "UTC",
+      "event": { "start_at": "2020-01-01T00:00:00Z", "repeat_unit": "hour", "repeat_interval": 5, "repeat_weekdays": null, "ends_at": null, "active": true },
+      "from": "2026-01-01T00:00:00Z",
+      "to": "2026-01-01T12:00:00Z",
+      "expected": ["2026-01-01T02:00:00Z", "2026-01-01T07:00:00Z"],
+      "next": [
+        { "after": "2026-01-01T02:00:00Z", "expected": "2026-01-01T07:00:00Z" },
+        { "after": "2026-01-01T00:00:00Z", "expected": "2026-01-01T02:00:00Z" }
+      ]
+    },
+    {
+      "name": "daily 08:00 Paris stays 08:00 local across the spring DST change",
+      "tz": "Europe/Paris",
+      "event": { "start_at": "2026-03-27T07:00:00Z", "repeat_unit": "day", "repeat_interval": 1, "repeat_weekdays": null, "ends_at": null, "active": true },
+      "from": "2026-03-27T00:00:00Z",
+      "to": "2026-03-31T00:00:00Z",
+      "expected": ["2026-03-27T07:00:00Z", "2026-03-28T07:00:00Z", "2026-03-29T06:00:00Z", "2026-03-30T06:00:00Z"]
+    },
+    {
+      "name": "daily 08:00 Paris stays 08:00 local across the autumn DST change",
+      "tz": "Europe/Paris",
+      "event": { "start_at": "2026-10-23T06:00:00Z", "repeat_unit": "day", "repeat_interval": 1, "repeat_weekdays": null, "ends_at": null, "active": true },
+      "from": "2026-10-23T00:00:00Z",
+      "to": "2026-10-27T00:00:00Z",
+      "expected": ["2026-10-23T06:00:00Z", "2026-10-24T06:00:00Z", "2026-10-25T07:00:00Z", "2026-10-26T07:00:00Z"]
+    },
+    {
+      "name": "daily 02:30 Paris moves forward into 03:30 on the day 02:30 does not exist",
+      "tz": "Europe/Paris",
+      "event": { "start_at": "2026-03-27T01:30:00Z", "repeat_unit": "day", "repeat_interval": 1, "repeat_weekdays": null, "ends_at": null, "active": true },
+      "from": "2026-03-27T00:00:00Z",
+      "to": "2026-03-31T00:00:00Z",
+      "expected": ["2026-03-27T01:30:00Z", "2026-03-28T01:30:00Z", "2026-03-29T01:30:00Z", "2026-03-30T00:30:00Z"]
+    },
+    {
+      "name": "daily 02:30 Paris uses the first 02:30 on the day it occurs twice",
+      "tz": "Europe/Paris",
+      "event": { "start_at": "2026-10-23T00:30:00Z", "repeat_unit": "day", "repeat_interval": 1, "repeat_weekdays": null, "ends_at": null, "active": true },
+      "from": "2026-10-23T00:00:00Z",
+      "to": "2026-10-27T00:00:00Z",
+      "expected": ["2026-10-23T00:30:00Z", "2026-10-24T00:30:00Z", "2026-10-25T00:30:00Z", "2026-10-26T01:30:00Z"]
+    },
+    {
+      "name": "every 3 days from the series start",
+      "tz": "UTC",
+      "event": { "start_at": "2026-01-30T09:30:00Z", "repeat_unit": "day", "repeat_interval": 3, "repeat_weekdays": null, "ends_at": null, "active": true },
+      "from": "2026-01-30T00:00:00Z",
+      "to": "2026-02-15T00:00:00Z",
+      "expected": ["2026-01-30T09:30:00Z", "2026-02-02T09:30:00Z", "2026-02-05T09:30:00Z", "2026-02-08T09:30:00Z", "2026-02-11T09:30:00Z", "2026-02-14T09:30:00Z"],
+      "next": [
+        { "after": "2026-01-01T00:00:00Z", "expected": "2026-01-30T09:30:00Z" },
+        { "after": "2026-02-20T09:30:00Z", "expected": "2026-02-23T09:30:00Z" }
+      ]
+    },
+    {
+      "name": "every 3 days queried from the middle of the series keeps the original phase",
+      "tz": "UTC",
+      "event": { "start_at": "2026-01-30T09:30:00Z", "repeat_unit": "day", "repeat_interval": 3, "repeat_weekdays": null, "ends_at": null, "active": true },
+      "from": "2026-02-10T00:00:00Z",
+      "to": "2026-02-20T10:00:00Z",
+      "expected": ["2026-02-11T09:30:00Z", "2026-02-14T09:30:00Z", "2026-02-17T09:30:00Z", "2026-02-20T09:30:00Z"]
+    },
+    {
+      "name": "every 3 days counts local days in a zone ahead of UTC",
+      "tz": "Asia/Tokyo",
+      "event": { "start_at": "2026-01-30T20:00:00Z", "repeat_unit": "day", "repeat_interval": 3, "repeat_weekdays": null, "ends_at": null, "active": true },
+      "from": "2026-01-30T00:00:00Z",
+      "to": "2026-02-06T00:00:00Z",
+      "expected": ["2026-01-30T20:00:00Z", "2026-02-02T20:00:00Z", "2026-02-05T20:00:00Z"]
+    },
+    {
+      "name": "monthly on the 31st clamps to the last day of shorter months without skipping",
+      "tz": "UTC",
+      "event": { "start_at": "2026-01-31T10:00:00Z", "repeat_unit": "month", "repeat_interval": 1, "repeat_weekdays": null, "ends_at": null, "active": true },
+      "from": "2026-01-01T00:00:00Z",
+      "to": "2026-07-01T00:00:00Z",
+      "expected": ["2026-01-31T10:00:00Z", "2026-02-28T10:00:00Z", "2026-03-31T10:00:00Z", "2026-04-30T10:00:00Z", "2026-05-31T10:00:00Z", "2026-06-30T10:00:00Z"],
+      "next": [
+        { "after": "2026-02-28T10:00:00Z", "expected": "2026-03-31T10:00:00Z" },
+        { "after": "2026-03-31T10:00:00Z", "expected": "2026-04-30T10:00:00Z" }
+      ]
+    },
+    {
+      "name": "monthly on the 31st lands on 29 February in a leap year",
+      "tz": "UTC",
+      "event": { "start_at": "2027-12-31T10:00:00Z", "repeat_unit": "month", "repeat_interval": 1, "repeat_weekdays": null, "ends_at": null, "active": true },
+      "from": "2028-01-01T00:00:00Z",
+      "to": "2028-04-01T00:00:00Z",
+      "expected": ["2028-01-31T10:00:00Z", "2028-02-29T10:00:00Z", "2028-03-31T10:00:00Z"]
+    },
+    {
+      "name": "every 2 months on the 31st clamps only the months that are short",
+      "tz": "UTC",
+      "event": { "start_at": "2026-01-31T10:00:00Z", "repeat_unit": "month", "repeat_interval": 2, "repeat_weekdays": null, "ends_at": null, "active": true },
+      "from": "2026-01-01T00:00:00Z",
+      "to": "2026-10-01T00:00:00Z",
+      "expected": ["2026-01-31T10:00:00Z", "2026-03-31T10:00:00Z", "2026-05-31T10:00:00Z", "2026-07-31T10:00:00Z", "2026-09-30T10:00:00Z"]
+    },
+    {
+      "name": "monthly 08:00 Paris stays 08:00 local when the month crosses the DST change",
+      "tz": "Europe/Paris",
+      "event": { "start_at": "2026-01-31T07:00:00Z", "repeat_unit": "month", "repeat_interval": 1, "repeat_weekdays": null, "ends_at": null, "active": true },
+      "from": "2026-01-01T00:00:00Z",
+      "to": "2026-04-01T00:00:00Z",
+      "expected": ["2026-01-31T07:00:00Z", "2026-02-28T07:00:00Z", "2026-03-31T06:00:00Z"]
+    },
+    {
+      "name": "biweekly on Monday and Thursday starting on a Monday",
+      "tz": "UTC",
+      "event": { "start_at": "2026-03-02T09:00:00Z", "repeat_unit": "week", "repeat_interval": 2, "repeat_weekdays": [0, 3], "ends_at": null, "active": true },
+      "from": "2026-03-02T00:00:00Z",
+      "to": "2026-04-06T00:00:00Z",
+      "expected": ["2026-03-02T09:00:00Z", "2026-03-05T09:00:00Z", "2026-03-16T09:00:00Z", "2026-03-19T09:00:00Z", "2026-03-30T09:00:00Z", "2026-04-02T09:00:00Z"],
+      "next": [
+        { "after": "2026-03-05T09:00:00Z", "expected": "2026-03-16T09:00:00Z" }
+      ]
+    },
+    {
+      "name": "biweekly on Monday and Thursday starting on a Thursday skips the Monday before the start",
+      "tz": "UTC",
+      "event": { "start_at": "2026-03-05T09:00:00Z", "repeat_unit": "week", "repeat_interval": 2, "repeat_weekdays": [3, 0], "ends_at": null, "active": true },
+      "from": "2026-03-01T00:00:00Z",
+      "to": "2026-04-06T00:00:00Z",
+      "expected": ["2026-03-05T09:00:00Z", "2026-03-16T09:00:00Z", "2026-03-19T09:00:00Z", "2026-03-30T09:00:00Z", "2026-04-02T09:00:00Z"]
+    },
+    {
+      "name": "biweekly on Monday and Thursday at 08:00 Paris stays 08:00 local across DST",
+      "tz": "Europe/Paris",
+      "event": { "start_at": "2026-03-16T07:00:00Z", "repeat_unit": "week", "repeat_interval": 2, "repeat_weekdays": [0, 3], "ends_at": null, "active": true },
+      "from": "2026-03-16T00:00:00Z",
+      "to": "2026-04-14T00:00:00Z",
+      "expected": ["2026-03-16T07:00:00Z", "2026-03-19T07:00:00Z", "2026-03-30T06:00:00Z", "2026-04-02T06:00:00Z", "2026-04-13T06:00:00Z"]
+    },
+    {
+      "name": "weekly with no weekdays repeats on the weekday of the start in the local zone",
+      "tz": "America/Los_Angeles",
+      "event": { "start_at": "2026-03-05T03:00:00Z", "repeat_unit": "week", "repeat_interval": 1, "repeat_weekdays": null, "ends_at": null, "active": true },
+      "from": "2026-03-01T00:00:00Z",
+      "to": "2026-03-27T00:00:00Z",
+      "expected": ["2026-03-05T03:00:00Z", "2026-03-12T02:00:00Z", "2026-03-19T02:00:00Z", "2026-03-26T02:00:00Z"]
+    },
+    {
+      "name": "every 2 days includes an occurrence exactly at ends_at and none after",
+      "tz": "UTC",
+      "event": { "start_at": "2026-05-01T06:00:00Z", "repeat_unit": "day", "repeat_interval": 2, "repeat_weekdays": null, "ends_at": "2026-05-09T06:00:00Z", "active": true },
+      "from": "2026-05-01T00:00:00Z",
+      "to": "2026-05-20T00:00:00Z",
+      "expected": ["2026-05-01T06:00:00Z", "2026-05-03T06:00:00Z", "2026-05-05T06:00:00Z", "2026-05-07T06:00:00Z", "2026-05-09T06:00:00Z"],
+      "next": [
+        { "after": "2026-05-07T06:00:00Z", "expected": "2026-05-09T06:00:00Z" },
+        { "after": "2026-05-09T06:00:00Z", "expected": null }
+      ]
+    },
+    {
+      "name": "every 2 days ending between two occurrences stops at the last one before ends_at",
+      "tz": "UTC",
+      "event": { "start_at": "2026-05-01T06:00:00Z", "repeat_unit": "day", "repeat_interval": 2, "repeat_weekdays": null, "ends_at": "2026-05-08T00:00:00Z", "active": true },
+      "from": "2026-05-01T00:00:00Z",
+      "to": "2026-05-20T00:00:00Z",
+      "expected": ["2026-05-01T06:00:00Z", "2026-05-03T06:00:00Z", "2026-05-05T06:00:00Z", "2026-05-07T06:00:00Z"],
+      "next": [
+        { "after": "2026-05-07T06:00:00Z", "expected": null }
+      ]
+    },
+    {
+      "name": "every 12 hours ending mid-series stops before the first occurrence past ends_at",
+      "tz": "UTC",
+      "event": { "start_at": "2026-05-01T06:00:00Z", "repeat_unit": "hour", "repeat_interval": 12, "repeat_weekdays": null, "ends_at": "2026-05-03T05:59:59Z", "active": true },
+      "from": "2026-05-01T00:00:00Z",
+      "to": "2026-05-10T00:00:00Z",
+      "expected": ["2026-05-01T06:00:00Z", "2026-05-01T18:00:00Z", "2026-05-02T06:00:00Z", "2026-05-02T18:00:00Z"]
+    },
+    {
+      "name": "a one-off event occurs once at its start",
+      "tz": "UTC",
+      "event": { "start_at": "2026-06-10T12:00:00Z", "repeat_unit": "none", "repeat_interval": 1, "repeat_weekdays": null, "ends_at": null, "active": true },
+      "from": "2026-06-01T00:00:00Z",
+      "to": "2026-07-01T00:00:00Z",
+      "expected": ["2026-06-10T12:00:00Z"],
+      "next": [
+        { "after": "2026-06-10T11:59:59Z", "expected": "2026-06-10T12:00:00Z" },
+        { "after": "2026-06-10T12:00:00Z", "expected": null }
+      ]
+    },
+    {
+      "name": "a range that ends before the series starts has no occurrences",
+      "tz": "UTC",
+      "event": { "start_at": "2026-06-10T12:00:00Z", "repeat_unit": "day", "repeat_interval": 1, "repeat_weekdays": null, "ends_at": null, "active": true },
+      "from": "2026-06-01T00:00:00Z",
+      "to": "2026-06-10T12:00:00Z",
+      "expected": []
+    },
+    {
+      "name": "an inactive event has no occurrences",
+      "tz": "UTC",
+      "event": { "start_at": "2026-06-10T12:00:00Z", "repeat_unit": "day", "repeat_interval": 1, "repeat_weekdays": null, "ends_at": null, "active": false },
+      "from": "2026-06-01T00:00:00Z",
+      "to": "2026-07-01T00:00:00Z",
+      "expected": [],
+      "next": [
+        { "after": "2026-06-01T00:00:00Z", "expected": null }
+      ]
+    }
+  ]
+}
