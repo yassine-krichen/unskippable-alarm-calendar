@@ -1,0 +1,78 @@
+// A recording stand-in for the supabase-js client, shared by the tests that mock '@/lib/supabase'.
+// It records each table operation and RPC by name ('select:settings', 'update:settings',
+// 'insert:settings', 'upsert:settings', 'rpc:sync_wallet') in call order, and answers from `responses`.
+
+export interface FakeResponse {
+  data: unknown;
+  error: { message: string } | null;
+}
+
+export interface RecordedCall {
+  name: string;
+  payload?: unknown;
+}
+
+export const fake = {
+  calls: [] as RecordedCall[],
+  responses: {} as Record<string, FakeResponse>,
+  reset(): void {
+    this.calls = [];
+    this.responses = {};
+  },
+  names(): string[] {
+    return this.calls.map((call) => call.name);
+  },
+  payloadOf(name: string): unknown {
+    return this.calls.find((call) => call.name === name)?.payload;
+  },
+};
+
+function answer(name: string): Promise<FakeResponse> {
+  return Promise.resolve(fake.responses[name] ?? { data: null, error: null });
+}
+
+function builder(table: string) {
+  let operation = 'select';
+  const record = (name: string, payload?: unknown): void => {
+    fake.calls.push({ name, payload });
+  };
+  const resolve = () => answer(`${operation}:${table}`);
+  const chain = {
+    select(columns?: string) {
+      // `.update(...).select(...)` reads back the written row; it is not a separate select.
+      if (operation === 'select') record(`select:${table}`, columns);
+      return chain;
+    },
+    update(payload: unknown) {
+      operation = 'update';
+      record(`update:${table}`, payload);
+      return chain;
+    },
+    insert(payload: unknown) {
+      operation = 'insert';
+      record(`insert:${table}`, payload);
+      return chain;
+    },
+    upsert(payload: unknown) {
+      operation = 'upsert';
+      record(`upsert:${table}`, payload);
+      return chain;
+    },
+    eq: () => chain,
+    order: () => chain,
+    overrideTypes: () => chain,
+    maybeSingle: () => resolve(),
+    single: () => resolve(),
+    then: (onFulfilled: (value: FakeResponse) => unknown, onRejected?: (reason: unknown) => unknown) =>
+      resolve().then(onFulfilled, onRejected),
+  };
+  return chain;
+}
+
+export const fakeClient = {
+  from: (table: string) => builder(table),
+  rpc: (name: string, args?: unknown) => {
+    fake.calls.push({ name: `rpc:${name}`, payload: args });
+    return answer(`rpc:${name}`);
+  },
+};
