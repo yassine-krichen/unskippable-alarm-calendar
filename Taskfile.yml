@@ -53,3 +53,9 @@ tasks:
     desc: Run Electron from the built app/dist over the app:// protocol (run build first)
     cmds:
       - pnpm --filter @alarm-calendar/electron start
+
+  package:
+    desc: Build the app, the Electron bundle and the unsigned Windows NSIS installer (electron/release/)
+    cmds:
+      - pnpm --filter app build
+      - pnpm --filter @alarm-calendar/electron package

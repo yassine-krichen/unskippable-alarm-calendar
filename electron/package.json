@@ -11,18 +11,19 @@
     "start": "node build.mjs && electron .",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "generate-assets": "node scripts/generate-assets.mjs"
-  },
-  "dependencies": {
-    "@alarm-calendar/core": "workspace:*",
-    "@supabase/supabase-js": "^2.117.2",
-    "zod": "^4.6.5"
+    "generate-assets": "node scripts/generate-assets.mjs",
+    "package": "node build.mjs && electron-builder --win nsis --publish never"
   },
   "devDependencies": {
+    "@alarm-calendar/core": "workspace:*",
+    "@electron/fuses": "^2.1.3",
+    "@supabase/supabase-js": "^2.117.2",
     "@types/node": "^24.0.0",
     "electron": "^44.5.1",
+    "electron-builder": "26.15.3",
     "esbuild": "^0.28.2",
     "typescript": "^5.9.0",
-    "vitest": "^4.1.11"
+    "vitest": "^4.1.11",
+    "zod": "^4.6.5"
   }
 }

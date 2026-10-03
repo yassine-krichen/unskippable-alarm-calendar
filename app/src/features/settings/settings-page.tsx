@@ -319,7 +319,7 @@ export function SettingsPage() {
                 </SelectContent>
               </Select>
               <FieldDescription>
-                Remembered on this device only. All three play the same placeholder tone until the real sounds are added.
+                Remembered on this device only.
               </FieldDescription>
             </Field>
           </FieldGroup>

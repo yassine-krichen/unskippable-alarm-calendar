@@ -1,0 +1,47 @@
+# Windows installer. Run through `pnpm --filter @alarm-calendar/electron package`
+# (or `task alarm-calendar:package`), which builds the React app and the main
+# bundle first. The main process and both preloads are bundled by build.mjs, so
+# no node_modules ship: only dist/ goes into app.asar.
+appId: com.yassine.alarmcalendar
+productName: Alarm Calendar
+copyright: Copyright (c) 2026 Yassine
+directories:
+  output: release
+  buildResources: assets
+
+asar: true
+files:
+  - dist/**/*
+  - package.json
+  - '!**/*.map'
+# The built React app (including app/public/sounds) sits next to the asar as
+# resources/app-dist; app-server.ts serves it on app://alarm-calendar/.
+extraResources:
+  - from: ../app/dist
+    to: app-dist
+
+# Fuses are flipped in the packaged electron.exe, so nobody can run the app as a
+# plain Node interpreter (ELECTRON_RUN_AS_NODE), attach an inspector through CLI
+# flags / NODE_OPTIONS, or make it load code from outside app.asar.
+electronFuses:
+  runAsNode: false
+  enableNodeCliInspectArguments: false
+  enableNodeOptionsEnvironmentVariable: false
+  onlyLoadAppFromAsar: true
+  enableEmbeddedAsarIntegrityValidation: true
+
+win:
+  target:
+    - target: nsis
+      arch: x64
+  icon: assets/icon.ico
+  # Unsigned on purpose (no certificate): Windows SmartScreen warns on first run.
+  signAndEditExecutable: true
+
+nsis:
+  oneClick: true
+  perMachine: false
+  createDesktopShortcut: false
+  createStartMenuShortcut: true
+  deleteAppDataOnUninstall: false
+  artifactName: Alarm-Calendar-Setup-${version}.exe

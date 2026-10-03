@@ -79,8 +79,22 @@ loader for the shared React app (`app/`). See `docs/spec.md` sections 6 and 9.
 - Always-on-top does not draw over exclusive-fullscreen games; use borderless
   windowed. Sound and the taskbar flash still happen.
 
-## Placeholders
+## Sounds and icons
 
-`app/public/sounds/alarm.wav` is a generated placeholder tone (`pnpm generate-assets`); all three
-sound options in Settings map to it until real sounds are bundled. Packaging (installer, shipping
-`app/dist` as the `app-dist` resource) is build-order step 7.
+`pnpm --filter @alarm-calendar/electron generate-assets` writes the three alarm sounds
+(`app/public/sounds/{bell,chime,pulse}.wav`, synthesised, no third-party audio), `assets/tray.png`
+and the multi-size `assets/icon.ico`. Output is committed. The Settings sound picker maps its three
+ids to those files in `app/src/features/alarm/alarm-sounds.ts`.
+
+## Packaging
+
+`task alarm-calendar:package` builds `app/dist`, the main bundle, and the unsigned per-user NSIS
+installer: `electron/release/Alarm-Calendar-Setup-<version>.exe` (`release/` is gitignored). Config is
+`electron-builder.yml`; the rationale and the fuse list are in `docs/decisions.md`.
+
+- `app.asar` holds `dist/` (main, preloads, tray icon); `resources/app-dist` is the built React app,
+  which `defaultDistDir` in `app-server.ts` serves over `app://alarm-calendar/`.
+- Check the result without running it: `npx @electron/fuses read --app "release/win-unpacked/Alarm Calendar.exe"`.
+  Do not run the installer or `win-unpacked` on a machine you care about: a packaged first run
+  registers autostart.
+- Unsigned, so SmartScreen warns on first run ("More info", then "Run anyway").

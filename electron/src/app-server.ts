@@ -142,6 +142,6 @@ export function serveAppFromDisk(distDir: string, csp: string): void {
 }
 
 export function defaultDistDir(electronDistDir: string, isPackaged: boolean): string {
-  // Packaged builds ship the app bundle as a resource (build-order step 7 wires the packaging).
+  // Packaged builds ship the app bundle as the app-dist resource (electron-builder.yml, extraResources).
   return isPackaged ? join(process.resourcesPath, 'app-dist') : resolve(electronDistDir, '..', '..', 'app', 'dist');
 }

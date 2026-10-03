@@ -71,6 +71,8 @@ mirror (step 10) and the app code must follow these.
 - Accepted residual (pass "today"): a user who keeps the wallet snapshot in a far-western zone and sets settings to that zone right before the first sync after a weekly boundary still gets about one day of slack, at most once a week. This is the same slack any user gets by picking a western zone, since the client chooses the zone. The airtight option was rejected because it hurts honest western users: treat a day as started once it has begun anywhere (`Pacific/Kiritimati`).
 
 - **Dependency advisory (shadcn CLI, `braces` <= 3.0.3, high).** It comes in through the `shadcn` CLI, which the app only uses at build time for its CSS import (`shadcn/tailwind.css`), so it is a devDependency and not in the bundle. The patched `braces` 3.0.4 is not on npm yet; add a pnpm override once it is.
+- **Dependency advisory (electron-builder, `http-cache-semantics` <= 4.2.0, high).** It comes in through electron-builder → @electron/get → got, which only runs while packaging and is never part of the app. The patched 4.2.1 is not on npm yet; add a pnpm override once it is.
+- **app-dist is outside the asar.** The asar-integrity fuse covers only `app.asar`, not `resources/app-dist`. A per-user install is writable by that user anyway, so this protects against nothing extra; moving the React build into the asar is a possible later hardening step.
 
 - **Desktop adapter (build-order step 6).** The Electron main process is the single flush
   owner for completions (`electron/src/completion-flusher.ts`); the app never upserts them on
@@ -110,3 +112,33 @@ mirror (step 10) and the app code must follow these.
   user's own writes (save or delete an event, save settings, spend or refund a pass) also make older
   in-flight loads stale. Realtime changes deliberately do not, so the catch-up fetch after a
   reconnect always lands.
+
+- **Windows packaging (build-order step 7): electron-builder over Electron Forge.** The target is one
+  unsigned per-user NSIS installer. electron-builder produces it from a single declarative file
+  (`electron/electron-builder.yml`), has NSIS built in, copies extra resources (`app/dist` ->
+  `resources/app-dist`) and applies Electron fuses and the embedded asar integrity from config
+  (`electronFuses`). Forge would need a separate NSIS maker package plus a hook or plugin for the fuses.
+  Pinned to 26.15.3 (the current stable `latest`; v27 is still alpha).
+  - The main process and both preloads are already bundled by `build.mjs`, so nothing from `node_modules`
+    ships. `@alarm-calendar/core`, `@supabase/supabase-js` and `zod` therefore moved to `devDependencies`
+    of the electron package (they are build inputs, and it keeps electron-builder from walking the pnpm
+    workspace for production dependencies).
+  - Fuses set at package time: `RunAsNode`, `EnableNodeCliInspectArguments` and
+    `EnableNodeOptionsEnvironmentVariable` off; `OnlyLoadAppFromAsar` and
+    `EnableEmbeddedAsarIntegrityValidation` on. The integrity hash covers `app.asar` only. `app-dist`
+    is a plain folder next to it, served as data over `app://`, so it is not integrity-checked (an
+    attacker who can write to the per-user install folder can already write to the user's startup entry).
+  - Left at their defaults: `EnableCookieEncryption` and `GrantFileProtocolExtraPrivileges` (the app
+    loads nothing over `file://`, so turning the second off is a later hardening step).
+  - **No code signing** (no certificate). Windows SmartScreen warns on first run of the installer
+    ("More info", then "Run anyway"). The installer is per-user (`perMachine: false`), so it needs no
+    administrator rights; app data (`%APPDATA%\Alarm Calendar`) is kept on uninstall.
+  - `pnpm-workspace.yaml` sets `electron-winstaller: false` under `allowBuilds` (it is only used by
+    electron-builder's Squirrel target, which is not built).
+- **Alarm sounds are generated, not downloaded.** `electron/scripts/generate-assets.mjs` synthesises
+  `bell.wav`, `chime.wav` and `pulse.wav` (44.1 kHz mono 16-bit, one loop cycle each that ends in
+  silence), scaled to the same RMS so none is much louder than the others. WAV rather than mp3 (spec
+  section 9) because there is no dependency-free mp3 encoder and no third-party audio is allowed in the
+  repo; the three files total about 690 KB. The same script draws the clock icon at 16 to 256 px into
+  `electron/assets/icon.ico` and `tray.png`.
+- **Spec step 7 "permission flow copy" is Android-only** (section 10) and waits for the Android project.
