@@ -131,8 +131,10 @@ supabase db push
 Then in the dashboard:
 
 1. Authentication > Providers: enable Email.
-2. Authentication > Email Templates: edit the **Magic Link** template so the body contains `{{ .Token }}` (the six-digit code). Sign-in is by code entry.
-3. Sign in once with your email so the owner account exists, then turn **sign-ups off** (Authentication > Sign In / Providers > Allow new users to sign up). Nobody else can create an account after that.
+2. Authentication > Emails > SMTP Settings: enable **custom SMTP**. Supabase only lets you edit templates with your own SMTP; a Gmail app password works (`smtp.gmail.com`, port 465). The built-in sender is also limited to a few emails per hour.
+3. Authentication > Email Templates: edit the **Magic Link** template (and **Confirm signup**) so the body contains `{{ .Token }}`. Sign-in is by code entry.
+4. The app expects an **8-digit** code, the project default (Authentication > Sign In / Providers > Email > Email OTP Length). If you change that length, change `CODE_LENGTH` in `app/src/features/auth/auth-screen.tsx` to match.
+5. Sign in once with your email so the owner account exists, then turn **sign-ups off** (Authentication > Sign In / Providers > Allow new users to sign up). Nobody else can create an account after that.
 
 Supabase's built-in email sender is heavily rate limited. That is fine for one user.
 

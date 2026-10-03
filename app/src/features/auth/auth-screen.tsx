@@ -14,7 +14,8 @@ import { Spinner } from '@/components/ui/spinner';
 import { authErrorMessage } from './auth-errors';
 import { requestSignInCode, verifySignInCode } from './auth-api';
 
-const CODE_LENGTH = 6;
+// Must match Authentication > Sign In / Providers > Email > "Email OTP Length" in Supabase (project default is 8).
+const CODE_LENGTH = 8;
 const RESEND_SECONDS = 30;
 
 const emailSchema = z.object({
@@ -23,7 +24,7 @@ const emailSchema = z.object({
 
 type EmailValues = z.infer<typeof emailSchema>;
 
-/** Sign in with an emailed 6-digit code: no password, no redirect link. */
+/** Sign in with an emailed one-time code: no password, no redirect link. */
 export function AuthScreen() {
   const [email, setEmail] = useState<string | null>(null);
 
@@ -66,7 +67,7 @@ function EmailStep({ onSent }: { onSent: (email: string) => void }) {
       <div className="flex flex-col gap-2">
         <h1 className="text-2xl font-semibold tracking-tight">Sign in</h1>
         <p className="text-sm text-muted-foreground">
-          We email you a 6-digit code. There is no password to remember.
+          We email you a sign-in code. There is no password to remember.
         </p>
       </div>
       <FieldGroup>
@@ -154,7 +155,7 @@ export function CodeStep({ email, onChangeEmail }: { email: string; onChangeEmai
       <div className="flex flex-col gap-2">
         <h1 className="text-2xl font-semibold tracking-tight">Check your email</h1>
         <p className="text-sm text-muted-foreground">
-          Enter the 6-digit code we sent to <span className="font-medium text-foreground">{email}</span>.
+          Enter the code we sent to <span className="font-medium text-foreground">{email}</span>.
         </p>
       </div>
 
