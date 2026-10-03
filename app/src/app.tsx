@@ -16,6 +16,7 @@ import { SettingsPage } from '@/features/settings/settings-page';
 import { useSettingsStore } from '@/features/settings/settings-store';
 
 import { useAppData } from './app-data';
+import { useDesktopSession, useLiveSync } from './use-live-sync';
 
 /** Drops the previous user's data so a different account never briefly sees it. */
 function resetAppData(): void {
@@ -28,6 +29,7 @@ export function App() {
   const status = useAuthStore((state) => state.status);
 
   useEffect(() => startAuthListener(), []);
+  useDesktopSession();
   useEffect(() => {
     if (status === 'signed-out') resetAppData();
   }, [status]);
@@ -44,6 +46,7 @@ export function App() {
 
 function SignedInApp() {
   const { status, error, retry } = useAppData();
+  useLiveSync(status === 'ready');
 
   if (status === 'loading') return <BootSkeleton />;
 

@@ -1,6 +1,6 @@
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
@@ -51,6 +51,17 @@ describe('cache file', () => {
 
     expect(readdirSync(join(dir, 'nested'))).toEqual(['cache.json']);
     expect(JSON.parse(readFileSync(file, 'utf8')).cheatDays).toEqual(['2026-03-09']);
+  });
+
+  it('loads a cache written before knownCompletions and autostartInitialized existed', () => {
+    const { knownCompletions: _known, autostartInitialized: _auto, ...older } = emptyCache();
+    mkdirSync(dirname(file), { recursive: true });
+    writeFileSync(file, JSON.stringify(older));
+
+    const loaded = loadCache(file, log);
+    expect(loaded.knownCompletions).toEqual([]);
+    expect(loaded.autostartInitialized).toBe(false);
+    expect(logged).toEqual([]);
   });
 
   it('moves a corrupt file aside instead of overwriting it', () => {

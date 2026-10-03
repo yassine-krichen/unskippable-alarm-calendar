@@ -9,7 +9,7 @@ import {
 } from 'node:fs';
 import { dirname } from 'node:path';
 
-import type { CompletionRow, EventRow, Settings } from '@alarm-calendar/core';
+import type { AlarmSettings, CompletionRow, EventRow } from '@alarm-calendar/core';
 
 /**
  * 'ringing': the alarm is on screen, or its window was closed without a choice
@@ -34,15 +34,23 @@ export interface CacheData {
   events: EventRow[];
   /** 'yyyy-MM-dd' in the user's timezone. */
   cheatDays: string[];
-  settings: Settings | null;
+  settings: AlarmSettings | null;
   occurrences: OccurrenceState[];
   /**
    * Per event, the latest occurrence (ISO) already rung, silenced or dropped.
    * Occurrences at or before it are never considered again.
    */
   handledThrough: Record<string, string>;
-  /** Completions not yet synced to Supabase (step 6 drains these). */
+  /** Completions made on this device that are not yet upserted to Supabase. */
   pendingCompletions: CompletionRow[];
+  /**
+   * Occurrence ids (`<eventId>@<ISO>`) already completed according to the last
+   * sync, on this or any other device. An occurrence in here never rings on
+   * wake-up. Pruned to the last KNOWN_COMPLETION_RETENTION_MS.
+   */
+  knownCompletions: string[];
+  /** Whether the install-time autostart default was applied once; after that the OS entry is the user's. */
+  autostartInitialized: boolean;
 }
 
 export function emptyCache(): CacheData {
@@ -54,7 +62,17 @@ export function emptyCache(): CacheData {
     occurrences: [],
     handledThrough: {},
     pendingCompletions: [],
+    knownCompletions: [],
+    autostartInitialized: false,
   };
+}
+
+/** Fields added after the first release default in, so an older cache.json stays valid. */
+function withDefaults(cache: CacheData): CacheData {
+  const candidate = cache as Partial<CacheData> & CacheData;
+  if (!Array.isArray(candidate.knownCompletions)) candidate.knownCompletions = [];
+  if (typeof candidate.autostartInitialized !== 'boolean') candidate.autostartInitialized = false;
+  return candidate;
 }
 
 export type CacheLogger = (event: string, fields?: Record<string, unknown>) => void;
@@ -90,7 +108,7 @@ export function loadCache(filePath: string, log: CacheLogger): CacheData {
   }
   try {
     const parsed: unknown = JSON.parse(raw);
-    if (isCacheData(parsed)) return parsed;
+    if (isCacheData(parsed)) return withDefaults(parsed);
     log('cache.invalid_shape');
   } catch (error) {
     log('cache.parse_failed', { error: String(error) });

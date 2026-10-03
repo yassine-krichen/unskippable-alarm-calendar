@@ -1,28 +1,50 @@
 import { randomUUID } from 'node:crypto';
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { app, ipcMain, Menu, nativeImage, powerMonitor, session, Tray } from 'electron';
-import type { BrowserWindow } from 'electron';
-import type { IpcMainInvokeEvent } from 'electron';
+import type { BrowserWindow, IpcMainInvokeEvent } from 'electron';
+import type { ScheduleResult } from '@alarm-calendar/core';
 
 import { AlarmWindows } from './alarm-window';
-import { ALARM_CHANNELS, parseOccurrenceId } from './alarm-ipc';
+import { ALARM_CHANNELS, DESKTOP_CHANNELS, parseOccurrenceId } from './alarm-ipc';
 import type { ActionResult, AlarmView } from './alarm-ipc';
+import {
+  alarmPageUrl,
+  buildCsp,
+  defaultDistDir,
+  isAppOrigin,
+  registerAppScheme,
+  resolveAppLocation,
+  serveAppFromDisk,
+} from './app-server';
+import { SUPABASE_ORIGIN } from './build-env';
 import { emptyCache, loadCache, persistWithRetry, saveCache } from './cache';
-import { resolveConfig } from './config';
+import type { CacheData } from './cache';
+import { CompletionFlusher } from './completion-flusher';
+import { resolveConfig, START_HIDDEN_ARG } from './config';
 import { buildDevSeed } from './dev-seed';
+import { parseBoolean, parseSchedulePayload, parseSessionPayload } from './desktop-payloads';
 import { createLogger } from './logger';
 import { MainWindow } from './main-window';
 import { AlarmScheduler, realTimers } from './scheduler';
+import { SupabaseCompletionSink } from './supabase-sink';
 
-const config = resolveConfig(process.env, app.isPackaged);
+const config = resolveConfig(process.env, app.isPackaged, process.argv);
+const appLocation = resolveAppLocation(config.appUrl);
+// Before app ready, as Electron requires for privileged schemes.
+registerAppScheme();
+
+// Retry cadence for completions that could not be sent (offline, expired token).
+const COMPLETION_FLUSH_INTERVAL_MS = 60_000;
 
 // Explicit userData so the scoped package name never becomes a folder name,
-// and so dev seed runs never touch real data.
+// and so dev runs never touch real data.
 app.setName('Alarm Calendar');
 app.setPath(
   'userData',
-  join(app.getPath('appData'), config.devSeed ? 'alarm-calendar-dev' : 'alarm-calendar')
+  // Any unpackaged run is "dev": it must never touch an installed app's data or lock.
+  join(app.getPath('appData'), app.isPackaged ? 'alarm-calendar' : 'alarm-calendar-dev')
 );
 
 const log = createLogger(join(app.getPath('userData'), 'main.log'));
@@ -35,12 +57,47 @@ let sessionEnding = false;
 // Module-level so the tray icon is not garbage collected (it would vanish).
 let tray: Tray | null = null;
 
-function applyAutostart(): void {
-  // In dev with autostart off, do not touch the login items at all: that would
-  // write a registry entry pointing at the dev electron.exe.
-  if (!config.autostart && !app.isPackaged) return;
-  app.setLoginItemSettings({ openAtLogin: config.autostart });
-  log('autostart.applied', { openAtLogin: config.autostart });
+// In dev the OS login items are left alone unless ALARM_AUTOSTART says otherwise;
+// the Settings toggle then only flips an in-memory flag.
+const canPersistAutostart = app.isPackaged || config.autostartForced;
+let devAutostart = false;
+
+function readAutostart(): boolean {
+  if (!canPersistAutostart) return devAutostart;
+  return app.getLoginItemSettings({ args: [START_HIDDEN_ARG] }).openAtLogin;
+}
+
+function writeAutostart(enabled: boolean): void {
+  if (!canPersistAutostart) {
+    devAutostart = enabled;
+    log('autostart.dev_flag_only', { openAtLogin: enabled });
+    return;
+  }
+  // --hidden: an autostarted app sits in the tray, it does not open a window at login.
+  app.setLoginItemSettings({ openAtLogin: enabled, args: [START_HIDDEN_ARG] });
+  log('autostart.applied', { openAtLogin: enabled });
+}
+
+/**
+ * Install-time default (on when packaged). Applied once, after that the OS
+ * entry belongs to the user (the Settings toggle); an explicit ALARM_AUTOSTART
+ * always wins.
+ */
+function applyAutostartDefault(cache: CacheData, persist: () => void): void {
+  if (!canPersistAutostart) return;
+  if (!config.autostartForced && cache.autostartInitialized) return;
+  writeAutostart(config.autostart);
+  cache.autostartInitialized = true;
+  persist();
+}
+
+function safeOrigin(url: string): string {
+  try {
+    const parsed = new URL(url);
+    return `${parsed.protocol}//${parsed.host}`;
+  } catch {
+    return 'invalid';
+  }
 }
 
 function hardenWebContents(): void {
@@ -49,38 +106,80 @@ function hardenWebContents(): void {
   });
   session.defaultSession.setPermissionCheckHandler(() => false);
   app.on('web-contents-created', (_event, contents) => {
-    // Alarm and app pages are local files and never navigate or open windows.
+    // The only navigation allowed is within the app's own origin (hash routing does not
+    // navigate at all); extra windows and webviews are never created.
     contents.setWindowOpenHandler(() => ({ action: 'deny' }));
-    contents.on('will-navigate', (event) => event.preventDefault());
+    const guard = (event: { preventDefault(): void }, url: string): void => {
+      if (isAppOrigin(url, appLocation)) return;
+      event.preventDefault();
+      log('navigation.blocked', { origin: safeOrigin(url) });
+    };
+    contents.on('will-navigate', (event, url) => guard(event, url));
+    contents.on('will-redirect', (event, url) => guard(event, url));
+    contents.on('will-attach-webview', (event) => event.preventDefault());
+    if (appLocation.dev) {
+      // Dev only: surface renderer warnings and errors in main.log, where the alarm
+      // window (full screen, no devtools) is otherwise opaque.
+      contents.on('console-message', (event) => {
+        if (event.level === 'warning' || event.level === 'error') {
+          log('renderer.console', { level: event.level, message: event.message.slice(0, 300) });
+        }
+      });
+    }
   });
+}
+
+/** Serves the built app, or in dev attaches the CSP to the Vite server's responses. */
+function serveApp(): void {
+  const csp = buildCsp(SUPABASE_ORIGIN, appLocation);
+  if (appLocation.dev) {
+    session.defaultSession.webRequest.onHeadersReceived(
+      { urls: [`${appLocation.origin}/*`] },
+      (details, callback) => {
+        callback({
+          responseHeaders: { ...details.responseHeaders, 'Content-Security-Policy': [csp] },
+        });
+      }
+    );
+    log('app.dev_server', { origin: appLocation.origin });
+    return;
+  }
+  const distDir = config.appDist ?? defaultDistDir(__dirname, app.isPackaged);
+  if (!existsSync(join(distDir, 'index.html'))) {
+    log('app.dist_missing', { distDir });
+  }
+  serveAppFromDisk(distDir, csp);
+  log('app.serving_dist', { distDir });
 }
 
 function startAlarmEngine(): void {
   const cachePath = join(app.getPath('userData'), 'cache.json');
   const cache = loadCache(cachePath, log);
+  const persist = (data: CacheData): void => {
+    persistWithRetry(() => saveCache(cachePath, data), log);
+  };
 
   const distDir = __dirname;
-  const preloadPath = join(distDir, 'preload.cjs');
 
   const mainWindow = new MainWindow({
-    pagePath: join(distDir, 'main-window.html'),
+    location: appLocation,
+    preloadPath: join(distDir, 'main-preload.cjs'),
     isQuitting: () => isQuitting,
+    log,
   });
 
   // The scheduler and the windows reference each other; neither is called
   // before both exist.
   let scheduler: AlarmScheduler;
   const alarmWindows = new AlarmWindows({
-    preloadPath,
-    pagePath: join(distDir, 'alarm.html'),
+    preloadPath: join(distDir, 'alarm-preload.cjs'),
+    pageUrlFor: (occurrenceId) => alarmPageUrl(appLocation, occurrenceId),
     onClosed: (occurrenceId) => scheduler.windowClosed(occurrenceId),
     log,
   });
   scheduler = new AlarmScheduler({
     cache,
-    persist: (data) => {
-      persistWithRetry(() => saveCache(cachePath, data), log);
-    },
+    persist,
     now: () => new Date(),
     timers: realTimers,
     newId: randomUUID,
@@ -92,9 +191,21 @@ function startAlarmEngine(): void {
     },
     log,
   });
+  const flusher = new CompletionFlusher({
+    cache,
+    persist,
+    sink: new SupabaseCompletionSink(),
+    now: () => new Date(),
+    onFlushed: (row) => scheduler.markCompleted(row),
+    log,
+  });
 
-  registerAlarmIpc(scheduler, alarmWindows);
+  registerAlarmIpc(scheduler, alarmWindows, flusher);
+  registerDesktopIpc(scheduler, flusher, mainWindow);
   app.on('second-instance', () => mainWindow.open());
+  setInterval(() => {
+    if (flusher.hasPending()) void flusher.flush();
+  }, COMPLETION_FLUSH_INTERVAL_MS);
   createTray(mainWindow);
   watchPowerEvents(scheduler);
 
@@ -116,16 +227,28 @@ function startAlarmEngine(): void {
     });
   }
   log('scheduler.started', { events: cache.events.length });
+
+  applyAutostartDefault(cache, () => persist(cache));
+  // The window exists from launch so the app can sync from Supabase in the background;
+  // an autostarted launch stays in the tray.
+  mainWindow.warm();
+  if (!config.startHidden) mainWindow.open();
 }
 
-function registerAlarmIpc(scheduler: AlarmScheduler, alarmWindows: AlarmWindows): void {
+function registerAlarmIpc(
+  scheduler: AlarmScheduler,
+  alarmWindows: AlarmWindows,
+  flusher: CompletionFlusher
+): void {
   /**
    * A renderer may only act on the occurrence its own window was opened for,
-   * from its top frame. Anything else (bad shape, other window) is refused.
+   * from its top frame on the app origin. Anything else (bad shape, other
+   * window) is refused.
    */
   const authorize = (event: IpcMainInvokeEvent, payload: unknown): string | null => {
     if (parseOccurrenceId(payload) === null) return null;
     if (event.senderFrame === null || event.senderFrame !== event.sender.mainFrame) return null;
+    if (!isAppOrigin(event.senderFrame.url, appLocation)) return null;
     return alarmWindows.occurrenceOwnedBy(event.sender.id) === payload ? (payload as string) : null;
   };
 
@@ -142,7 +265,11 @@ function registerAlarmIpc(scheduler: AlarmScheduler, alarmWindows: AlarmWindows)
     const occurrenceId = authorize(event, payload);
     if (occurrenceId === null) return { ok: false };
     const ok = scheduler.done(occurrenceId);
-    if (ok) alarmWindows.close(occurrenceId);
+    if (ok) {
+      alarmWindows.close(occurrenceId);
+      // Send it now when we can; otherwise the periodic flush and the next session push retry.
+      void flusher.flush();
+    }
     return { ok };
   });
 
@@ -152,6 +279,68 @@ function registerAlarmIpc(scheduler: AlarmScheduler, alarmWindows: AlarmWindows)
     const ok = scheduler.snooze(occurrenceId);
     if (ok) alarmWindows.close(occurrenceId);
     return { ok };
+  });
+}
+
+/** Handlers for the React app window: schedule, session, autostart. Every payload is validated. */
+function registerDesktopIpc(
+  scheduler: AlarmScheduler,
+  flusher: CompletionFlusher,
+  mainWindow: MainWindow
+): void {
+  const requireTrusted = (event: IpcMainInvokeEvent): void => {
+    if (!mainWindow.isTrustedSender(event)) throw new Error('forbidden');
+  };
+
+  ipcMain.handle(DESKTOP_CHANNELS.setSchedule, (event, payload: unknown): ScheduleResult => {
+    requireTrusted(event);
+    const parsed = parseSchedulePayload(payload);
+    if (!parsed.ok) {
+      log('desktop.schedule_rejected', { reason: parsed.reason });
+      throw new Error('invalid schedule payload');
+    }
+    const { events, cheatDays, settings, completions } = parsed.value;
+    scheduler.setSchedule(events, cheatDays, settings, completions);
+    log('desktop.schedule_set', {
+      events: events.length,
+      cheatDays: cheatDays.length,
+      completions: completions.length,
+    });
+    const { dropped } = parsed;
+    if (dropped.events + dropped.cheatDays + dropped.completions > 0) {
+      log('desktop.schedule_rows_dropped', { ...dropped });
+    }
+    return { dropped };
+  });
+
+  // Main flushes pending completions itself (see completion-flusher.ts), so there is
+  // nothing for the app to upsert; handing rows out here as well would write them twice.
+  ipcMain.handle(DESKTOP_CHANNELS.drainCompletions, (event): [] => {
+    requireTrusted(event);
+    return [];
+  });
+
+  ipcMain.handle(DESKTOP_CHANNELS.setSession, (event, payload: unknown): void => {
+    requireTrusted(event);
+    const parsed = parseSessionPayload(payload, SUPABASE_ORIGIN);
+    if (!parsed.ok) {
+      log('desktop.session_rejected', { reason: parsed.reason });
+      throw new Error('invalid session payload');
+    }
+    flusher.setSession(parsed.value);
+  });
+
+  ipcMain.handle(DESKTOP_CHANNELS.getAutostart, (event): boolean => {
+    requireTrusted(event);
+    return readAutostart();
+  });
+
+  ipcMain.handle(DESKTOP_CHANNELS.setAutostart, (event, payload: unknown): boolean => {
+    requireTrusted(event);
+    const parsed = parseBoolean(payload);
+    if (!parsed.ok) throw new Error('invalid autostart payload');
+    writeAutostart(parsed.value);
+    return readAutostart();
   });
 }
 
@@ -238,7 +427,7 @@ if (!app.requestSingleInstanceLock()) {
 
   void app.whenReady().then(() => {
     hardenWebContents();
-    applyAutostart();
+    serveApp();
     startAlarmEngine();
   });
 }

@@ -6,16 +6,7 @@
     <meta name="color-scheme" content="dark light" />
     <title>Alarm Calendar</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <script>
-      // Apply the saved theme before first paint so a light-mode user never sees a dark flash.
-      try {
-        if (localStorage.getItem('alarm-calendar-theme') === 'light') {
-          document.documentElement.classList.remove('dark');
-        }
-      } catch {
-        /* storage blocked: stay on the dark default */
-      }
-    </script>
+    <script src="/theme-init.js"></script>
   </head>
   <body>
     <div id="root"></div>

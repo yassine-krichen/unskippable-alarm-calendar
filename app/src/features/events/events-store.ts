@@ -1,6 +1,7 @@
 import type { EventRow } from '@alarm-calendar/core';
 import { create } from 'zustand';
 
+import { createLatestRequestGuard } from '@/lib/latest-request';
 import type { Result } from '@/lib/result';
 
 import type { EventWriteInput } from './event-form';
@@ -16,12 +17,53 @@ interface EventsState {
 
 export const useEventsStore = create<EventsState>(() => ({ events: [], status: 'idle', error: null }));
 
+const loadGuard = createLatestRequestGuard();
+
+/**
+ * Call after the user's own save or delete, so a fetch that started earlier and answers later
+ * cannot put the older list back. Realtime changes do not call it: they may arrive while the
+ * catch-up fetch after a reconnect is in flight, and that fetch must land.
+ */
+export function invalidateEventsLoad(): void {
+  loadGuard.invalidate();
+}
+
+// Realtime changes that arrive while a fetch is in flight are replayed over its result, so a
+// response the server produced before the change cannot put the older row back.
+const realtimeChangesDuringLoad = new Map<string, EventRow | null>();
+let loadsInFlight = 0;
+
+/** Called by the realtime handler; `row` is null when the event left the active list. */
+export function recordRealtimeEventChange(id: string, row: EventRow | null): void {
+  if (loadsInFlight > 0) realtimeChangesDuringLoad.set(id, row);
+}
+
+function replayRealtimeChanges(fetched: EventRow[]): EventRow[] {
+  const byId = new Map(fetched.map((event) => [event.id, event]));
+  for (const [id, row] of realtimeChangesDuringLoad) {
+    const current = byId.get(id);
+    if (row === null || !row.active) {
+      byId.delete(id);
+    } else if (current === undefined || Date.parse(row.updated_at) >= Date.parse(current.updated_at)) {
+      byId.set(id, row);
+    }
+  }
+  return [...byId.values()];
+}
+
 export async function loadEvents(): Promise<Result<EventRow[]>> {
   // Keep stale events on screen during a refetch; only the first load shows a skeleton.
   if (useEventsStore.getState().status !== 'ready') useEventsStore.setState({ status: 'loading' });
+  const isLatest = loadGuard.begin();
+  loadsInFlight += 1;
   const result = await fetchActiveEvents();
-  if (result.data) {
-    useEventsStore.setState({ events: result.data, status: 'ready', error: null });
+  loadsInFlight -= 1;
+  const latest = isLatest();
+  const events = latest && result.data ? replayRealtimeChanges(result.data) : null;
+  if (loadsInFlight === 0) realtimeChangesDuringLoad.clear();
+  if (!latest) return result;
+  if (events) {
+    useEventsStore.setState({ events, status: 'ready', error: null });
   } else if (useEventsStore.getState().status !== 'ready') {
     useEventsStore.setState({ status: 'error', error: result.error });
   }
@@ -32,6 +74,7 @@ export async function saveEvent(id: string | null, input: EventWriteInput): Prom
   const result = id === null ? await createEvent(input) : await updateEvent(id, input);
   const saved = result.data;
   if (saved) {
+    invalidateEventsLoad();
     useEventsStore.setState((state) => ({
       events:
         id === null
@@ -46,6 +89,7 @@ export async function saveEvent(id: string | null, input: EventWriteInput): Prom
 export async function removeEvent(id: string): Promise<Result<null>> {
   const result = await deactivateEvent(id);
   if (result.error === null) {
+    invalidateEventsLoad();
     useEventsStore.setState((state) => ({ events: state.events.filter((event) => event.id !== id) }));
   }
   return result;

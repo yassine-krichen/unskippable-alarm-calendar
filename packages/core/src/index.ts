@@ -12,3 +12,4 @@ export {
   weekdayOfDayNumber,
 } from './time-zone';
 export type { WallClock } from './time-zone';
+export * from './desktop-bridge';

@@ -7,7 +7,7 @@ import {
   shouldRingMissedOccurrence,
   snoozeUi,
 } from '@alarm-calendar/core';
-import type { CompletionRow, EventRow, Settings } from '@alarm-calendar/core';
+import type { AlarmSettings, CompletionRow, EventRow } from '@alarm-calendar/core';
 
 import { makeOccurrenceId, parseOccurrenceId } from './alarm-ipc';
 import type { AlarmView } from './alarm-ipc';
@@ -21,6 +21,9 @@ import type { CacheData, OccurrenceState } from './cache';
 export const REEVALUATE_INTERVAL_MS = 30_000;
 
 const MS_PER_MINUTE = 60_000;
+
+// Far longer than any grace window, short enough that the cache cannot grow without bound.
+export const KNOWN_COMPLETION_RETENTION_MS = 7 * 24 * 60 * MS_PER_MINUTE;
 
 // setTimeout stores the delay in a signed 32-bit int and fires at once beyond it.
 const MAX_TIMEOUT_MS = 2 ** 31 - 1;
@@ -94,12 +97,23 @@ export class AlarmScheduler {
     }
   }
 
-  /** Replaces the cached schedule (what AlarmAdapter.setSchedule delivers). */
-  setSchedule(events: EventRow[], cheatDays: string[], settings: Settings): void {
+  /**
+   * Replaces the cached schedule (what AlarmAdapter.setSchedule delivers).
+   * `completions` are merged into the known completions, never replacing them:
+   * a completion seen once stays known until it ages out, even if a later sync
+   * has a narrower window.
+   */
+  setSchedule(
+    events: EventRow[],
+    cheatDays: string[],
+    settings: AlarmSettings,
+    completions: readonly CompletionRow[] = []
+  ): void {
     const cache = this.deps.cache;
     cache.events = events;
     cache.cheatDays = cheatDays;
     cache.settings = settings;
+    this.mergeKnownCompletions(completions);
 
     const activeIds = new Set(events.filter((event) => event.active).map((event) => event.id));
     const gone = cache.occurrences.filter((state) => !activeIds.has(state.eventId));
@@ -114,6 +128,36 @@ export class AlarmScheduler {
     }
     this.deps.persist(cache);
     this.evaluate('set-schedule');
+  }
+
+  /** Records a completion the server accepted. Caller persists. */
+  markCompleted(completion: CompletionRow): void {
+    this.mergeKnownCompletions([completion]);
+  }
+
+  private mergeKnownCompletions(completions: readonly CompletionRow[]): void {
+    const cutoffMs = this.deps.now().getTime() - KNOWN_COMPLETION_RETENTION_MS;
+    const known = new Set(this.deps.cache.knownCompletions);
+    for (const completion of completions) {
+      known.add(makeOccurrenceId(completion.event_id, new Date(completion.occurrence_at)));
+    }
+    this.deps.cache.knownCompletions = [...known].filter((id) => {
+      const parsed = parseOccurrenceId(id);
+      return parsed !== null && Date.parse(parsed.occurrenceAt) >= cutoffMs;
+    });
+  }
+
+  /** Done on this device (not yet flushed) or already synced from any device. */
+  private isKnownCompleted(eventId: string, occurrenceAt: Date): boolean {
+    const cache = this.deps.cache;
+    const iso = occurrenceAt.toISOString();
+    return (
+      cache.knownCompletions.includes(makeOccurrenceId(eventId, occurrenceAt)) ||
+      cache.pendingCompletions.some(
+        (pending) =>
+          pending.event_id === eventId && new Date(pending.occurrence_at).toISOString() === iso
+      )
+    );
   }
 
   /** True while any occurrence is ringing or snoozed, i.e. an alarm is not finished yet. */
@@ -251,7 +295,7 @@ export class AlarmScheduler {
    * Considers the latest occurrence of one event that is due but not yet
    * handled. Returns true if the cache changed.
    */
-  private ringLatestDueOccurrence(event: EventRow, settings: Settings, now: Date): boolean {
+  private ringLatestDueOccurrence(event: EventRow, settings: AlarmSettings, now: Date): boolean {
     const cache = this.deps.cache;
     const watermark = cache.handledThrough[event.id];
     const graceStartMs = now.getTime() - settings.grace_minutes * MS_PER_MINUTE;
@@ -268,9 +312,12 @@ export class AlarmScheduler {
     if (latest === undefined) return false;
 
     this.advanceHandledThrough(event.id, latest);
-    // TODO(step 6): pass whether a completion for this occurrence is already known
-    // (synced from another device); until then nothing is ever "already completed".
-    if (!shouldRingMissedOccurrence(latest, now, settings.grace_minutes, false)) return true;
+    // Done on another device (synced) or here (pending): do not ring it again on resume.
+    const alreadyCompleted = this.isKnownCompleted(event.id, latest);
+    if (!shouldRingMissedOccurrence(latest, now, settings.grace_minutes, alreadyCompleted)) {
+      if (alreadyCompleted) this.deps.log('alarm.skipped_already_completed', { eventId: event.id });
+      return true;
+    }
     if (isSilencedByCheatDay(event, latest, cache.cheatDays, settings.timezone)) {
       this.deps.log('alarm.silenced_by_cheat_day', { eventId: event.id });
       return true;
@@ -386,6 +433,7 @@ export class AlarmScheduler {
       occurrenceAt: state.occurrenceAt,
       snoozeLabel: ui.label,
       snoozeNotice: ui.notice,
+      soundId: this.deps.cache.settings?.sound ?? null,
     };
   }
 }

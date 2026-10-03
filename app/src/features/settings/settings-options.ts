@@ -45,19 +45,10 @@ export function minutes(value: number): string {
   return `${value} minutes`;
 }
 
-export interface SoundOption {
-  id: string;
-  label: string;
-}
-
-// Placeholder names: the three bundled alarm sounds arrive with the platform apps.
-export const SOUND_OPTIONS: readonly SoundOption[] = [
-  { id: 'bell', label: 'Classic bell' },
-  { id: 'chime', label: 'Rising chime' },
-  { id: 'pulse', label: 'Digital pulse' },
-];
-
-export const DEFAULT_SOUND_ID = SOUND_OPTIONS[0]?.id ?? 'bell';
+// The sound list lives with the alarm screen (features/alarm/alarm-sounds.ts) so the alarm window
+// does not have to load the settings code; re-exported here for the settings screen.
+export { DEFAULT_SOUND_ID, SOUND_OPTIONS } from '@/features/alarm/alarm-sounds';
+export type { SoundOption } from '@/features/alarm/alarm-sounds';
 
 /** Valid IANA zone names the browser knows, with UTC and the current value always present. */
 export function listTimeZones(current: string): string[] {

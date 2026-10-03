@@ -10,6 +10,14 @@ import './index.css';
 async function start(): Promise<void> {
   const container = document.getElementById('root');
   if (!container) throw new Error('Missing #root element');
+
+  // The alarm window loads this same bundle at #/alarm?occurrence=... and needs none of the app.
+  if (window.location.hash.startsWith('#/alarm')) {
+    const { startAlarmWindow } = await import('./alarm-entry');
+    startAlarmWindow(container);
+    return;
+  }
+
   const root = createRoot(container);
 
   // Checked before the app (and its Supabase client) is imported, so a missing variable

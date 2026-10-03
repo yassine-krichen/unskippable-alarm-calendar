@@ -62,5 +62,14 @@ export function useAppData(): { status: BootStatus; error: string | null; retry:
   }, [status]);
 
   const retry = useCallback(() => setAttempt((value) => value + 1), []);
+
+  // Launched offline (an autostart before the network is up): load as soon as it comes back
+  // instead of waiting for a manual retry, so the alarm schedule gets refreshed.
+  useEffect(() => {
+    if (status !== 'error') return;
+    window.addEventListener('online', retry);
+    return () => window.removeEventListener('online', retry);
+  }, [status, retry]);
+
   return { status, error, retry };
 }

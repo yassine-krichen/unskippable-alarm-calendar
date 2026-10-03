@@ -1,0 +1,82 @@
+import type { CompletionRow, EventRow, Settings } from '@alarm-calendar/core';
+
+import { removeCompletion, upsertCompletion } from '@/features/completions/completions-store';
+import { recordRealtimeEventChange, useEventsStore } from '@/features/events/events-store';
+import { loadCheatDays } from '@/features/passes/passes-store';
+import { useSettingsStore } from '@/features/settings/settings-store';
+
+/** The part of a Supabase postgres_changes payload the handlers read. */
+export interface ChangePayload {
+  eventType: 'INSERT' | 'UPDATE' | 'DELETE';
+  new: Record<string, unknown>;
+  old: Record<string, unknown>;
+}
+
+function hasString(row: Record<string, unknown>, key: string): boolean {
+  return typeof row[key] === 'string';
+}
+
+function isEventRow(row: Record<string, unknown>): boolean {
+  return hasString(row, 'id') && hasString(row, 'title') && hasString(row, 'start_at') && hasString(row, 'updated_at');
+}
+
+/**
+ * events: a soft-deleted row (active = false) leaves the list, like the initial load. An older
+ * echo of a row we already hold a newer version of (for example our own write) is ignored.
+ */
+export function handleEventChange(payload: ChangePayload): void {
+  if (payload.eventType === 'DELETE') {
+    const id = payload.old.id;
+    if (typeof id === 'string') {
+      recordRealtimeEventChange(id, null);
+      useEventsStore.setState((state) => ({ events: state.events.filter((event) => event.id !== id) }));
+    }
+    return;
+  }
+  if (!isEventRow(payload.new)) return;
+  const row = payload.new as unknown as EventRow;
+  recordRealtimeEventChange(row.id, row);
+  useEventsStore.setState((state) => {
+    if (!row.active) return { events: state.events.filter((event) => event.id !== row.id) };
+    const existing = state.events.find((event) => event.id === row.id);
+    if (existing === undefined) return { events: [...state.events, row] };
+    if (Date.parse(existing.updated_at) > Date.parse(row.updated_at)) return state;
+    return { events: state.events.map((event) => (event.id === row.id ? row : event)) };
+  });
+}
+
+/** settings: one row per user, so any insert or update is the new truth. */
+export function handleSettingsChange(payload: ChangePayload): void {
+  if (payload.eventType === 'DELETE') return;
+  const row = payload.new;
+  if (!hasString(row, 'user_id') || !hasString(row, 'timezone')) return;
+  const next: Settings = {
+    user_id: row.user_id as string,
+    timezone: row.timezone as string,
+    week_starts_on: Number(row.week_starts_on),
+    refire_seconds: Number(row.refire_seconds),
+    pass_cap: Number(row.pass_cap),
+    grace_minutes: Number(row.grace_minutes),
+  };
+  useSettingsStore.getState().setSettings(next);
+}
+
+/**
+ * cheat_days: always refetch. A DELETE payload carries only the primary key under RLS (see
+ * docs/decisions.md), so the day cannot be read from it, and a refetch is one small query.
+ */
+export function handleCheatDayChange(): void {
+  void loadCheatDays();
+}
+
+/** completions: keep the recent list current so a done occurrence is known to the alarm engine. */
+export function handleCompletionChange(payload: ChangePayload): void {
+  if (payload.eventType === 'DELETE') {
+    const id = payload.old.id;
+    if (typeof id === 'string') removeCompletion(id);
+    return;
+  }
+  const row = payload.new;
+  if (!hasString(row, 'id') || !hasString(row, 'event_id') || !hasString(row, 'occurrence_at')) return;
+  upsertCompletion(row as unknown as CompletionRow);
+}

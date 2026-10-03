@@ -15,9 +15,15 @@ export interface RecordedCall {
 export const fake = {
   calls: [] as RecordedCall[],
   responses: {} as Record<string, FakeResponse>,
+  /**
+   * Responses a test resolves by hand, consumed first-in-first-out per name before `responses`,
+   * to make answers arrive out of order.
+   */
+  queued: {} as Record<string, Array<Promise<FakeResponse>>>,
   reset(): void {
     this.calls = [];
     this.responses = {};
+    this.queued = {};
   },
   names(): string[] {
     return this.calls.map((call) => call.name);
@@ -28,6 +34,8 @@ export const fake = {
 };
 
 function answer(name: string): Promise<FakeResponse> {
+  const queued = fake.queued[name]?.shift();
+  if (queued !== undefined) return queued;
   return Promise.resolve(fake.responses[name] ?? { data: null, error: null });
 }
 
@@ -59,6 +67,8 @@ function builder(table: string) {
       return chain;
     },
     eq: () => chain,
+    gte: () => chain,
+    limit: () => chain,
     order: () => chain,
     overrideTypes: () => chain,
     maybeSingle: () => resolve(),

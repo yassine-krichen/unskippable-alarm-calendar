@@ -71,3 +71,42 @@ mirror (step 10) and the app code must follow these.
 - Accepted residual (pass "today"): a user who keeps the wallet snapshot in a far-western zone and sets settings to that zone right before the first sync after a weekly boundary still gets about one day of slack, at most once a week. This is the same slack any user gets by picking a western zone, since the client chooses the zone. The airtight option was rejected because it hurts honest western users: treat a day as started once it has begun anywhere (`Pacific/Kiritimati`).
 
 - **Dependency advisory (shadcn CLI, `braces` <= 3.0.3, high).** It comes in through the `shadcn` CLI, which the app only uses at build time for its CSS import (`shadcn/tailwind.css`), so it is a devDependency and not in the bundle. The patched `braces` 3.0.4 is not on npm yet; add a pnpm override once it is.
+
+- **Desktop adapter (build-order step 6).** The Electron main process is the single flush
+  owner for completions (`electron/src/completion-flusher.ts`); the app never upserts them on
+  desktop, and `ElectronAlarmAdapter.drainCompletions()` returns nothing. Android keeps the
+  spec's drain-then-upsert flow in JS. Main receives the access token only, not the refresh
+  token: two clients refreshing one rotating refresh token get the session revoked, so only the
+  renderer refreshes and pushes each new access token. The token lives in main's memory (the
+  renderer restores its session on every launch and pushes it again), and main refuses a
+  Supabase URL other than the one built in.
+- `AlarmAdapter.setSchedule` takes an optional fourth argument, recent completions
+  (`CompletionRow[]`), and the settings argument may carry the per-device `sound`
+  (`AlarmSettings`). The Kotlin plugin must accept both. An occurrence with a known completion
+  does not ring on wake-up inside the grace window; a completion on another device does not
+  silence an alarm that is already ringing (spec 6.9).
+- The Electron main window is created at launch (hidden for an autostart) so the React app can
+  sync and hand over the session; the alarm window is the same bundle at `#/alarm?occurrence=...`
+  and loads no Supabase client.
+- **The first completion wins.** The desktop flush upserts with `ignoreDuplicates: true` (ON CONFLICT
+  DO NOTHING on `(event_id, occurrence_at)`), so when two devices complete the same occurrence the row
+  that arrived first is kept (including its `snoozes_used`) and the second write counts as success. This
+  refines spec 6.9 ("both write the same upsert"): nothing is overwritten.
+- **One bad row must not freeze the schedule.** Main validates `setSchedule` rows one at a time: an
+  invalid event, cheat day or completion is dropped and counted (logged as
+  `desktop.schedule_rows_dropped`, returned to the app, which shows one toast per session). Only an
+  invalid envelope or invalid settings rejects the whole push. The bounds follow the database checks
+  (non-blank title, `duration_min >= 1`, a non-empty weekday list, `max_snoozes` 0 to 10).
+- **Signing out keeps the cached schedule.** On sign-out main drops the token and the sink client but
+  leaves `cache.json` as is, so alarms keep ringing until another account signs in and replaces it (an
+  unskippable alarm should not be switchable off by signing out). Two side effects: event titles and
+  notes stay on disk in `cache.json` until the next push replaces them, and deleting `cache.json`
+  (a cache reset) re-applies the packaged autostart default, because `autostartInitialized` lives there.
+- **A hidden main window recovers on its own.** It is created at launch and never throttled
+  (`backgroundThrottling: false`). A renderer crash or a failed page load is retried with backoff
+  (1 s, 5 s, 30 s, 5 min) and, if that keeps failing, the window is rebuilt.
+- **Loaders ignore out-of-order responses.** Each store loader (events, cheat days, settings, wallet,
+  completions) applies a response only if no newer request of the same loader started since. The
+  user's own writes (save or delete an event, save settings, spend or refund a pass) also make older
+  in-flight loads stale. Realtime changes deliberately do not, so the catch-up fetch after a
+  reconnect always lands.

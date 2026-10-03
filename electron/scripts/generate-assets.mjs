@@ -1,14 +1,17 @@
 // Generates the placeholder alarm tone and the tray icon, so no binary has to
 // be hand-made. Output is committed; re-run with `pnpm generate-assets`.
-// REPLACE assets/alarm.wav with a real alarm sound (spec section 9 asks for an
-// mp3, three bundled sounds come with the Settings screen in step 5).
+// REPLACE app/public/sounds/alarm.wav with a real alarm sound (spec section 9 asks for an
+// mp3). The alarm screen plays it from the React app; all three sound options in
+// Settings map to this one file until real sounds exist.
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { crc32, deflateSync } from 'node:zlib';
 
 const assetsDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'assets');
+const soundsDir = join(assetsDir, '..', '..', 'app', 'public', 'sounds');
 mkdirSync(assetsDir, { recursive: true });
+mkdirSync(soundsDir, { recursive: true });
 
 function buildAlarmWav() {
   const sampleRate = 22050;
@@ -95,6 +98,6 @@ function buildTrayPng() {
   ]);
 }
 
-writeFileSync(join(assetsDir, 'alarm.wav'), buildAlarmWav());
+writeFileSync(join(soundsDir, 'alarm.wav'), buildAlarmWav());
 writeFileSync(join(assetsDir, 'tray.png'), buildTrayPng());
-console.log('wrote assets/alarm.wav and assets/tray.png');
+console.log('wrote app/public/sounds/alarm.wav and electron/assets/tray.png');

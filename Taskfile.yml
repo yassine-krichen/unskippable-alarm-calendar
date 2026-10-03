@@ -24,13 +24,32 @@ tasks:
       - pnpm --filter app dev --port {{.PORT}} --strictPort
 
   electron:
-    desc: Run the Electron app with dev seed events (seeded on first run, kept across relaunches)
+    desc: Run the Electron app against the Vite dev server (starts Vite on {{.PORT}} unless it is already up)
+    cmds:
+      - pnpm --filter @alarm-calendar/electron dev
+
+  electron:seed:
+    desc: Same as electron, plus two seeded test alarms about 1 and 1.5 min after launch (only into an empty dev cache)
+    env:
+      ALARM_DEV_SEED: '1'
     cmds:
       - pnpm --filter @alarm-calendar/electron dev
 
   electron:reset:
     desc: Wipe the Electron dev cache and re-seed alarms about 1 and 1.5 min after launch
     env:
+      ALARM_DEV_SEED: '1'
       ALARM_DEV_SEED_RESET: '1'
     cmds:
       - pnpm --filter @alarm-calendar/electron dev
+
+  build:
+    desc: Build the React app and the Electron main bundle (packaged-style, no dev server)
+    cmds:
+      - pnpm --filter app build
+      - pnpm --filter @alarm-calendar/electron build
+
+  electron:built:
+    desc: Run Electron from the built app/dist over the app:// protocol (run build first)
+    cmds:
+      - pnpm --filter @alarm-calendar/electron start

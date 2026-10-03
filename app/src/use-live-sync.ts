@@ -1,0 +1,48 @@
+import { useEffect } from 'react';
+
+import { getAlarmAdapter } from '@/features/alarm-adapter/create-alarm-adapter';
+import { startScheduleSync } from '@/features/alarm-adapter/schedule-sync';
+import { startSessionSync } from '@/features/alarm-adapter/session-sync';
+import { useAuthStore } from '@/features/auth/auth-store';
+import { startRealtime } from '@/features/realtime/realtime';
+import { parseEnv } from '@/lib/env';
+import { detectPlatform } from '@/lib/platform';
+import { supabase } from '@/lib/supabase';
+
+import { refreshAll } from './bootstrap';
+
+/**
+ * Desktop only: hands the Supabase session to the Electron main process so it can write
+ * completions made while this window is closed or the network was down. Runs for the whole app
+ * lifetime, signed in or not, because sign-in, token refresh and sign-out all matter to main.
+ */
+export function useDesktopSession(): void {
+  useEffect(() => {
+    const bridge = window.desktopApi;
+    if (detectPlatform() !== 'electron' || bridge === undefined) return;
+    const env = parseEnv(import.meta.env);
+    return startSessionSync(bridge, { url: env.VITE_SUPABASE_URL, publishableKey: env.VITE_SUPABASE_PUBLISHABLE_KEY });
+  }, []);
+}
+
+/**
+ * Once the first load finished: push the schedule to the platform alarm engine and keep it
+ * current from the stores, and subscribe to realtime changes so another device's edits, passes
+ * and completions reach this one while the app is open.
+ */
+export function useLiveSync(ready: boolean): void {
+  const userId = useAuthStore((state) => state.session?.user.id ?? null);
+
+  useEffect(() => {
+    if (!ready || userId === null) return;
+    const stopSchedule = startScheduleSync({ adapter: getAlarmAdapter() });
+    const stopRealtime = startRealtime(supabase, userId, () => {
+      // After every (re)subscribe, catch up on whatever changed while the socket was not up.
+      void refreshAll();
+    });
+    return () => {
+      stopRealtime();
+      stopSchedule();
+    };
+  }, [ready, userId]);
+}

@@ -82,8 +82,29 @@ export interface PermissionStatus {
   batteryOptimizationExempt: boolean;
 }
 
+/**
+ * What a device needs beyond the synced settings row to alarm correctly. The
+ * sound is a per-device preference (spec section 8), so it is not a settings
+ * column and rides along on every schedule push instead.
+ */
+export interface AlarmSettings extends Settings {
+  /** Id of the bundled alarm sound; the platform falls back to its default when absent or unknown. */
+  sound?: string;
+}
+
 export interface AlarmAdapter {
-  setSchedule(events: EventRow[], cheatDays: string[], settings: Settings): Promise<void>;
+  /**
+   * Replaces the device's cached schedule. `completions` are recent completions
+   * synced from Supabase (any device); an occurrence that is already done must
+   * not ring again when the device wakes inside the grace window. Optional so a
+   * caller with nothing synced yet can omit it.
+   */
+  setSchedule(
+    events: EventRow[],
+    cheatDays: string[],
+    settings: AlarmSettings,
+    completions?: CompletionRow[]
+  ): Promise<void>;
   /** Completions made while the app was closed or offline. */
   drainCompletions(): Promise<CompletionRow[]>;
   getPermissionStatus(): Promise<PermissionStatus>;

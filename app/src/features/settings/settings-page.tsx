@@ -1,6 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { ArrowLeftIcon, LogOutIcon, MoonIcon, ShieldAlertIcon, SunIcon } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router';
 import { toast } from 'sonner';
@@ -23,11 +23,9 @@ import { Switch } from '@/components/ui/switch';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { signOut } from '@/features/auth/auth-api';
 import { useAuthStore } from '@/features/auth/auth-store';
-import { readDevicePreference, writeDevicePreference } from '@/lib/device-preference';
 import { detectPlatform } from '@/lib/platform';
 
 import {
-  DEFAULT_SOUND_ID,
   GRACE_OPTIONS,
   REFIRE_OPTIONS,
   SOUND_OPTIONS,
@@ -41,8 +39,7 @@ import {
   type SettingsFormValues,
 } from './settings-options';
 import { saveSettings, useSettingsStore } from './settings-store';
-
-const SOUND_KEY = 'alarm-calendar-sound';
+import { getSoundId, setSoundId as saveSoundId } from './sound-preference';
 
 function labelFor(options: readonly Option[], value: number): string {
   return options.find((option) => option.value === value)?.label ?? String(value);
@@ -57,7 +54,26 @@ export function SettingsPage() {
   const { theme, setTheme } = useTheme();
   const platform = detectPlatform();
   const [signingOut, setSigningOut] = useState(false);
-  const [soundId, setSoundId] = useState(() => readDevicePreference(SOUND_KEY) ?? DEFAULT_SOUND_ID);
+  const [soundId, setSoundId] = useState(getSoundId);
+  const desktop = platform === 'electron' ? window.desktopApi : undefined;
+  // Null until the desktop app answers; the switch stays disabled meanwhile.
+  const [autostart, setAutostart] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (desktop === undefined) return;
+    let cancelled = false;
+    desktop
+      .getAutostart()
+      .then((enabled) => {
+        if (!cancelled) setAutostart(enabled);
+      })
+      .catch(() => {
+        if (!cancelled) toast.error("Couldn't read the start-with-computer setting.");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [desktop]);
 
   const form = useForm<SettingsFormValues>({
     resolver: zodResolver(settingsFormSchema),
@@ -110,8 +126,20 @@ export function SettingsPage() {
 
   function onSoundChange(next: string): void {
     setSoundId(next);
-    if (!writeDevicePreference(SOUND_KEY, next)) {
+    if (!saveSoundId(next)) {
       toast.error("Couldn't remember the sound on this device. The browser blocked storage.");
+    }
+  }
+
+  async function onAutostartChange(next: boolean): Promise<void> {
+    if (desktop === undefined) return;
+    const previous = autostart;
+    setAutostart(next);
+    try {
+      setAutostart(await desktop.setAutostart(next));
+    } catch {
+      setAutostart(previous);
+      toast.error("Couldn't change the start-with-computer setting. Try again.");
     }
   }
 
@@ -291,7 +319,7 @@ export function SettingsPage() {
                 </SelectContent>
               </Select>
               <FieldDescription>
-                Remembered on this device only. The real sounds are bundled with the desktop and Android apps.
+                Remembered on this device only. All three play the same placeholder tone until the real sounds are added.
               </FieldDescription>
             </Field>
           </FieldGroup>
@@ -329,15 +357,18 @@ export function SettingsPage() {
             <Separator />
             <FieldSet>
               <FieldLegend>This computer</FieldLegend>
-              {/* Placeholder: the desktop adapter that owns login items is wired in the adapters step. */}
               <Field orientation="horizontal">
                 <div className="flex flex-1 flex-col gap-1">
                   <FieldLabel htmlFor="settings-autostart">Start with the computer</FieldLabel>
                   <FieldDescription>Runs in the tray so alarms ring even with the window closed.</FieldDescription>
                 </div>
-                <Switch id="settings-autostart" disabled />
+                <Switch
+                  id="settings-autostart"
+                  checked={autostart ?? false}
+                  disabled={autostart === null}
+                  onCheckedChange={(next) => void onAutostartChange(next)}
+                />
               </Field>
-              <FieldDescription>Not connected yet. This switch comes alive when the desktop app is wired up.</FieldDescription>
             </FieldSet>
           </>
         ) : null}

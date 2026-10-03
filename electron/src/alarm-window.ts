@@ -1,4 +1,4 @@
-import { BrowserWindow } from 'electron';
+import { BrowserWindow, shell } from 'electron';
 
 import type { AlarmView } from './alarm-ipc';
 import type { Logger } from './logger';
@@ -7,8 +7,8 @@ const REFOCUS_DELAY_MS = 250;
 
 export interface AlarmWindowsOptions {
   preloadPath: string;
-  /** The alarm page; TEMPORARY harness until the React /alarm route exists (step 5). */
-  pagePath: string;
+  /** URL of the React alarm route for one occurrence. */
+  pageUrlFor(occurrenceId: string): string;
   /** A window went away for any reason (closed by the user or by us). */
   onClosed(occurrenceId: string): void;
   log: Logger;
@@ -77,11 +77,18 @@ export class AlarmWindows {
       this.options.onClosed(view.occurrenceId);
     });
 
-    void win
-      .loadFile(this.options.pagePath, { query: { occurrence: view.occurrenceId } })
-      .catch((error: unknown) => {
-        this.options.log('alarm_window.load_failed', { error: String(error) });
-      });
+    // A page that failed to load has no buttons and no sound, and a full-screen window with
+    // nothing on it is worse than none. Beep, then destroy it: 'closed' schedules the re-ring.
+    win.webContents.on('did-fail-load', (_event, code, description, _url, isMainFrame) => {
+      if (!isMainFrame) return;
+      this.options.log('alarm_window.load_failed', { code, description });
+      shell.beep();
+      win.destroy();
+    });
+    void win.loadURL(this.options.pageUrlFor(view.occurrenceId)).catch((error: unknown) => {
+      // did-fail-load above already handled the window; this only keeps the rejection handled.
+      this.options.log('alarm_window.load_rejected', { error: String(error) });
+    });
     this.options.log('alarm_window.opened', { occurrenceId: view.occurrenceId });
   }
 

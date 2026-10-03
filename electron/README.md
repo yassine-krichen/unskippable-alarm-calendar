@@ -1,23 +1,72 @@
-# Electron alarm engine
+# Electron shell
 
-Main process: scheduler, full-screen alarm windows, tray, local JSON cache.
-The calendar UI is a placeholder until build-order step 5. See `docs/spec.md`
-sections 6 and 9.
+Main process: scheduler, full-screen alarm windows, tray, local JSON cache, and the
+loader for the shared React app (`app/`). See `docs/spec.md` sections 6 and 9.
 
 ## Run
 
-- `task electron` seeds two dev alarms (about 1 and 1.5 min after launch) into an
-  empty dev cache and keeps that cache across relaunches.
-- `task electron:reset` wipes the dev cache and seeds again.
-- Env flags: `ALARM_DEV_SEED=0` (no seed), `ALARM_DEV_SEED_RESET=1`,
-  `ALARM_DEV_CHEAT_DAY=1`, `ALARM_AUTOSTART=1|0` (autostart is on only in
-  packaged builds by default).
-- Dev data lives in `%APPDATA%\alarm-calendar-dev` (`cache.json`, `main.log`).
+- `task alarm-calendar:electron` starts the Vite dev server of the React app on port 3021
+  (unless something already answers there) and Electron, which loads it. Sign in by emailed
+  code in the main window. Only processes the script started are stopped when Electron exits.
+- `task alarm-calendar:electron:seed` adds two seeded test alarms (about 1 and 1.5 min after
+  launch) to an empty dev cache; once a signed-in sync has delivered real events they replace the seed.
+  `task alarm-calendar:electron:reset` wipes the dev cache first.
+- `task alarm-calendar:build` then `task alarm-calendar:electron:built` runs the packaged-style
+  path: the built `app/dist` served from `app://alarm-calendar/` (no dev server).
+- Env flags: `ALARM_APP_URL` (dev server to load, only honoured unpackaged), `ALARM_DEV_SEED=1`,
+  `ALARM_DEV_SEED_RESET=1`, `ALARM_DEV_CHEAT_DAY=1`, `ALARM_AUTOSTART=1|0` (touch the OS login
+  items in dev), `ALARM_APP_DIST` (serve another app build; unpackaged only). Extra arguments to
+  `pnpm --filter @alarm-calendar/electron dev` go to Electron.
+- The Electron build needs the Supabase URL (`VITE_SUPABASE_URL` in the environment or in
+  `app/.env`); it is baked in as the only origin the CSP and the session hand-off allow.
+- Dev data lives in `%APPDATA%\alarm-calendar-dev` (`cache.json`, `main.log`); any unpackaged
+  run is "dev" and never touches an installed app's data.
+
+## How the pieces fit
+
+- **Windows.** The main window shows the React app. The alarm window shows the same bundle at
+  `#/alarm?occurrence=...` (`app/src/alarm-entry.tsx`), which imports no Supabase client. Each
+  window has its own preload (`main-preload.ts` exposes `desktopApi`, `alarm-preload.ts` exposes
+  `alarmApi`), so the alarm page cannot call the sync API. `contextIsolation` and `sandbox` stay on.
+- **Origin and CSP.** `app-server.ts`: dev loads `http://localhost:3021`, otherwise `app://alarm-calendar`
+  (custom protocol, path-traversal guarded, serves `app/dist`). Navigation and redirects are
+  allowed only within that exact origin; windows and webviews are never opened. CSP: Supabase over
+  https and wss, nothing else; inline scripts only in dev (react-refresh).
+- **Schedule.** The renderer pushes events, cheat days, settings (with the sound choice) and
+  recent completions through `desktopApi.setSchedule` after the first load and after every change
+  (including realtime changes). Main validates the payload with zod (`desktop-payloads.ts`),
+  persists it to the cache and re-evaluates, so alarms keep working with the app closed and offline.
+  Invalid rows are dropped one at a time (counted, logged, and the app shows one toast); only bad
+  settings or an invalid envelope reject the push.
+- **The window exists from launch.** The main window is created hidden at start (an autostarted
+  launch passes `--hidden` and stays in the tray) because the React app is what syncs from Supabase.
+- **Completions: main is the only flush owner.** Done writes a pending row into the cache; the
+  `CompletionFlusher` upserts it (`on_conflict=event_id,occurrence_at`, `ignoreDuplicates`: the first completion wins, a duplicate counts as success) as soon as it can,
+  retries every 60 s and whenever a session arrives, and removes a row only after the server accepted
+  it. The React app does not upsert on desktop: `ElectronAlarmAdapter.drainCompletions()` returns
+  nothing, so nothing is written twice. A row the server refuses for good (RLS, deleted event) is
+  dropped with a log line; rows of another account stay queued for that account.
+- **Session.** The renderer hands main its access token (never the refresh token), expiry, user id,
+  the Supabase URL and the publishable key on sign-in, every token refresh and sign-out
+  (`app/src/features/alarm-adapter/session-sync.ts`). Only the renderer refreshes the session, so two
+  clients never race on a rotating refresh token. Main accepts a URL only for the origin it was
+  built for, keeps the token in memory only, never logs it, and uses it solely for the completions
+  upsert. After a restart the renderer restores its session and pushes it again; completions made
+  offline wait in the cache until then. No `safeStorage` is needed for that.
+- **Done on another device.** Synced completions are merged into `cache.knownCompletions`; an
+  occurrence in there does not ring when the machine wakes inside the grace window. A completion
+  seen once is kept for 7 days even if a later sync has a narrower window.
+- **Recovery.** The hidden main window is not throttled; a renderer crash or failed load is reloaded
+  with backoff (1 s, 5 s, 30 s, 5 min), then the window is rebuilt (`main-window-recovery.ts`).
+- **Autostart.** The Settings switch calls `setLoginItemSettings` (with `--hidden`). The packaged
+  default (on) is applied once on first run; after that the OS entry is the user's. Unpackaged
+  runs only flip an in-memory flag unless `ALARM_AUTOSTART` is set.
 
 ## Behaviour to know
 
 - The alarm window cannot be minimized; hiding or defocusing it brings it back.
-  Closing it (Alt+F4) re-opens it after `refire_seconds`.
+  Closing it (Alt+F4) re-opens it after `refire_seconds`. If its page fails to load it beeps and
+  is retried after `refire_seconds`.
 - Tray > Quit is disabled ("Quit (finish alarms first)") while any occurrence is
   ringing or snoozed. A Windows shutdown or logoff is never blocked; the cache is
   already on disk, so the alarm resumes on the next launch.
@@ -25,11 +74,13 @@ sections 6 and 9.
   app runs again.** Nothing can ring while it is not running. Autostart (packaged
   builds) restarts it after a reboot or logoff, and an alarm that was ringing or
   snoozed when the process died rings again at launch.
+- Signing out stops the completions flush and clears the token but keeps the cached schedule, so
+  alarms keep ringing until another account signs in (titles stay in `cache.json` until then).
 - Always-on-top does not draw over exclusive-fullscreen games; use borderless
   windowed. Sound and the taskbar flash still happen.
 
-## Temporary pieces (replace in step 5)
+## Placeholders
 
-`src/renderer/alarm.*` and `main-window.html` are plain-HTML placeholders for the
-React `/alarm?occurrence=...` route and the main window. `assets/alarm.wav` is a
-generated placeholder tone.
+`app/public/sounds/alarm.wav` is a generated placeholder tone (`pnpm generate-assets`); all three
+sound options in Settings map to it until real sounds are bundled. Packaging (installer, shipping
+`app/dist` as the `app-dist` resource) is build-order step 7.
