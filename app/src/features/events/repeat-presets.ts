@@ -8,6 +8,7 @@ export const REPEAT_PRESETS = [
   'every-3-days',
   'weekly',
   'monthly',
+  'yearly',
   'custom',
 ] as const;
 
@@ -15,7 +16,7 @@ export type RepeatPreset = (typeof REPEAT_PRESETS)[number];
 
 export type CustomRepeatUnit = Exclude<RepeatUnit, 'none'>;
 
-export const CUSTOM_REPEAT_UNITS: readonly CustomRepeatUnit[] = ['hour', 'day', 'week', 'month'];
+export const CUSTOM_REPEAT_UNITS: readonly CustomRepeatUnit[] = ['hour', 'day', 'week', 'month', 'year'];
 
 export interface RepeatRule {
   unit: RepeatUnit;
@@ -36,6 +37,7 @@ export const REPEAT_PRESET_LABELS: Record<RepeatPreset, string> = {
   'every-3-days': 'Every 3 days',
   weekly: 'Every week',
   monthly: 'Every month',
+  yearly: 'Every year',
   custom: 'Custom',
 };
 
@@ -47,6 +49,7 @@ const PRESET_RULES: Record<Exclude<RepeatPreset, 'custom'>, RepeatRule> = {
   'every-3-days': { unit: 'day', interval: 3 },
   weekly: { unit: 'week', interval: 1 },
   monthly: { unit: 'month', interval: 1 },
+  yearly: { unit: 'year', interval: 1 },
 };
 
 /** Presets only fill repeat_unit and repeat_interval; custom reads the "Every N unit" row. */
@@ -85,6 +88,7 @@ const UNIT_LABELS: Record<CustomRepeatUnit, [singular: string, plural: string]> 
   day: ['day', 'days'],
   week: ['week', 'weeks'],
   month: ['month', 'months'],
+  year: ['year', 'years'],
 };
 
 export function repeatUnitLabel(unit: CustomRepeatUnit, interval: number): string {

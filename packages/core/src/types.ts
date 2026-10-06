@@ -1,4 +1,4 @@
-export type RepeatUnit = 'none' | 'hour' | 'day' | 'week' | 'month';
+export type RepeatUnit = 'none' | 'hour' | 'day' | 'week' | 'month' | 'year';
 
 export type CompletionStatus = 'done' | 'skipped_cheat';
 
@@ -26,6 +26,12 @@ export interface EventRow {
   color: string | null;
   active: boolean;
   updated_at: string;
+  /**
+   * Links the alarms a template created together (a birthday's prep and wish alarms share one id).
+   * Null or absent for a plain alarm. Optional so rows from before the column existed, and test
+   * fixtures, stay valid.
+   */
+  group_id?: string | null;
   /**
    * When the alarm was created, set by the database and never changed. Habit scoring starts no
    * earlier than this. Optional so rows from before the column existed, and test fixtures, stay valid.

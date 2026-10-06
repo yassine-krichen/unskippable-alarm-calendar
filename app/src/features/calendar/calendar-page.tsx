@@ -16,6 +16,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { EventSheet } from '@/features/events/event-sheet';
 import type { EventFormTarget } from '@/features/events/event-form-view';
 import { loadEvents, useEventsStore } from '@/features/events/events-store';
+import { findRelationshipGroup } from '@/features/events/relationship-template';
 import { PassChip } from '@/features/passes/pass-chip';
 import { PassDialog } from '@/features/passes/pass-dialog';
 import { usePassesStore } from '@/features/passes/passes-store';
@@ -86,7 +87,11 @@ export function CalendarPage() {
 
   function openEdit(eventId: string): void {
     const event = events.find((candidate) => candidate.id === eventId);
-    if (event && settings) setFormTarget({ event, slot: { date: todayInZone, time: '09:00' } });
+    if (event && settings) {
+      // An alarm made by the birthday / anniversary template edits as that pair.
+      const group = findRelationshipGroup(event, events);
+      setFormTarget({ event, group, slot: { date: todayInZone, time: '09:00' } });
+    }
   }
 
   const loading = eventsStatus === 'idle' || eventsStatus === 'loading';

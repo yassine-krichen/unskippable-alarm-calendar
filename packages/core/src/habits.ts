@@ -114,7 +114,7 @@ export function recencyWeight(daysAgo: number, halfLifeDays: number = HABIT_WIND
 
 /**
  * How often the habit nominally repeats, in days: hours / 24, days as is, weeks times 7 divided
- * by the number of chosen weekdays, months times 30. Only a yardstick for the window.
+ * by the number of chosen weekdays, months times 30, years times 365. Only a yardstick for the window.
  */
 export function nominalPeriodDays(
   event: Pick<EventRow, 'repeat_unit' | 'repeat_interval' | 'repeat_weekdays'>
@@ -131,6 +131,8 @@ export function nominalPeriodDays(
     }
     case 'month':
       return interval * 30;
+    case 'year':
+      return interval * 365;
     case 'none':
       return 0;
   }

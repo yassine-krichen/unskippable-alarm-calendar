@@ -20,8 +20,16 @@ describe('repeat presets', () => {
     ['every-3-days', 'day', 3],
     ['weekly', 'week', 1],
     ['monthly', 'month', 1],
+    ['yearly', 'year', 1],
   ] as const)('%s fills repeat_unit %s and repeat_interval %i', (preset, unit, interval) => {
     expect(repeatRuleFromForm(fill(preset))).toEqual({ unit, interval });
+  });
+
+  it('reads a custom "Every N years" row', () => {
+    expect(repeatRuleFromForm({ repeatPreset: 'custom', customInterval: 4, customUnit: 'year' })).toEqual({
+      unit: 'year',
+      interval: 4,
+    });
   });
 
   it('reads the "Every N unit" row for custom', () => {
@@ -44,6 +52,11 @@ describe('repeat presets', () => {
       customInterval: 2,
       customUnit: 'week',
     });
+    expect(repeatFormFromRule({ unit: 'year', interval: 2 })).toEqual({
+      repeatPreset: 'custom',
+      customInterval: 2,
+      customUnit: 'year',
+    });
     expect(repeatFormFromRule({ unit: 'hour', interval: 5 })).toMatchObject({
       repeatPreset: 'custom',
       customInterval: 5,
@@ -62,5 +75,7 @@ describe('repeat presets', () => {
     expect(describeRepeat({ unit: 'none', interval: 1 })).toBe('Does not repeat');
     expect(describeRepeat({ unit: 'day', interval: 1 })).toBe('Every day');
     expect(describeRepeat({ unit: 'week', interval: 2 })).toBe('Every 2 weeks');
+    expect(describeRepeat({ unit: 'year', interval: 1 })).toBe('Every year');
+    expect(describeRepeat({ unit: 'year', interval: 3 })).toBe('Every 3 years');
   });
 });

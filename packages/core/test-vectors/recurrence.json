@@ -225,6 +225,81 @@
       "next": [
         { "after": "2026-06-01T00:00:00Z", "expected": null }
       ]
+    },
+    {
+      "name": "yearly on 3 January keeps the same date and time every year",
+      "tz": "UTC",
+      "event": { "start_at": "2026-01-03T10:00:00Z", "repeat_unit": "year", "repeat_interval": 1, "repeat_weekdays": null, "ends_at": null, "active": true },
+      "from": "2026-01-01T00:00:00Z",
+      "to": "2030-01-01T00:00:00Z",
+      "expected": ["2026-01-03T10:00:00Z", "2027-01-03T10:00:00Z", "2028-01-03T10:00:00Z", "2029-01-03T10:00:00Z"],
+      "next": [
+        { "after": "2026-01-03T10:00:00Z", "expected": "2027-01-03T10:00:00Z" },
+        { "after": "2028-12-31T00:00:00Z", "expected": "2029-01-03T10:00:00Z" }
+      ]
+    },
+    {
+      "name": "yearly on 29 February falls on 28 February in common years and returns to the 29th in leap years",
+      "tz": "UTC",
+      "event": { "start_at": "2024-02-29T10:00:00Z", "repeat_unit": "year", "repeat_interval": 1, "repeat_weekdays": null, "ends_at": null, "active": true },
+      "from": "2024-01-01T00:00:00Z",
+      "to": "2029-01-01T00:00:00Z",
+      "expected": ["2024-02-29T10:00:00Z", "2025-02-28T10:00:00Z", "2026-02-28T10:00:00Z", "2027-02-28T10:00:00Z", "2028-02-29T10:00:00Z"],
+      "next": [
+        { "after": "2025-02-28T10:00:00Z", "expected": "2026-02-28T10:00:00Z" },
+        { "after": "2027-02-28T10:00:00Z", "expected": "2028-02-29T10:00:00Z" }
+      ]
+    },
+    {
+      "name": "every 2 years on 29 February clamps only the common years",
+      "tz": "UTC",
+      "event": { "start_at": "2024-02-29T10:00:00Z", "repeat_unit": "year", "repeat_interval": 2, "repeat_weekdays": null, "ends_at": null, "active": true },
+      "from": "2024-01-01T00:00:00Z",
+      "to": "2031-01-01T00:00:00Z",
+      "expected": ["2024-02-29T10:00:00Z", "2026-02-28T10:00:00Z", "2028-02-29T10:00:00Z", "2030-02-28T10:00:00Z"]
+    },
+    {
+      "name": "yearly series started long ago jumps straight to the requested range",
+      "tz": "UTC",
+      "event": { "start_at": "2000-02-29T10:00:00Z", "repeat_unit": "year", "repeat_interval": 1, "repeat_weekdays": null, "ends_at": null, "active": true },
+      "from": "2026-01-01T00:00:00Z",
+      "to": "2029-01-01T00:00:00Z",
+      "expected": ["2026-02-28T10:00:00Z", "2027-02-28T10:00:00Z", "2028-02-29T10:00:00Z"]
+    },
+    {
+      "name": "yearly 08:00 Paris stays 08:00 local when the date moves from winter to summer time",
+      "tz": "Europe/Paris",
+      "event": { "start_at": "2025-03-29T07:00:00Z", "repeat_unit": "year", "repeat_interval": 1, "repeat_weekdays": null, "ends_at": null, "active": true },
+      "from": "2025-01-01T00:00:00Z",
+      "to": "2028-01-01T00:00:00Z",
+      "expected": ["2025-03-29T07:00:00Z", "2026-03-29T06:00:00Z", "2027-03-29T06:00:00Z"]
+    },
+    {
+      "name": "yearly 02:30 Paris on the spring-forward day moves forward by the gap in the years the time does not exist",
+      "tz": "Europe/Paris",
+      "event": { "start_at": "2025-03-29T01:30:00Z", "repeat_unit": "year", "repeat_interval": 1, "repeat_weekdays": null, "ends_at": null, "active": true },
+      "from": "2025-01-01T00:00:00Z",
+      "to": "2028-01-01T00:00:00Z",
+      "expected": ["2025-03-29T01:30:00Z", "2026-03-29T01:30:00Z", "2027-03-29T00:30:00Z"]
+    },
+    {
+      "name": "a yearly series stops at ends_at",
+      "tz": "UTC",
+      "event": { "start_at": "2026-01-03T10:00:00Z", "repeat_unit": "year", "repeat_interval": 1, "repeat_weekdays": null, "ends_at": "2028-06-01T00:00:00Z", "active": true },
+      "from": "2026-01-01T00:00:00Z",
+      "to": "2031-01-01T00:00:00Z",
+      "expected": ["2026-01-03T10:00:00Z", "2027-01-03T10:00:00Z", "2028-01-03T10:00:00Z"],
+      "next": [
+        { "after": "2028-01-03T10:00:00Z", "expected": null }
+      ]
+    },
+    {
+      "name": "an inactive yearly event has no occurrences",
+      "tz": "UTC",
+      "event": { "start_at": "2026-01-03T10:00:00Z", "repeat_unit": "year", "repeat_interval": 1, "repeat_weekdays": null, "ends_at": null, "active": false },
+      "from": "2026-01-01T00:00:00Z",
+      "to": "2030-01-01T00:00:00Z",
+      "expected": []
     }
   ]
 }

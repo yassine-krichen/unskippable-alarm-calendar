@@ -4,7 +4,7 @@
 
 export interface FakeResponse {
   data: unknown;
-  error: { message: string } | null;
+  error: { message: string; code?: string } | null;
 }
 
 export interface RecordedCall {

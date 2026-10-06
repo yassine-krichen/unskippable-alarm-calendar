@@ -29,7 +29,7 @@ const eventSchema = z.object({
   notes: z.string().max(20_000).nullable(),
   start_at: timestamp,
   duration_min: smallInt(1, 1_000_000),
-  repeat_unit: z.enum(['none', 'hour', 'day', 'week', 'month']),
+  repeat_unit: z.enum(['none', 'hour', 'day', 'week', 'month', 'year']),
   repeat_interval: smallInt(1, 100_000),
   // The database requires null or at least one weekday.
   repeat_weekdays: z.array(smallInt(0, 6)).min(1).max(7).nullable(),

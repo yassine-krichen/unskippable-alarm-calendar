@@ -125,8 +125,23 @@ function* wallDays(
     }
   }
 
-  // month: clamp from the original day each time, so Jan 31 -> Feb 28 -> Mar 31.
   const startDate = new Date(startDay * MS_PER_DAY);
+
+  if (event.repeat_unit === 'year') {
+    // Clamp from the original date each year, so a Feb 29 start gives Feb 28 in common years and
+    // Feb 29 again in leap years (no drift to the 28th for good).
+    const startYear = startDate.getUTCFullYear();
+    const startMonth = startDate.getUTCMonth();
+    const startDom = startDate.getUTCDate();
+    const fromYear = new Date(from * MS_PER_DAY).getUTCFullYear();
+    for (let k = Math.max(0, Math.floor((fromYear - startYear) / interval)); ; k++) {
+      const year = startYear + k * interval;
+      const lastDay = new Date(Date.UTC(year, startMonth + 1, 0)).getUTCDate();
+      yield Date.UTC(year, startMonth, Math.min(startDom, lastDay)) / MS_PER_DAY;
+    }
+  }
+
+  // month: clamp from the original day each time, so Jan 31 -> Feb 28 -> Mar 31.
   const startDayOfMonth = startDate.getUTCDate();
   const startMonthIndex = startDate.getUTCFullYear() * 12 + startDate.getUTCMonth();
   const fromDate = new Date(from * MS_PER_DAY);

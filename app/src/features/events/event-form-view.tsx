@@ -48,6 +48,7 @@ import {
   type EventFormValues,
 } from './event-form';
 import { removeEvent, saveEvent } from './events-store';
+import type { RelationshipGroup } from './relationship-template';
 import {
   CUSTOM_REPEAT_UNITS,
   REPEAT_PRESETS,
@@ -69,6 +70,8 @@ export interface EventFormTarget {
   event: EventRow | null;
   /** Prefilled date and time for a new event, from the clicked slot. */
   slot: { date: string; time: string };
+  /** Set when `event` belongs to a birthday / anniversary template: the edit opens that form instead. */
+  group?: RelationshipGroup | null;
 }
 
 interface EventFormViewProps {

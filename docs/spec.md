@@ -79,7 +79,7 @@ All tables have RLS: `user_id = auth.uid()` for select/insert/update/delete.
 | notes | text | optional |
 | start_at | timestamptz | first occurrence, UTC |
 | duration_min | int | default 15, calendar display only |
-| repeat_unit | enum `none, hour, day, week, month` | default `none` |
+| repeat_unit | enum `none, hour, day, week, month, year` | default `none` (`year` added in roadmap-v2 phase 2) |
 | repeat_interval | int | default 1, min 1 |
 | repeat_weekdays | int[] | 0 to 6 (Mon=0), only used when unit = week, null means same weekday as start |
 | ends_at | timestamptz | nullable, no occurrences after this |
@@ -88,6 +88,7 @@ All tables have RLS: `user_id = auth.uid()` for select/insert/update/delete.
 | passable | bool | default true, whether a cheat day silences it |
 | color | text | optional tag color |
 | active | bool | default true, delete = set false |
+| group_id | uuid | nullable, links the alarms a template created together (roadmap-v2 phase 2) |
 | updated_at | timestamptz | trigger-updated |
 
 **completions**
@@ -121,7 +122,8 @@ Fields: title, notes, date and time, duration, repeat, snooze limit, snooze leng
 - Every 3 days
 - Every week (weekday chips appear so you can pick multiple weekdays)
 - Every month
-- Custom: "Every [N] [hours / days / weeks / months]"
+- Every year
+- Custom: "Every [N] [hours / days / weeks / months / years]"
 
 Presets just fill `repeat_unit` and `repeat_interval`. Optional "Ends" date at the bottom.
 
@@ -140,9 +142,10 @@ occurrencesBetween(event, from, to, tz): Date[]
 
 Rules:
 - `hour`: absolute interval math from `start_at` (every 12 hours is exactly 12 real hours).
-- `day`, `week`, `month`: **wall-clock time in the user's timezone**, so 08:00 stays 08:00 across DST changes.
+- `day`, `week`, `month`, `year`: **wall-clock time in the user's timezone**, so 08:00 stays 08:00 across DST changes.
 - `week` with `repeat_weekdays`: occurrences on those weekdays in every Nth week, counting weeks from the week of `start_at`.
 - `month`: same day of month as the start. If the month is shorter, clamp to the last day (31st becomes 30th or 28th). Don't skip the month.
+- `year`: same month and day as the start, every N years. A 29 February start falls on 28 February in common years and on the 29th again in leap years (clamped from the original date each year, no drift).
 - Respect `ends_at` and `active`.
 - Never produce an occurrence before `start_at`.
 

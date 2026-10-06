@@ -71,6 +71,16 @@ describe('parseSchedulePayload', () => {
     expect(parsed.ok).toBe(true);
   });
 
+  it('accepts a yearly event and keeps its repeat_unit', () => {
+    const yearly = event({ repeat_unit: 'year', repeat_weekdays: null });
+    const parsed = parseSchedulePayload(schedule({ events: [yearly] }));
+    expect(parsed.ok).toBe(true);
+    if (parsed.ok) {
+      expect(parsed.value.events).toEqual([yearly]);
+      expect(parsed.dropped.events).toBe(0);
+    }
+  });
+
   it('rejects anything that is not an object with the four fields', () => {
     expect(parseSchedulePayload(null).ok).toBe(false);
     expect(parseSchedulePayload('events').ok).toBe(false);
@@ -82,7 +92,7 @@ describe('parseSchedulePayload', () => {
     const parsed = parseSchedulePayload(
       schedule({
         events: [
-          event({ repeat_unit: 'year' }),
+          event({ repeat_unit: 'decade' }),
           good,
           event({ start_at: '2026-02-31' }),
           event({ max_snoozes: 11 }),

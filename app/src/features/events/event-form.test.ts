@@ -40,6 +40,18 @@ describe('eventFormToWriteInput', () => {
     expect(input).toMatchObject({ repeat_unit: 'day', repeat_interval: 3, repeat_weekdays: null });
   });
 
+  it('writes the yearly preset and a custom "Every N years" rule without weekdays', () => {
+    const yearly = eventFormToWriteInput(values({ repeatPreset: 'yearly', weekdays: [1, 2] }), 'UTC');
+    expect(yearly).toMatchObject({ repeat_unit: 'year', repeat_interval: 1, repeat_weekdays: null });
+    expect(yearly.start_at).toBe('2026-10-05T09:30:00.000Z');
+
+    const everyThree = eventFormToWriteInput(
+      values({ repeatPreset: 'custom', customInterval: 3, customUnit: 'year' }),
+      'UTC'
+    );
+    expect(everyThree).toMatchObject({ repeat_unit: 'year', repeat_interval: 3, repeat_weekdays: null });
+  });
+
   it('writes the custom "Every N unit" row', () => {
     const input = eventFormToWriteInput(
       values({ repeatPreset: 'custom', customInterval: 5, customUnit: 'hour' }),

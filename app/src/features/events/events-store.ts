@@ -5,7 +5,14 @@ import { createLatestRequestGuard } from '@/lib/latest-request';
 import type { Result } from '@/lib/result';
 
 import type { EventWriteInput } from './event-form';
-import { createEvent, deactivateEvent, fetchActiveEvents, updateEvent } from './events-api';
+import {
+  createEvent,
+  createEvents,
+  deactivateEvent,
+  deactivateEvents,
+  fetchActiveEvents,
+  updateEvent,
+} from './events-api';
 
 type LoadStatus = 'idle' | 'loading' | 'ready' | 'error';
 
@@ -91,6 +98,58 @@ export async function removeEvent(id: string): Promise<Result<null>> {
   if (result.error === null) {
     invalidateEventsLoad();
     useEventsStore.setState((state) => ({ events: state.events.filter((event) => event.id !== id) }));
+  }
+  return result;
+}
+
+/** Creates the alarms of a template in one write; they appear together or not at all. */
+export async function saveNewEventGroup(inputs: EventWriteInput[]): Promise<Result<EventRow[]>> {
+  const result = await createEvents(inputs);
+  const saved = result.data;
+  if (saved) {
+    invalidateEventsLoad();
+    useEventsStore.setState((state) => ({ events: [...state.events, ...saved], status: 'ready' }));
+  }
+  return result;
+}
+
+/**
+ * Updates the two alarms of a template, one request each (a row's values differ, so one statement
+ * cannot cover both). If the second write fails the first stays applied and the error is returned:
+ * saving again writes both with the same values, so a retry repairs it.
+ */
+export async function saveEventGroup(
+  updates: ReadonlyArray<{ id: string; input: EventWriteInput }>
+): Promise<Result<EventRow[]>> {
+  const saved: EventRow[] = [];
+  for (const { id, input } of updates) {
+    const result = await updateEvent(id, input);
+    if (result.data === null) {
+      applySavedEvents(saved);
+      return { data: null, error: result.error };
+    }
+    saved.push(result.data);
+  }
+  applySavedEvents(saved);
+  return { data: saved, error: null };
+}
+
+function applySavedEvents(saved: EventRow[]): void {
+  if (saved.length === 0) return;
+  invalidateEventsLoad();
+  const byId = new Map(saved.map((event) => [event.id, event]));
+  useEventsStore.setState((state) => ({
+    events: state.events.map((event) => byId.get(event.id) ?? event),
+    status: 'ready',
+  }));
+}
+
+export async function removeEventGroup(ids: string[]): Promise<Result<null>> {
+  const result = await deactivateEvents(ids);
+  if (result.error === null) {
+    invalidateEventsLoad();
+    const gone = new Set(ids);
+    useEventsStore.setState((state) => ({ events: state.events.filter((event) => !gone.has(event.id)) }));
   }
   return result;
 }

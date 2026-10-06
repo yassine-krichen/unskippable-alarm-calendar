@@ -127,3 +127,35 @@ describe('recurrence behavior beyond the vectors', () => {
     );
   });
 });
+
+describe('yearly recurrence', () => {
+  const yearly: RecurrenceEvent = {
+    start_at: '2026-01-03T10:00:00Z',
+    repeat_unit: 'year',
+    repeat_interval: 1,
+    repeat_weekdays: null,
+    ends_at: null,
+    active: true,
+  };
+
+  it('rejects a repeat interval below 1', () => {
+    expect(() =>
+      nextOccurrence({ ...yearly, repeat_interval: 0 }, new Date('2026-06-10T00:00:00Z'), 'UTC')
+    ).toThrow(RangeError);
+  });
+
+  it('uses the date in the time zone, not in UTC, when the start is near midnight', () => {
+    // 00:30 on 1 January in Paris is 23:30 UTC on 31 December.
+    const result = occurrencesBetween(
+      { ...yearly, start_at: '2025-12-31T23:30:00Z' },
+      new Date('2026-06-01T00:00:00Z'),
+      new Date('2028-06-01T00:00:00Z'),
+      'Europe/Paris'
+    );
+    expect(result.map(iso)).toEqual(['2026-12-31T23:30:00Z', '2027-12-31T23:30:00Z']);
+  });
+
+  it('is empty when inactive', () => {
+    expect(nextOccurrence({ ...yearly, active: false }, new Date('2026-01-01T00:00:00Z'), 'UTC')).toBeNull();
+  });
+});

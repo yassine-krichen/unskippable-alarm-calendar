@@ -174,3 +174,29 @@ mirror (step 10) and the app code must follow these.
   column by hand (an import, say) needs the trigger dropped first. `supabase/tests/security_checks.sql` checks the trigger
   and the NOT NULL.
 
+- **Yearly repeat and the birthday template (roadmap-v2 phase 2).** `repeat_unit` gains `year` (migration
+  `repeat_unit_year`, `add value if not exists`; the value cannot be used in the same transaction that adds it, and Postgres
+  cannot drop it again). Recurrence walks years from `start_at` and clamps the day to the month's length each time, so a
+  Feb 29 series is Feb 28, Feb 28, Feb 28, Feb 29. The Kotlin mirror must pass the new vectors in `recurrence.json` and
+  `habits.json`. Electron's schedule validation (`desktop-payloads.ts`) accepts `year`; an older Electron build drops a
+  yearly alarm as an invalid row (counted and toasted) rather than breaking the schedule.
+- **`events.group_id` is a plain nullable uuid with a partial index, no table and no foreign key** (migration
+  `events_group_id`). RLS is untouched: the column sits on rows the user already owns. The app reads it, and until the
+  migration is pushed the first read that fails on the column is retried without it (`events-api.ts`), so everything else
+  keeps working; the flag also disables the Birthday tab (with a hint) until then. Only a 42703 or PGRST204 error that
+  names `group_id` counts as the missing column; any other error is surfaced.
+- **The birthday template is a tab of the New alarm sheet, not a separate action.** It is one decision ("what is this
+  alarm for?") made before any field is filled, it needs no extra header button (the phone FAB stays a single
+  "New alarm"), and the two forms share nothing after that, so each is its own component and switching tabs while
+  creating starts that form fresh. Editing a grouped alarm opens the template form, because editing the prep alarm alone
+  would let the pair drift apart.
+- **How the pair is recognised on edit.** Same `group_id`, exactly two active members, both `year`, titles in the template's
+  shape ("Prep for X's birthday", "Wish X a happy birthday"); the titles, not the dates, tell prep from wish, because a
+  save that failed half-way can leave the prep dated after the wish. Anything else opens the
+  normal form, so a hand-renamed or half-deleted pair is never misread.
+- **A series without a typed year starts at the next occurrence; with one it starts in that year** (a past birth year starts
+  in the past, which only affects what the calendar shows and not scoring, because scoring starts at `created_at`). A Feb 29
+  series always starts on a real Feb 29, the latest leap year not after the next ring, so the clamp rule returns it to the
+  29th. Editing a pair with no typed year plans from the pair's `created_at`, the basis the form uses to decide whether a
+  year was typed, so a later edit never turns a derived year into a shown one.
+

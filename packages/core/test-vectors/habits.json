@@ -107,6 +107,20 @@
       "repeat_weekdays": null,
       "nominal_period_days": 360,
       "window_days": 180
+    },
+    {
+      "repeat_unit": "year",
+      "repeat_interval": 1,
+      "repeat_weekdays": null,
+      "nominal_period_days": 365,
+      "window_days": 180
+    },
+    {
+      "repeat_unit": "year",
+      "repeat_interval": 2,
+      "repeat_weekdays": null,
+      "nominal_period_days": 730,
+      "window_days": 180
     }
   ],
   "tiers": [

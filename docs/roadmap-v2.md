@@ -45,8 +45,15 @@ Each phase ends with tests green, a code review, and a commit. Android work stay
 
 ## Phase 2: yearly repeat and relationship reminders
 
-- New `repeat_unit` value `year`. Feb 29 lands on Feb 28 in non-leap years, using the same clamping rule as months.
-- "Birthday / anniversary" template: one form that creates two linked yearly alarms. One is 7 days before ("Prep for <name>", with gift-idea notes), the other is on the day ("Wish <name>").
+Built on branch `v2-overnight`, not yet pushed or released. Needs the two migrations `20261006010617_repeat_unit_year` and `20261006010618_events_group_id` pushed to the database before the app can save a yearly alarm or a birthday.
+
+- New `repeat_unit` value `year`. Same month and day as `start_at`, every N years, wall-clock in the user's zone. Feb 29 lands on Feb 28 in non-leap years, clamped from the original date each year (so it returns to Feb 29 in leap years). Shared vectors in `recurrence.json`; habit nominal period is `interval × 365` days, so a yearly habit has the 180-day window and is almost always "Unranked". The repeat picker has an "Every year" preset and a custom unit "years".
+- "Birthday / anniversary" template, a second tab at the top of the New alarm sheet (Alarm | Birthday / anniversary). Fields: kind (birthday or anniversary), person, month and day, optional year, one alarm time, gift ideas. Saving writes two yearly alarms in one insert, linked by the new nullable `events.group_id`:
+  - prep, 7 days before: "Prep for <name>'s birthday", notes = the gift ideas;
+  - wish, on the day: "Wish <name> a happy birthday".
+  - Both use a plain alarm's defaults (snooze 3 times, 5 minutes) and both stay passable: a cheat day can skip them, since a missed birthday wish is not a missed medication. Change a row's switch elsewhere and edits keep it.
+- Editing: any alarm with a `group_id` and a template-shaped partner opens the template form and saves both (name, date, time and gift changes propagate; per-alarm snooze, color, cheat-day switch and duration are kept). Delete asks "Delete both alarms?". An alarm whose partner is gone opens the normal form.
+- Known limits: the prep date is fixed in the start year, so across a 29 February it is one day more or fewer than 7 days ahead in some years (a Feb 29 birthday preps on Feb 22 every year, 6 days before the Feb 28 wish in common years; a Mar 3 birthday preps 8 days ahead in leap years). A group edit is two update requests, so a failure on the second leaves the first applied; saving again repairs it. The year field is remembered only through the start year of the series, and a typed year equal to the one the app would pick anyway shows as empty when reopened.
 
 ## Phase 3: precomputed schedule and salat
 
