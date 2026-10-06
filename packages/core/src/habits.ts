@@ -6,6 +6,7 @@ import {
   type OccurrenceSettings,
 } from './occurrences';
 import { instantMs } from './instant';
+import { prayerDayOf, resolvePrayerConfig } from './prayer-times';
 import {
   MAX_SHIFT_MS,
   applyModesToInstants,
@@ -14,7 +15,7 @@ import {
   type ModeTimelineSettings,
 } from './modes';
 import { nominalPeriodDays } from './period';
-import { localDateString } from './time-zone';
+import { dayNumberFromDateString, localDateString } from './time-zone';
 import type { CompletionRow, EventRow, ModeConfig, Settings } from './types';
 
 export { instantMs, nominalPeriodDays };
@@ -61,6 +62,7 @@ export type HabitEvent = Pick<
   | 'created_at'
   | 'kind'
   | 'prayer'
+  | 'group_id'
 >;
 
 export type HabitCompletion = Pick<CompletionRow, 'event_id' | 'occurrence_at' | 'status' | 'snoozes_used'>;
@@ -76,7 +78,11 @@ export interface HabitOccurrence {
   snoozesUsed: number;
 }
 
+/** The id of the one pooled "Prayer" habit in a report: it stands for all five prayer events. */
+export const PRAYER_HABIT_ID = 'prayer';
+
 export interface HabitStats {
+  /** The event's id, or PRAYER_HABIT_ID for the pooled prayer habit. */
   eventId: string;
   title: string;
   color: string | null;
@@ -102,10 +108,20 @@ export interface HabitStats {
   bestStreak: number;
   /** Oldest first, every occurrence in the window up to `now`. */
   occurrences: HabitOccurrence[];
+  /** 'prayer' for the habit that pools the five prayers (see pooledPrayerHabit); absent for an ordinary one. */
+  pooled?: 'prayer';
+  /**
+   * Pooled prayer habit only: how many prayer-days were scored (a day with a done or missed prayer). It is what
+   * the rank needs HABIT_MIN_SCORED of, so a single day of five prayers does not rank. Streaks count these days.
+   */
+  scoredDays?: number;
 }
 
 export interface HabitsReport {
-  /** Recurring, active events only, in the order given. */
+  /**
+   * Recurring, active events in the order given, except that the five prayers are one entry (pooled, last):
+   * one "Prayer" habit instead of five.
+   */
   habits: HabitStats[];
   /** Pooled over ranked habits: 100 * sum(earned) / sum(possible); null when none is ranked. */
   overallScore: number | null;
@@ -156,14 +172,17 @@ export function displayScore(score: number): number {
 }
 
 /**
- * A habit is a recurring event; one-off events are not scored. Each of the five prayers is a habit
- * (Done means prayed); the pre-prayer reminders are not, they are only a nudge towards it.
+ * A habit is a recurring event; one-off events are not scored. Each of the five prayers is scored (Done means
+ * prayed) and the report pools them into one "Prayer" habit; the pre-prayer reminders are not, they are only a
+ * nudge towards it. Yearly alarms are not habits (a rank needs 5 occurrences, so 5 years) and neither is
+ * anything made by the birthday / anniversary template (`group_id`): a missed birthday wish is not a lapse.
  */
-export function isHabit(event: Pick<EventRow, 'repeat_unit' | 'active' | 'kind'>): boolean {
+export function isHabit(event: Pick<EventRow, 'repeat_unit' | 'active' | 'kind' | 'group_id'>): boolean {
   if (!event.active) return false;
   const kind = eventKindOf(event);
   if (kind === 'prayer') return true;
-  return kind === 'normal' && event.repeat_unit !== 'none';
+  if (kind !== 'normal' || event.repeat_unit === 'none' || event.repeat_unit === 'year') return false;
+  return event.group_id == null;
 }
 
 export function completionKey(eventId: string, occurrenceMs: number): string {
@@ -375,7 +394,90 @@ export function computeHabitStats(
 }
 
 /**
- * Stats for every recurring active event, plus the overall score pooled over the ranked habits:
+ * One prayer-day's outcome from its prayers' outcomes: a miss anywhere breaks it, a prayer still to come (or
+ * inside its late window) leaves it open, and it is done once every prayer of that day is done. A day with
+ * only excused or paused prayers keeps a streak alive without adding to it.
+ */
+export function prayerDayOutcome(outcomes: readonly OccurrenceOutcome[]): OccurrenceOutcome {
+  if (outcomes.includes('missed')) return 'missed';
+  if (outcomes.includes('pending')) return 'pending';
+  if (outcomes.includes('done')) return 'done';
+  return outcomes.includes('excused') ? 'excused' : 'paused';
+}
+
+/**
+ * Pools the stats of the prayer events into the single "Prayer" habit. Counts, weighted credit and weighted
+ * possible are summed, so the score is the pooled one (100 * sum earned / sum possible, like the overall score).
+ * The streak runs over prayer-days, oldest first. A prayer-day is the day a prayer was computed for (`prayerDayOf`,
+ * the same day completions are matched by), not the local date of its instant, so an Isha pushed past midnight by an
+ * offset stays with its own day. A day is done only when every prayer of that day was prayed, one miss makes it missed
+ * and resets the streak, and a day with a prayer still to come or inside its late window is skipped (pending). Two
+ * days can be incomplete without being the person's doing, and are left out of the days and the streak altogether:
+ * the first day, when the scoring window (or the moment the prayers were switched on, or the alarms created) starts
+ * part-way through it, and the last day while its later prayers have not come yet, so a streak does not grow at Fajr.
+ * The per-prayer counts and the score still include the prayers that fall inside the window. It is ranked from
+ * HABIT_MIN_SCORED scored days, the same "five days of evidence" each prayer needed on its own.
+ */
+function pooledPrayerHabit(
+  prayers: ReadonlyArray<{ event: HabitEvent; stats: HabitStats }>,
+  settings: HabitSettings
+): HabitStats {
+  const parts = prayers.map(({ stats }) => stats);
+  const config = resolvePrayerConfig(settings);
+  const tagged = prayers
+    .flatMap(({ event, stats }) => stats.occurrences.map((occurrence) => ({ event, occurrence })))
+    .sort((a, b) => a.occurrence.at.getTime() - b.occurrence.at.getTime());
+  const occurrences = tagged.map(({ occurrence }) => occurrence);
+  const days = new Map<number, OccurrenceOutcome[]>();
+  for (const { event, occurrence } of tagged) {
+    const day =
+      config !== null && event.prayer != null
+        ? prayerDayOf(config, event.prayer, occurrence.at, settings.timezone)
+        : dayNumberFromDateString(localDateString(occurrence.at, settings.timezone));
+    days.set(day, [...(days.get(day) ?? []), occurrence.outcome]);
+  }
+  const ordered = [...days].sort(([a], [b]) => a - b);
+  const dayOutcomes = ordered
+    .filter(([, outcomes], index) => !(index === 0 && outcomes.length < parts.length))
+    .map(([, outcomes], index, kept) => {
+      const outcome = prayerDayOutcome(outcomes);
+      const lastDayOpen = index === kept.length - 1 && outcomes.length < parts.length;
+      return lastDayOpen && outcome !== 'missed' ? 'pending' : outcome;
+    });
+  const scoredDays = dayOutcomes.filter((outcome) => outcome === 'done' || outcome === 'missed').length;
+  const sum = (pick: (part: HabitStats) => number): number => parts.reduce((total, part) => total + pick(part), 0);
+  const earned = sum((part) => part.weightedEarned);
+  const possible = sum((part) => part.weightedPossible);
+  const score = scoredDays >= HABIT_MIN_SCORED && possible > 0 ? (100 * earned) / possible : null;
+  const run = streaks(dayOutcomes);
+  const done = sum((part) => part.done);
+  const missed = sum((part) => part.missed);
+
+  return {
+    eventId: PRAYER_HABIT_ID,
+    title: 'Prayer',
+    color: null,
+    done,
+    missed,
+    excused: sum((part) => part.excused),
+    paused: sum((part) => part.paused),
+    pending: sum((part) => part.pending),
+    scored: done + missed,
+    windowDays: Math.max(HABIT_WINDOW_DAYS, ...parts.map((part) => part.windowDays)),
+    score,
+    weightedEarned: earned,
+    weightedPossible: possible,
+    tier: tierForScore(score),
+    currentStreak: run.current,
+    bestStreak: run.best,
+    occurrences,
+    pooled: 'prayer',
+    scoredDays,
+  };
+}
+
+/**
+ * Stats for every recurring active event (the five prayers pooled into one "Prayer" habit), plus the overall score pooled over the ranked habits:
  * 100 * sum(earned) / sum(possible), each habit using its own per-occurrence weights, so a
  * habit with more recent scored occurrences counts for more. Unranked habits do not enter it.
  */
@@ -392,16 +494,22 @@ export function computeHabitsReport(
   const timeline = buildModeTimeline(modes, settings);
   const cheatDaySet = new Set(cheatDays);
   const habits: HabitStats[] = [];
+  const prayers: Array<{ event: HabitEvent; stats: HabitStats }> = [];
   const failed: HabitEvent[] = [];
   for (const event of events.filter(isHabit)) {
     try {
-      habits.push(computeHabitStats(event, index, cheatDaySet, settings, now, timeline));
+      const stats = computeHabitStats(event, index, cheatDaySet, settings, now, timeline);
+      if (eventKindOf(event) === 'prayer') prayers.push({ event, stats });
+      else habits.push(stats);
     } catch {
       // One unusable event must not take the whole Stats screen down.
       failed.push(event);
     }
   }
 
+  if (prayers.length > 0) habits.push(pooledPrayerHabit(prayers, settings));
+
+  // The pooled prayer habit enters once, with its own summed numerator and denominator.
   let earned = 0;
   let possible = 0;
   for (const habit of habits) {

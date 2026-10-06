@@ -83,6 +83,20 @@ describe('createEvents', () => {
   });
 });
 
+describe('calendar visibility', () => {
+  it('reads show_in_calendar with the events', async () => {
+    fake.responses['select:events'] = { data: [], error: null };
+    await fetchActiveEvents();
+    expect(fake.calls[0]?.payload).toMatch(/show_in_calendar/);
+  });
+
+  it('writes the flag with the rest of the alarm', async () => {
+    fake.responses['insert:events'] = { data: [{ id: 'a' }], error: null };
+    await createEvents([{ ...INPUT, show_in_calendar: false }]);
+    expect(fake.payloadOf('insert:events')).toEqual([{ ...INPUT, show_in_calendar: false }]);
+  });
+});
+
 describe('reading before the group_id migration is pushed', () => {
   const missingColumn = {
     data: null,

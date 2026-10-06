@@ -25,6 +25,7 @@ function values(overrides: Partial<RelationshipFormValues> = {}): RelationshipFo
     year: '',
     time: '09:00',
     giftNotes: '',
+    showInCalendar: true,
     ...overrides,
   };
 }
@@ -56,6 +57,24 @@ describe('relationshipToWriteInputs', () => {
       expect(alarm).toMatchObject({ repeat_unit: 'year', repeat_interval: 1, repeat_weekdays: null, ends_at: null });
       expect(alarm.group_id).toBe(GROUP);
     }
+  });
+
+  it('gives both alarms the form\'s calendar switch, and reads it back when the pair is reopened', () => {
+    const hidden = relationshipToWriteInputs(values({ showInCalendar: false }), { tz: 'UTC', now: NOW }, GROUP);
+    expect(hidden.prep.show_in_calendar).toBe(false);
+    expect(hidden.wish.show_in_calendar).toBe(false);
+    const shown = relationshipToWriteInputs(values(), { tz: 'UTC', now: NOW }, GROUP);
+    expect(shown.prep.show_in_calendar).toBe(true);
+    expect(shown.wish.show_in_calendar).toBe(true);
+
+    const reopened = relationshipGroupToFormValues(
+      {
+        prep: asRow(hidden.prep, 'prep'),
+        wish: asRow(hidden.wish, 'wish'),
+      },
+      'UTC'
+    );
+    expect(reopened.showInCalendar).toBe(false);
   });
 
   it('puts the prep alarm 7 days before, across the year boundary: a 3 January birthday preps on 27 December', () => {

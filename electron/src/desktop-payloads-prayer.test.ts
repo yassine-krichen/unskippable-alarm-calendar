@@ -141,3 +141,48 @@ describe('parseSchedulePayload, prayer times', () => {
     expect(parseSchedulePayload({ ...build(), settings: plain }).ok).toBe(true);
   });
 });
+
+describe('parseSchedulePayload, calendar visibility', () => {
+  const shownOnly = { ...SETTINGS, show_prayers_in_calendar: true };
+  const hiddenRows = ROWS.map((event) => ({ ...event, show_in_calendar: false }));
+
+  function buildWith(events: Record<string, unknown>[], settings: typeof SETTINGS & { show_prayers_in_calendar?: boolean }) {
+    return buildSchedulePayload({ events: events as unknown as EventRow[], cheatDays: [], settings, completions: [], now: NOW, horizonDays: 3 });
+  }
+
+  it('accepts the visibility flags and leaves what rings exactly as it was', () => {
+    const baseline = buildWith(ROWS, SETTINGS);
+    for (const [events, settings] of [
+      [hiddenRows, SETTINGS],
+      [ROWS, shownOnly],
+      [hiddenRows, shownOnly],
+    ] as const) {
+      const parsed = parseSchedulePayload(buildWith(events, settings));
+      expect(parsed.ok).toBe(true);
+      if (!parsed.ok || parsed.version !== 2) return;
+      expect(parsed.dropped).toEqual({ occurrences: 0, events: 0, cheatDays: 0, completions: 0 });
+      // A hidden alarm is in the list, with the same times and the same text, as a visible one.
+      expect(parsed.value.occurrences).toEqual(baseline.occurrences);
+    }
+  });
+
+  it('never drops an event or rejects a push over a malformed flag: it reads as absent', () => {
+    const baseline = buildWith(ROWS, SETTINGS);
+    const badSettings = parseSchedulePayload({ ...baseline, settings: { ...SETTINGS, show_prayers_in_calendar: 'no' } });
+    expect(badSettings.ok).toBe(true);
+    if (badSettings.ok && badSettings.version === 2) {
+      expect(badSettings.value.settings.show_prayers_in_calendar).toBeUndefined();
+      expect(badSettings.value.occurrences).toEqual(baseline.occurrences);
+    }
+
+    const badEvent = parseSchedulePayload({
+      ...baseline,
+      refillSource: { ...baseline.refillSource, events: [{ ...ROWS[0], show_in_calendar: 'no' }, ROWS[1], ROWS[2]] },
+    });
+    expect(badEvent.ok).toBe(true);
+    if (badEvent.ok && badEvent.version === 2) {
+      expect(badEvent.dropped).toEqual({ occurrences: 0, events: 0, cheatDays: 0, completions: 0 });
+      expect(badEvent.value.refillSource.events).toHaveLength(3);
+    }
+  });
+});

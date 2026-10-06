@@ -150,7 +150,17 @@ describe('eventToFormValues', () => {
   it('round-trips an event through the form unchanged', () => {
     const written = eventFormToWriteInput(eventToFormValues(row, 'Europe/Berlin'), 'Europe/Berlin');
     const { id: _id, user_id: _user, active: _active, updated_at: _updated, ...columns } = row;
-    expect(written).toEqual(columns);
+    expect(written).toEqual({ ...columns, show_in_calendar: true });
+  });
+
+  it('keeps an alarm hidden from the calendar hidden through the form, and shows a row with no flag', () => {
+    const hidden = { ...row, show_in_calendar: false };
+    expect(eventToFormValues(hidden, 'UTC').showInCalendar).toBe(false);
+    expect(eventFormToWriteInput(eventToFormValues(hidden, 'UTC'), 'UTC').show_in_calendar).toBe(false);
+    // Rows from before the column existed have no flag: they are shown.
+    expect(eventToFormValues(row, 'UTC').showInCalendar).toBe(true);
+    expect(defaultEventFormValues('2026-10-05', '09:30').showInCalendar).toBe(true);
+    expect(eventFormToWriteInput(values({ showInCalendar: false }), 'UTC').show_in_calendar).toBe(false);
   });
 
   it('uses the weekday of the start date when repeat_weekdays is null', () => {

@@ -5,10 +5,13 @@ import { Skeleton } from '@/components/ui/skeleton';
 
 import { loadHabitCompletions, useHabitCompletionsStore } from './habits-store';
 import { TierBadge } from './tier-badge';
-import { unrankedProgress, weeksLabel } from './habit-view';
+import { isRankPending, unrankedProgress, weeksLabel } from './habit-view';
 import { useHabitsReport } from './use-habits-report';
 
-/** The rank of one repeating alarm, shown in its edit sheet. Renders nothing when unavailable. */
+/**
+ * The rank of one repeating alarm, shown in its edit sheet. Renders nothing when unavailable. For a prayer pass
+ * PRAYER_HABIT_ID: the five prayers are one habit, so each shows the combined rank.
+ */
 export function EventRank({ eventId }: { eventId: string }) {
   const view = useHabitsReport();
   const status = useHabitCompletionsStore((state) => state.status);
@@ -17,7 +20,7 @@ export function EventRank({ eventId }: { eventId: string }) {
   // Without the history every alarm would look missed, so show no rank rather than a wrong one.
   if (status === 'error') return null;
   if (view === null) return null;
-  if (view.pending.some((candidate) => candidate.id === eventId)) {
+  if (isRankPending(eventId, view.pending)) {
     // Not scored until its whole window is loaded: a rank from partial history would be wrong.
     if (view.loading) return <Skeleton className="h-6 w-48" />;
     return (
@@ -36,8 +39,9 @@ export function EventRank({ eventId }: { eventId: string }) {
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
       <TierBadge tier={habit.tier} />
       <span className="text-sm text-muted-foreground">
+        {habit.pooled === 'prayer' ? 'All five prayers together. ' : ''}
         {habit.score === null
-          ? `${unrankedProgress(habit)}. Needs ${HABIT_MIN_SCORED} in ${weeksLabel(habit.windowDays)}.`
+          ? `${unrankedProgress(habit)}. Needs ${HABIT_MIN_SCORED}${habit.pooled === 'prayer' ? ' days' : ''} in ${weeksLabel(habit.windowDays)}.`
           : `Score ${displayScore(habit.score)} over ${weeksLabel(habit.windowDays)}: ${habit.done} done, ${habit.missed} missed.`}
       </span>
     </div>

@@ -56,6 +56,13 @@ export interface EventRow {
   exam_role?: ExamRole | null;
   /** For a catch-up session: the id of the missed session it replaces. At most one catch-up per missed session. */
   catch_up_of?: string | null;
+  /**
+   * Whether the calendar draws this alarm. False hides it from Week, Month and Agenda (a "Show hidden" toggle
+   * reveals it); it still rings and still counts in habit scores. Absent means true (rows from before the
+   * column existed, and test fixtures). Ignored for the five prayers, which follow
+   * `PrayerSettings.show_prayers_in_calendar`.
+   */
+  show_in_calendar?: boolean;
 }
 
 /** The two kinds of alarm an exam owns (roadmap v2, phase 4). Both are one-off 'normal' events. */
@@ -120,6 +127,11 @@ export interface PrayerSettings {
   /** Snooze rules of the prayer and pre-prayer alarms; 0 snoozes by default. */
   prayer_max_snoozes: number;
   prayer_snooze_minutes: number;
+  /**
+   * Whether the five prayers are drawn on the calendar (they ring either way). Default false: the salat
+   * alarm is a given and does not need the space. The pre-prayer reminders are never drawn.
+   */
+  show_prayers_in_calendar: boolean;
 }
 
 /** The mode column of settings (migration modes). Absent means DEFAULT_EXAM_MODE_DAYS_BEFORE in modes.ts. */

@@ -155,9 +155,10 @@ describe('a completion survives a change of prayer settings', () => {
       status: 'done',
       snoozes_used: 0,
     }));
-    const habit = (settings: HabitSettings, id = events[0]!.id) =>
+    // The report pools the prayers into one habit; with only Fajr in it, its counts are Fajr's.
+    const habit = (settings: HabitSettings) =>
       computeHabitsReport([{ ...events[0]!, created_at: '2026-10-01T00:00:00.000Z' } as HabitEvent], completions, [], settings, new Date('2026-10-20T20:00:00.000Z')).habits.find(
-        (candidate) => candidate.eventId === id
+        (candidate) => candidate.pooled === 'prayer'
       )!;
 
     const before = habit(habitSettings);

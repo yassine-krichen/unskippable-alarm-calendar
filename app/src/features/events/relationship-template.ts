@@ -37,6 +37,8 @@ export interface RelationshipFormValues {
   /** 'HH:mm' */
   time: string;
   giftNotes: string;
+  /** False keeps both alarms off the calendar (they still ring). */
+  showInCalendar: boolean;
 }
 
 /** The two alarms of one template. */
@@ -121,6 +123,7 @@ export function defaultRelationshipFormValues(slotDate: string): RelationshipFor
     year: '',
     time: DEFAULT_RELATIONSHIP_TIME,
     giftNotes: '',
+    showInCalendar: true,
   };
 }
 
@@ -152,6 +155,7 @@ export function createRelationshipFormSchema() {
         ),
       time: z.string().regex(TIME_PATTERN, 'Enter a time like 08:30.'),
       giftNotes: z.string().max(2000, 'Keep gift ideas under 2000 characters.'),
+      showInCalendar: z.boolean(),
     })
     .superRefine((values, ctx) => {
       // Without a year, 29 February is allowed: the alarm falls on the 28th in common years.
@@ -171,7 +175,7 @@ export function createRelationshipFormSchema() {
 }
 
 /** The columns both alarms share. A plain new alarm's snooze defaults; they are never part of the template form. */
-function sharedColumns(groupId: string): Pick<
+function sharedColumns(groupId: string, showInCalendar: boolean): Pick<
   EventWriteInput,
   | 'duration_min'
   | 'repeat_unit'
@@ -183,6 +187,7 @@ function sharedColumns(groupId: string): Pick<
   | 'passable'
   | 'color'
   | 'group_id'
+  | 'show_in_calendar'
 > {
   return {
     duration_min: DEFAULT_DURATION_MIN,
@@ -195,6 +200,7 @@ function sharedColumns(groupId: string): Pick<
     passable: true,
     color: null,
     group_id: groupId,
+    show_in_calendar: showInCalendar,
   };
 }
 
@@ -218,7 +224,7 @@ export function relationshipToWriteInputs(
       : context;
   const { wishDate, prepDate } = planRelationshipDates(values, planContext);
   const gifts = values.giftNotes.trim();
-  const shared = sharedColumns(groupId);
+  const shared = sharedColumns(groupId, values.showInCalendar);
 
   const carryOver = (row: EventRow | undefined): Partial<EventWriteInput> =>
     row === undefined
@@ -283,6 +289,8 @@ export function relationshipGroupToFormValues(group: RelationshipGroup, tz: stri
     year: startYearNumber === derivedYear ? '' : String(startYearNumber),
     time: start.time,
     giftNotes: group.prep.notes ?? '',
+    // The form switch covers both alarms; a pair that disagrees (edited elsewhere) shows as on if either is shown.
+    showInCalendar: group.prep.show_in_calendar !== false || group.wish.show_in_calendar !== false,
   };
 }
 

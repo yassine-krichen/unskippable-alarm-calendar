@@ -30,6 +30,7 @@ import {
   FieldSet,
 } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { useEventsStore } from '@/features/events/events-store';
@@ -301,6 +302,22 @@ export function ExamFormView({ exam, slotDate, settings, onDone }: ExamFormViewP
                   Rings this long before the exam starts. Cheat days never silence it.
                 </FieldDescription>
                 {fieldState.invalid ? <FieldError errors={[fieldState.error]} /> : null}
+              </Field>
+            )}
+          />
+
+          <Controller
+            name="showInCalendar"
+            control={form.control}
+            render={({ field }) => (
+              <Field orientation="horizontal">
+                <div className="flex flex-1 flex-col gap-1">
+                  <FieldLabel htmlFor="exam-show-in-calendar">Show in calendar</FieldLabel>
+                  <FieldDescription>
+                    Turn off to keep the exam alarm and the revision sessions off the calendar. They still ring.
+                  </FieldDescription>
+                </div>
+                <Switch id="exam-show-in-calendar" checked={field.value} onCheckedChange={field.onChange} />
               </Field>
             )}
           />

@@ -1,4 +1,4 @@
-import type { EventRow } from '@alarm-calendar/core';
+import { PRAYER_HABIT_ID, type EventRow } from '@alarm-calendar/core';
 import { SettingsIcon } from 'lucide-react';
 import { useNavigate } from 'react-router';
 
@@ -25,7 +25,7 @@ export function PrayerAlarmInfo({ event, onDone }: PrayerAlarmInfoProps) {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-4 py-4">
-      {isPrayer ? <EventRank eventId={event.id} /> : null}
+      {isPrayer ? <EventRank eventId={PRAYER_HABIT_ID} /> : null}
       <dl className="flex flex-col gap-3 text-sm">
         <div className="flex flex-col gap-0.5">
           <dt className="text-muted-foreground">When</dt>

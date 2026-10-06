@@ -7,7 +7,7 @@ vi.mock('@/lib/supabase', async () => {
   return { supabase: fakeClient };
 });
 
-import { updateSettings, type SettingsPatch } from './settings-api';
+import { fetchSettings, updateSettings, type SettingsPatch } from './settings-api';
 
 const row = {
   user_id: 'u1',
@@ -40,6 +40,15 @@ describe('updateSettings', () => {
       refire_seconds: 60,
       grace_minutes: 15,
     });
+  });
+
+  it('writes show_prayers_in_calendar like any other prayer setting, and reads it back', async () => {
+    await updateSettings('u1', { show_prayers_in_calendar: true });
+    expect(fake.payloadOf('update:settings')).toEqual({ show_prayers_in_calendar: true });
+
+    fake.responses['select:settings'] = { data: row, error: null };
+    await fetchSettings();
+    expect(String(fake.payloadOf('select:settings'))).toMatch(/show_prayers_in_calendar/);
   });
 
   it('drops pass_cap and user_id even if a caller smuggles them in, and never upserts', async () => {

@@ -1,5 +1,6 @@
 import {
   HABIT_MIN_SCORED,
+  PRAYER_HABIT_ID,
   HABIT_WINDOW_DAYS,
   habitWindowDays,
   isHabit,
@@ -22,9 +23,22 @@ export function sortHabits(habits: readonly HabitStats[]): HabitStats[] {
   });
 }
 
-/** "3 of 5 scored" for a habit that is still unranked. */
-export function unrankedProgress(habit: Pick<HabitStats, 'scored'>): string {
+/** "3 of 5 scored" for a habit that is still unranked; the pooled Prayer habit counts days: "3 of 5 days scored". */
+export function unrankedProgress(habit: Pick<HabitStats, 'scored' | 'scoredDays'>): string {
+  if (habit.scoredDays !== undefined) {
+    return `${Math.min(habit.scoredDays, HABIT_MIN_SCORED)} of ${HABIT_MIN_SCORED} days scored`;
+  }
   return `${Math.min(habit.scored, HABIT_MIN_SCORED)} of ${HABIT_MIN_SCORED} scored`;
+}
+
+/**
+ * Whether the rank shown for `eventId` is still waiting for its history. The pooled Prayer habit (PRAYER_HABIT_ID) is
+ * waiting when any of its prayer events is, since its history is the five together.
+ */
+export function isRankPending(eventId: string, pending: ReadonlyArray<Pick<EventRow, 'id' | 'kind'>>): boolean {
+  return eventId === PRAYER_HABIT_ID
+    ? pending.some((candidate) => candidate.kind === 'prayer')
+    : pending.some((candidate) => candidate.id === eventId);
 }
 
 /** The habit's window in whole weeks: 4 for the 28-day default, about 26 for the 180-day cap. */

@@ -3,6 +3,8 @@ import {
   ChartNoAxesColumnIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
+  EyeIcon,
+  EyeOffIcon,
   GraduationCapIcon,
   PlusIcon,
   SettingsIcon,
@@ -13,6 +15,7 @@ import { useNavigate, useSearchParams } from 'react-router';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Toggle } from '@/components/ui/toggle';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { EventSheet } from '@/features/events/event-sheet';
 import type { EventFormTarget } from '@/features/events/event-form-view';
@@ -31,7 +34,13 @@ import { useIsDesktop } from '@/hooks/use-media-query';
 import { zonedDate, zonedParts } from '@/lib/zoned-time';
 
 import { AgendaView } from './agenda-view';
-import { expandOccurrences, toCalendarEvent } from './calendar-events';
+import {
+  expandOccurrences,
+  hasHiddenAlarms,
+  hiddenAlarmCount,
+  toCalendarEvent,
+  visibleOccurrences,
+} from './calendar-events';
 import { CalendarGrid } from './calendar-grid';
 import {
   AGENDA_DAYS,
@@ -43,6 +52,7 @@ import {
   type CalendarView,
 } from './calendar-range';
 import { nextFullHour, type EventSlot } from './new-event-slot';
+import { useShowHiddenStore } from './show-hidden-preference';
 
 const VIEW_LABELS: Record<CalendarView, string> = { week: 'Week', month: 'Month', agenda: 'Agenda' };
 const PERIOD_NOUN: Record<CalendarView, string> = { week: 'week', month: 'month', agenda: 'two weeks' };
@@ -74,8 +84,10 @@ export function CalendarPage() {
   const modeTimeline = useModeTimeline();
   const cheatDaySet = useMemo(() => new Set(cheatDays), [cheatDays]);
   const range = useMemo(() => visibleDayRange(view, anchor, weekStartsOn), [view, anchor, weekStartsOn]);
-  const { occurrences, skipped } = useMemo(() => {
-    if (!settings) return { occurrences: [], skipped: null };
+  const showHidden = useShowHiddenStore((state) => state.showHidden);
+  const setShowHidden = useShowHiddenStore((state) => state.setShowHidden);
+  const { allOccurrences, skipped } = useMemo(() => {
+    if (!settings) return { allOccurrences: [], skipped: null };
     const failed: string[] = [];
     const expanded = expandOccurrences(
       events,
@@ -85,8 +97,12 @@ export function CalendarPage() {
       (event) => failed.push(event.kind ?? 'normal'),
       modeTimeline
     );
-    return { occurrences: expanded, skipped: skippedNotice(failed) };
+    return { allOccurrences: expanded, skipped: skippedNotice(failed) };
   }, [events, range, tz, cheatDays, settings, modeTimeline]);
+  // Hidden alarms still ring; the calendar only leaves them out unless this device asked to see them.
+  const occurrences = useMemo(() => visibleOccurrences(allOccurrences, showHidden), [allOccurrences, showHidden]);
+  const hiddenInRange = showHidden ? 0 : hiddenAlarmCount(allOccurrences);
+  const offerShowHidden = useMemo(() => (settings ? hasHiddenAlarms(events, settings) : false), [events, settings]);
   const calendarEvents = useMemo(() => occurrences.map(toCalendarEvent), [occurrences]);
   // The days a mode covers most of, marked quietly in the grid and the agenda.
   const modeDays = useMemo(
@@ -182,6 +198,17 @@ export function CalendarPage() {
         <h1 className="min-w-0 flex-1 basis-40 truncate text-lg font-semibold tabular-nums tracking-tight">
           {viewTitle(view, anchor, weekStartsOn)}
         </h1>
+        {offerShowHidden ? (
+          <Toggle
+            variant="outline"
+            pressed={showHidden}
+            onPressedChange={setShowHidden}
+            aria-label="Show hidden alarms"
+          >
+            {showHidden ? <EyeIcon data-icon="inline-start" /> : <EyeOffIcon data-icon="inline-start" />}
+            Show hidden
+          </Toggle>
+        ) : null}
         <TabsList className="w-full sm:w-fit">
           {(Object.keys(VIEW_LABELS) as CalendarView[]).map((key) => (
             <TabsTrigger key={key} value={key} className="flex-1 sm:flex-none">
@@ -247,6 +274,7 @@ export function CalendarPage() {
               tz={tz}
               events={events}
               occurrences={occurrences}
+              hiddenCount={hiddenInRange}
               cheatDays={cheatDaySet}
               modeDays={modeDays}
               onEdit={openEdit}

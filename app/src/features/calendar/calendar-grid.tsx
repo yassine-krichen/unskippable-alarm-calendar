@@ -4,10 +4,12 @@ import interactionPlugin from '@fullcalendar/react/interaction';
 import classicTheme from '@fullcalendar/react/themes/classic';
 import timeGridPlugin from '@fullcalendar/react/timegrid';
 import type { ModeRow } from '@alarm-calendar/core';
-import { BellOffIcon, BookOpenIcon, GraduationCapIcon, MoonStarIcon, PauseIcon } from 'lucide-react';
+import { BellOffIcon, EyeOffIcon, MoonStarIcon, PauseIcon } from 'lucide-react';
 import { useEffect, useMemo } from 'react';
 
 import { Badge } from '@/components/ui/badge';
+import { CategoryIcon } from '@/features/events/category-icon';
+import type { AlarmCategory } from '@/features/events/category-colors';
 import { zonedDate } from '@/lib/zoned-time';
 
 import { slotFromClick, type EventSlot } from './new-event-slot';
@@ -130,12 +132,13 @@ export function CalendarGrid({
         const paused = info.event.extendedProps['paused'] === true;
         const modeName: unknown = info.event.extendedProps['modeName'];
         const prayer = info.event.extendedProps['prayer'] === true;
-        const examRole: unknown = info.event.extendedProps['examRole'];
+        const category = info.event.extendedProps['category'] as AlarmCategory | null;
+        const hidden = info.event.extendedProps['hidden'] === true;
         return (
           <>
             {prayer ? <MoonStarIcon aria-label="Prayer" className="mt-0.5 size-3 shrink-0" /> : null}
-            {examRole === 'exam' ? <GraduationCapIcon aria-label="Exam" className="mt-0.5 size-3 shrink-0" /> : null}
-            {examRole === 'session' ? <BookOpenIcon aria-label="Revision" className="mt-0.5 size-3 shrink-0" /> : null}
+            {category !== null ? <CategoryIcon category={category} inherit className="mt-0.5 size-3" /> : null}
+            {hidden ? <EyeOffIcon aria-label="Hidden from the calendar" className="mt-0.5 size-3 shrink-0" /> : null}
             {silenced ? (
               <BellOffIcon aria-label="Silenced by a cheat day" className="mt-0.5 size-3 shrink-0" />
             ) : null}

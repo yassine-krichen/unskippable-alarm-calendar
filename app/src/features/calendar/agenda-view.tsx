@@ -1,9 +1,10 @@
 import type { EventRow, ModeRow } from '@alarm-calendar/core';
-import { BellOffIcon, BookOpenIcon, CalendarPlusIcon, GraduationCapIcon, MoonStarIcon, PauseIcon } from 'lucide-react';
+import { BellOffIcon, CalendarPlusIcon, EyeOffIcon, MoonStarIcon, PauseIcon } from 'lucide-react';
 import { useMemo } from 'react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { CategoryIcon } from '@/features/events/category-icon';
 import { describeRepeat } from '@/features/events/repeat-presets';
 import { addDays, formatDay, formatTimeInZone } from '@/lib/zoned-time';
 
@@ -18,6 +19,8 @@ interface AgendaViewProps {
   tz: string;
   events: readonly EventRow[];
   occurrences: readonly Occurrence[];
+  /** How many distinct hidden alarms (prayers not counted) ring in this period and are not shown now. */
+  hiddenCount: number;
   cheatDays: ReadonlySet<string>;
   /** The mode that covers most of each day, by 'yyyy-MM-dd'. */
   modeDays: ReadonlyMap<string, ModeRow>;
@@ -33,6 +36,7 @@ export function AgendaView({
   tz,
   events,
   occurrences,
+  hiddenCount,
   cheatDays,
   modeDays,
   onEdit,
@@ -56,6 +60,7 @@ export function AgendaView({
         <p className="max-w-prose text-sm text-muted-foreground">
           Add an alarm and it shows up here, full screen when it fires.
         </p>
+        <HiddenNote count={hiddenCount} />
         <Button onClick={onCreate}>
           <CalendarPlusIcon data-icon="inline-start" />
           New alarm
@@ -88,7 +93,7 @@ export function AgendaView({
                     <li key={occurrence.key}>
                       <Button
                         variant="ghost"
-                        className="h-auto min-h-11 w-full justify-start gap-3 px-2 py-2 text-left font-normal"
+                        className={`h-auto min-h-11 w-full justify-start gap-3 px-2 py-2 text-left font-normal ${occurrence.hidden ? 'opacity-60' : ''}`}
                         onClick={() => onEdit(occurrence.eventId)}
                       >
                         <span className="w-12 shrink-0 text-sm tabular-nums">
@@ -96,10 +101,8 @@ export function AgendaView({
                         </span>
                         {occurrence.kind === 'prayer' ? (
                           <MoonStarIcon aria-label="Prayer" className="size-3.5 shrink-0" />
-                        ) : occurrence.examRole === 'exam' ? (
-                          <GraduationCapIcon aria-label="Exam" className="size-3.5 shrink-0" />
-                        ) : occurrence.examRole === 'session' ? (
-                          <BookOpenIcon aria-label="Revision" className="size-3.5 shrink-0" />
+                        ) : occurrence.category !== null ? (
+                          <CategoryIcon category={occurrence.category} className="size-3.5" />
                         ) : (
                           <span
                             aria-hidden="true"
@@ -116,6 +119,12 @@ export function AgendaView({
                           <span className="hidden shrink-0 text-xs text-muted-foreground sm:inline">
                             {describeRepeat({ unit: event.repeat_unit, interval: event.repeat_interval })}
                           </span>
+                        ) : null}
+                        {occurrence.hidden ? (
+                          <Badge variant="outline" className="shrink-0">
+                            <EyeOffIcon data-icon="inline-start" />
+                            Hidden
+                          </Badge>
                         ) : null}
                         {occurrence.paused ? (
                           <Badge variant="secondary" className="shrink-0">
@@ -147,6 +156,22 @@ export function AgendaView({
           </li>
         );
       })}
+      {hiddenCount > 0 ? (
+        <li>
+          <HiddenNote count={hiddenCount} />
+        </li>
+      ) : null}
     </ol>
+  );
+}
+
+/** Says so when alarms ring in the period but are hidden from the calendar, so a quiet list is not mistaken for a quiet day. */
+function HiddenNote({ count }: { count: number }) {
+  if (count === 0) return null;
+  return (
+    <p className="text-sm text-muted-foreground">
+      {count === 1 ? '1 hidden alarm rings' : `${count} hidden alarms ring`} in this period. Turn on Show hidden to see{' '}
+      {count === 1 ? 'it' : 'them'}.
+    </p>
   );
 }

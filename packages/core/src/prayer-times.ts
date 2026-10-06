@@ -41,6 +41,7 @@ export const DEFAULT_PRAYER_SETTINGS: Readonly<PrayerSettings> = {
   pre_prayer_minutes: 15,
   prayer_max_snoozes: 0,
   prayer_snooze_minutes: 5,
+  show_prayers_in_calendar: false,
 };
 
 /** The same bounds the database checks (migration prayer_times). */

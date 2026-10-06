@@ -40,6 +40,8 @@ export interface EventFormValues {
   snoozeMinutes: number;
   passable: boolean;
   color: string | null;
+  /** False keeps the alarm off the calendar (it still rings and counts in habits). */
+  showInCalendar: boolean;
 }
 
 /** The writable columns of an events row; id, user_id, active and updated_at are the database's. */
@@ -94,6 +96,7 @@ export function createEventFormSchema(context: EventFormContext) {
         .min(1, 'Snooze must be at least 1 minute.')
         .max(120, 'Snooze can be at most 120 minutes.'),
       passable: z.boolean(),
+      showInCalendar: z.boolean(),
       color: z
         .string()
         .nullable()
@@ -173,6 +176,7 @@ export function defaultEventFormValues(startDate: string, startTime: string): Ev
     snoozeMinutes: DEFAULT_SNOOZE_MINUTES,
     passable: true,
     color: null,
+    showInCalendar: true,
   };
 }
 
@@ -195,6 +199,7 @@ export function eventToFormValues(event: EventRow, tz: string): EventFormValues 
     snoozeMinutes: event.snooze_minutes,
     passable: event.passable,
     color: event.color,
+    showInCalendar: event.show_in_calendar ?? true,
   };
 }
 
@@ -222,5 +227,6 @@ export function eventFormToWriteInput(values: EventFormValues, tz: string): Even
     snooze_minutes: values.snoozeMinutes,
     passable: values.passable,
     color: values.color,
+    show_in_calendar: values.showInCalendar,
   };
 }

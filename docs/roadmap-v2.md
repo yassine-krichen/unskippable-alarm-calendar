@@ -73,7 +73,7 @@ Needs migration `20261006042009_prayer_times` pushed (`supabase db push`) before
 - A prayer completion matches by event and prayer-day, not by exact instant, so changing an offset or the location does not orphan "prayed". Latitude is limited to 65 degrees. This is the one new thing an engine must do for prayers.
 - For the Fajr reminder's missed-previous text, the wording is "its time ended at sunrise" instead of "you have until Dhuhr", because Fajr is over long before Dhuhr.
 - Prayer settings are on `settings` (location, angles, Asr factor, five offsets, reminder lead, snooze count and length, `prayers_enabled`, `prayers_enabled_since`); the 10 rows in `events` are created and switched by the `set_prayers_enabled` RPC.
-- Calendar shows the five prayers, outlined with a moon icon, and hides the reminders. Prayer rows open a short summary with a link to Settings, not the event form.
+- Calendar shows the five prayers, outlined with a moon icon, and hides the reminders. Prayer rows open a short summary with a link to Settings, not the event form. (Since the feedback round below the prayers are hidden from the calendar by default; a Settings switch shows them.)
 
 Original plan:
 
@@ -110,6 +110,15 @@ Needs migration `20261006153533_modes` pushed (after `20261006050221`); the app 
 - Paused occurrences are excluded from scoring, like excused ones (a streak is kept alive, not extended), and an exam session a mode paused counts as skipped, so it gets no catch-up.
 - Modes are applied while occurrences are computed (schedule list, calendar, habit scoring), so the engines need no mode logic: a paused occurrence is left out of the list, a shifted one is listed at its new time. Electron's own refill applies the modes too (they ride along in `refillSource`).
 - UI: mode chip and dialog in the header, a Modes screen (list, per-alarm rules, planned dates, the exam lead), paused alarms greyed and struck through with the mode's name, days under a mode tinted and labelled, and a "Paused" count and legend on the Stats screen.
+
+## Feedback round 1 (2026-10-06): habits, prayers and colors
+
+Owner feedback after the first run of phases 0 to 5. Needs migration `20261006173000_show_in_calendar` pushed (after `20261006153533`); the app selects the two new columns. Choices and reasons in `docs/decisions.md`.
+
+- **No ranks for birthdays.** Every yearly alarm and anything made by the birthday template (`group_id`) is not a habit: not scored, not on Stats, no tier badge in the sheet. A rank needs 5 occurrences, so a yearly alarm could never be ranked in a useful time anyway.
+- **One Prayer habit.** The five prayers are one "Prayer" entry on Stats: counts and weighted credit summed (the pooled score), a streak counted in prayer-days, and the combined rank on the prayer sheet. A prayer-day is done when every prayer that day is done; one missed prayer makes it missed and resets the streak; today stays open until all of today's prayers have come. It is ranked once 5 prayer-days are scored. The overall score counts Prayer once, with its pooled numerator and denominator.
+- **Hiding alarms from the calendar.** `settings.show_prayers_in_calendar` (default false, Settings, Prayer times) and `events.show_in_calendar` (default true, a "Show in calendar" switch on the alarm, birthday and exam forms). Week, Month and Agenda leave hidden alarms out; a "Show hidden" toggle in the calendar toolbar (kept per device) brings them back faded with an eye-off icon. Presentation only: hidden alarms ring, can be snoozed and done, and count in habit scores.
+- **Fixed category colors.** Birthday / anniversary (rose), exam alarm (solid indigo), revision sessions (soft indigo tint) and catch-ups (the same tint, outlined) have fixed colors in CSS tokens for light and dark (`--cat-*` in `app/src/index.css`), outside the picker palette, applied on the calendar, Agenda and Exams screen. The color picker is not offered for them.
 
 ## Deferred
 

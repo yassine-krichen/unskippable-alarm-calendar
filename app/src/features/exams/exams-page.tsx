@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { CategoryIcon } from '@/features/events/category-icon';
 import { EventSheet } from '@/features/events/event-sheet';
 import type { EventFormTarget } from '@/features/events/event-form-view';
 import { loadExams, useExamsStore } from '@/features/exams/exams-store';
@@ -133,9 +134,11 @@ function ExamSection({ heading, exams, now, tz, onEdit }: ExamSectionProps) {
 function ExamCard({ exam, now, tz, onEdit }: { exam: ExamRow; now: Date; tz: string; onEdit: () => void }) {
   const at = new Date(exam.exam_at);
   return (
-    <Card>
+    // The exam family's fixed color (index.css), as the calendar draws its alarm.
+    <Card className="border-l-4 border-l-(--cat-exam-solid)">
       <CardHeader>
         <div className="flex items-start gap-2">
+          <CategoryIcon category="exam" className="mt-0.5 size-4" />
           <div className="min-w-0 flex-1">
             <CardTitle className="truncate">{exam.title}</CardTitle>
             <CardDescription>

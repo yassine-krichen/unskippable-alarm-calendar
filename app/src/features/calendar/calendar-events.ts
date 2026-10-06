@@ -13,6 +13,12 @@ import {
   type PrayerName,
 } from '@alarm-calendar/core';
 
+import {
+  CATEGORY_CHIP_CLASS,
+  CATEGORY_COLORS,
+  alarmCategoryOf,
+  type AlarmCategory,
+} from '@/features/events/category-colors';
 import { contrastFor } from '@/features/events/event-colors';
 import { addDays, startOfZonedDay, zonedDate } from '@/lib/zoned-time';
 
@@ -44,6 +50,52 @@ export interface Occurrence {
   shifted: boolean;
   /** The mode that paused, shifted or shortened it; null when nothing changed. */
   modeName: string | null;
+  /** Birthday, exam alarm, revision session or catch-up: its colour is fixed (index.css `--cat-*`). Null for the rest. */
+  category: AlarmCategory | null;
+  /**
+   * Hidden from the calendar by the person (the alarm's "Show in calendar" switch, or the prayers' one in Settings).
+   * It rings and counts in habits all the same; `visibleOccurrences` leaves it out unless "Show hidden" is on.
+   */
+  hidden: boolean;
+}
+
+/**
+ * Whether the calendar leaves an alarm out by default. A prayer follows the one Settings switch (off by default, and
+ * its own row's flag is ignored); any other alarm follows its own `show_in_calendar`. Presentation only: nothing that
+ * decides what rings or what is scored reads this.
+ */
+export function isHiddenFromCalendar(
+  event: Pick<EventRow, 'kind' | 'show_in_calendar'>,
+  settings: OccurrenceSettings
+): boolean {
+  if (eventKindOf(event) === 'prayer') return settings.show_prayers_in_calendar !== true;
+  return event.show_in_calendar === false;
+}
+
+/** Whether any active alarm is hidden, so the toolbar knows when to offer "Show hidden". */
+export function hasHiddenAlarms(events: readonly EventRow[], settings: OccurrenceSettings): boolean {
+  return events.some(
+    (event) =>
+      event.active &&
+      eventKindOf(event) !== 'pre_prayer' &&
+      (eventKindOf(event) !== 'prayer' || settings.prayers_enabled === true) &&
+      isHiddenFromCalendar(event, settings)
+  );
+}
+
+/**
+ * How many distinct alarms in `occurrences` are hidden, for the Agenda's note. The prayers are left out: they are
+ * hidden by default (five a day would make the number meaningless) and Settings says so.
+ */
+export function hiddenAlarmCount(occurrences: readonly Occurrence[]): number {
+  return new Set(
+    occurrences.filter((occurrence) => occurrence.hidden && occurrence.kind !== 'prayer').map((occurrence) => occurrence.eventId)
+  ).size;
+}
+
+/** What the views draw: everything, or without the hidden alarms (the default). */
+export function visibleOccurrences(occurrences: readonly Occurrence[], showHidden: boolean): Occurrence[] {
+  return showHidden ? [...occurrences] : occurrences.filter((occurrence) => !occurrence.hidden);
 }
 
 const NO_MODES = buildModeTimeline(undefined, { timezone: 'UTC' });
@@ -80,6 +132,8 @@ export function expandOccurrences(
     const kind = eventKindOf(event);
     if (kind === 'pre_prayer') continue;
     const passable = isEventPassable(event);
+    const hidden = isHiddenFromCalendar(event, settings);
+    const category = alarmCategoryOf(event);
     const durationMs = event.duration_min * MS_PER_MINUTE;
     let moded: ReturnType<typeof applyModesToInstants>;
     try {
@@ -118,6 +172,8 @@ export function expandOccurrences(
         paused,
         shifted: original.getTime() !== start.getTime(),
         modeName: mode?.name ?? null,
+        category,
+        hidden,
       });
     }
   }
@@ -186,6 +242,9 @@ export const PAUSED_CLASS = 'occurrence-paused';
 /** The class for the five daily prayers, which the stylesheet draws apart from ordinary alarms. */
 export const PRAYER_CLASS = 'occurrence-prayer';
 
+/** The class for an alarm hidden from the calendar that "Show hidden" has brought back: faded. */
+export const HIDDEN_CLASS = 'occurrence-hidden';
+
 /** Shape handed to FullCalendar: plain events, no rrule plugin. */
 export interface CalendarEvent {
   id: string;
@@ -205,22 +264,29 @@ export interface CalendarEvent {
     examRole: ExamRole | null;
     paused: boolean;
     modeName: string | null;
+    hidden: boolean;
+    category: AlarmCategory | null;
   };
 }
 
 export function toCalendarEvent(occurrence: Occurrence): CalendarEvent {
-  const contrastColor = contrastFor(occurrence.color);
+  // A category's colour is fixed: it wins over whatever colour the row carries (the form no longer offers one).
+  const fixed = occurrence.category === null ? undefined : CATEGORY_COLORS[occurrence.category];
+  const color = fixed?.color ?? occurrence.color;
+  const contrastColor = fixed?.contrast ?? contrastFor(occurrence.color);
   return {
     id: occurrence.key,
     title: occurrence.title,
     start: occurrence.start.toISOString(),
     end: occurrence.end.toISOString(),
-    ...(occurrence.color !== null ? { color: occurrence.color } : {}),
+    ...(color !== null ? { color } : {}),
     ...(contrastColor !== undefined ? { contrastColor } : {}),
     className: [
       occurrence.silenced ? SILENCED_CLASS : '',
       occurrence.paused ? PAUSED_CLASS : '',
       occurrence.kind === 'prayer' ? PRAYER_CLASS : '',
+      occurrence.category === null ? '' : CATEGORY_CHIP_CLASS[occurrence.category],
+      occurrence.hidden ? HIDDEN_CLASS : '',
     ]
       .filter((name) => name !== '')
       .join(' '),
@@ -232,6 +298,8 @@ export function toCalendarEvent(occurrence: Occurrence): CalendarEvent {
       examRole: occurrence.examRole,
       paused: occurrence.paused,
       modeName: occurrence.modeName,
+      hidden: occurrence.hidden,
+      category: occurrence.category,
     },
   };
 }

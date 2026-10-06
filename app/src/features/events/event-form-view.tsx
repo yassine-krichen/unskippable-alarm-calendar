@@ -37,6 +37,7 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { EventRank } from '@/features/habits/event-rank';
 import { formatDay, weekdayName, weekdayShortName } from '@/lib/zoned-time';
 
+import { CATEGORY_LABELS, alarmCategoryOf } from './category-colors';
 import { EVENT_COLORS } from './event-colors';
 import {
   MAX_SNOOZE_LIMIT,
@@ -92,6 +93,8 @@ function pickerWeekStart(weekStartsOn: number): 0 | 1 | 2 | 3 | 4 | 5 | 6 {
 export function EventFormView({ target, settings, onDone }: EventFormViewProps) {
   const tz = settings.timezone;
   const editing = target.event;
+  // A birthday, exam or revision alarm that reached this form (a pair that lost a half, say) keeps its fixed color.
+  const category = editing === null ? null : alarmCategoryOf(editing);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
@@ -472,45 +475,68 @@ export function EventFormView({ target, settings, onDone }: EventFormViewProps) 
           />
 
           <Controller
-            name="color"
+            name="showInCalendar"
             control={form.control}
             render={({ field }) => (
-              <Field>
-                <FieldLabel id="event-color-label">Color</FieldLabel>
-                <ToggleGroup
-                  variant="outline"
-                  spacing={1}
-                  aria-labelledby="event-color-label"
-                  className="flex-wrap"
-                  value={[field.value ?? NO_COLOR]}
-                  onValueChange={(next) => {
-                    // A single-select group reports [] when the pressed item is pressed again; keep the choice.
-                    const chosen = next[0];
-                    if (chosen === undefined) return;
-                    field.onChange(chosen === NO_COLOR ? null : chosen);
-                  }}
-                >
-                  <ToggleGroupItem value={NO_COLOR} aria-label="No color" className={COLOR_PRESSED}>
-                    None
-                  </ToggleGroupItem>
-                  {EVENT_COLORS.map((color) => (
-                    <ToggleGroupItem
-                      key={color.value}
-                      value={color.value}
-                      aria-label={color.label}
-                      className={COLOR_PRESSED}
-                    >
-                      <span
-                        aria-hidden="true"
-                        className="size-4 rounded-full"
-                        style={{ backgroundColor: color.value }}
-                      />
-                    </ToggleGroupItem>
-                  ))}
-                </ToggleGroup>
+              <Field orientation="horizontal">
+                <div className="flex flex-1 flex-col gap-1">
+                  <FieldLabel htmlFor="event-show-in-calendar">Show in calendar</FieldLabel>
+                  <FieldDescription>
+                    Turn off to keep it off the calendar. It still rings and counts in your ranks.
+                  </FieldDescription>
+                </div>
+                <Switch id="event-show-in-calendar" checked={field.value} onCheckedChange={field.onChange} />
               </Field>
             )}
           />
+
+          {category !== null ? (
+            <Field>
+              <FieldLabel>Color</FieldLabel>
+              <FieldDescription>{CATEGORY_LABELS[category]} alarms have a fixed color.</FieldDescription>
+            </Field>
+          ) : (
+            <Controller
+              name="color"
+              control={form.control}
+              render={({ field }) => (
+                <Field>
+                  <FieldLabel id="event-color-label">Color</FieldLabel>
+                  <ToggleGroup
+                    variant="outline"
+                    spacing={1}
+                    aria-labelledby="event-color-label"
+                    className="flex-wrap"
+                    value={[field.value ?? NO_COLOR]}
+                    onValueChange={(next) => {
+                      // A single-select group reports [] when the pressed item is pressed again; keep the choice.
+                      const chosen = next[0];
+                      if (chosen === undefined) return;
+                      field.onChange(chosen === NO_COLOR ? null : chosen);
+                    }}
+                  >
+                    <ToggleGroupItem value={NO_COLOR} aria-label="No color" className={COLOR_PRESSED}>
+                      None
+                    </ToggleGroupItem>
+                    {EVENT_COLORS.map((color) => (
+                      <ToggleGroupItem
+                        key={color.value}
+                        value={color.value}
+                        aria-label={color.label}
+                        className={COLOR_PRESSED}
+                      >
+                        <span
+                          aria-hidden="true"
+                          className="size-4 rounded-full"
+                          style={{ backgroundColor: color.value }}
+                        />
+                      </ToggleGroupItem>
+                    ))}
+                  </ToggleGroup>
+                </Field>
+              )}
+            />
+          )}
 
           <Controller
             name="notes"

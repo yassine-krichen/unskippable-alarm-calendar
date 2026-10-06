@@ -107,6 +107,27 @@ export function PrayerSettingsSection({ form, settings }: PrayerSettingsSectionP
 
       {enabled ? (
         <FieldGroup>
+          <Controller
+            name="showInCalendar"
+            control={form.control}
+            render={({ field }) => (
+              <Field orientation="horizontal">
+                <div className="flex flex-1 flex-col gap-1">
+                  <FieldLabel htmlFor="settings-prayers-in-calendar">Show prayers in calendar</FieldLabel>
+                  <FieldDescription>
+                    Off by default: the prayers ring either way and still count in your ranks. The calendar&apos;s
+                    &quot;Show hidden&quot; toggle reveals them.
+                  </FieldDescription>
+                </div>
+                <Switch
+                  id="settings-prayers-in-calendar"
+                  checked={field.value}
+                  onCheckedChange={(next) => field.onChange(next)}
+                />
+              </Field>
+            )}
+          />
+
           <div className="flex flex-col gap-2 rounded-lg border bg-muted/40 p-3" aria-live="polite">
             <p className="text-sm font-medium">
               Today{placeName !== '' ? ` in ${placeName}` : ''}

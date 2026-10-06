@@ -25,6 +25,7 @@ const VALUES: ExamFormValues = {
   sessionTime: '18:00',
   sessionMinutes: 45,
   leadMinutes: 60,
+  showInCalendar: true,
 };
 
 describe('planExam', () => {
@@ -128,6 +129,57 @@ function existingAlarms(): EventRow[] {
 function pick(input: { title: string; notes: string | null; start_at: string; duration_min: number }) {
   return { title: input.title, notes: input.notes, start_at: input.start_at, duration_min: input.duration_min };
 }
+
+describe('showing an exam in the calendar', () => {
+  const EXAM_ROW: ExamRow = {
+    id: EXAM_ID,
+    user_id: 'u1',
+    title: 'Maths',
+    exam_at: '2026-03-20T08:00:00.000Z',
+    difficulty: 2,
+    notes: null,
+    active: true,
+    created_at: NOW.toISOString(),
+    updated_at: NOW.toISOString(),
+  };
+
+  it('gives the exam alarm and every session the form switch', () => {
+    const hidden = planExam({ ...VALUES, showInCalendar: false }, TZ, NOW);
+    expect(hidden.examAlarm.show_in_calendar).toBe(false);
+    expect(hidden.sessions.every((session) => session.input.show_in_calendar === false)).toBe(true);
+    const shown = planExam(VALUES, TZ, NOW);
+    expect(shown.examAlarm.show_in_calendar).toBe(true);
+    expect(shown.sessions.every((session) => session.input.show_in_calendar === true)).toBe(true);
+  });
+
+  it('updates the alarms still to come in place when the switch changes, without moving them', () => {
+    const plan = planExam({ ...VALUES, showInCalendar: false }, TZ, NOW);
+    const changes = diffExamAlarms(EXAM_ID, plan, existingAlarms(), NOW);
+    expect(changes.insert).toEqual([]);
+    expect(changes.deactivate).toEqual([]);
+    expect(changes.update.map((u) => u.id).sort()).toEqual(['alarm', 's0', 's1', 's2']);
+    expect(changes.update.every((u) => u.input.show_in_calendar === false)).toBe(true);
+  });
+
+  it('carries the switch to a future catch-up and copies it from the missed session', () => {
+    const missed = row({ id: 'missed', start_at: '2026-03-13T17:00:00.000Z', show_in_calendar: false });
+    expect(catchUpWriteInput({ ...EXAM_ROW, title: 'Maths' }, missed, new Date('2026-03-12T17:00:00Z')).show_in_calendar).toBe(false);
+    expect(catchUpWriteInput({ ...EXAM_ROW, title: 'Maths' }, row({ id: 'missed2', start_at: '2026-03-13T17:00:00.000Z' }), new Date('2026-03-12T17:00:00Z')).show_in_calendar).toBe(true);
+
+    const catchUp = row({ id: 'c1', start_at: '2026-03-12T17:00:00.000Z', catch_up_of: 'old', show_in_calendar: true });
+    const plan = planExam({ ...VALUES, showInCalendar: false }, TZ, NOW);
+    const changes = diffExamAlarms(EXAM_ID, plan, [...existingAlarms(), catchUp], NOW);
+    expect(changes.update.find((u) => u.id === 'c1')?.input.show_in_calendar).toBe(false);
+  });
+
+  it('reads the switch back from the exam alarm, defaulting to shown', () => {
+    const exam = { ...EXAM_ROW, exam_at: '2026-03-20T08:00:00.000Z', difficulty: 2 as const };
+    const hiddenAlarms = existingAlarms().map((alarm) => ({ ...alarm, show_in_calendar: false }));
+    expect(examToFormValues(exam, hiddenAlarms, TZ).showInCalendar).toBe(false);
+    expect(examToFormValues(exam, existingAlarms(), TZ).showInCalendar).toBe(true);
+    expect(examToFormValues(exam, [], TZ).showInCalendar).toBe(true);
+  });
+});
 
 describe('diffExamAlarms', () => {
   it('changes nothing when nothing changed', () => {

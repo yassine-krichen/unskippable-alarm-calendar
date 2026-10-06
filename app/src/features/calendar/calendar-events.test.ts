@@ -129,6 +129,8 @@ describe('toCalendarEvent', () => {
       examRole: null,
       paused: false,
       modeName: null,
+      hidden: false,
+      category: null,
     });
   });
 

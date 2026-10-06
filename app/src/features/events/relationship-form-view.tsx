@@ -30,6 +30,7 @@ import {
 } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { formatDay, formatTimeInZone, zonedDate } from '@/lib/zoned-time';
@@ -303,6 +304,22 @@ export function RelationshipFormView({ group, slotDate, settings, onDone }: Rela
                 <Textarea {...field} id="relationship-gifts" rows={3} aria-invalid={fieldState.invalid} />
                 <FieldDescription>Shown on the prep alarm, {PREP_LEAD_DAYS} days before.</FieldDescription>
                 {fieldState.invalid ? <FieldError errors={[fieldState.error]} /> : null}
+              </Field>
+            )}
+          />
+
+          <Controller
+            name="showInCalendar"
+            control={form.control}
+            render={({ field }) => (
+              <Field orientation="horizontal">
+                <div className="flex flex-1 flex-col gap-1">
+                  <FieldLabel htmlFor="relationship-show-in-calendar">Show in calendar</FieldLabel>
+                  <FieldDescription>
+                    Turn off to keep both alarms off the calendar. They still ring.
+                  </FieldDescription>
+                </div>
+                <Switch id="relationship-show-in-calendar" checked={field.value} onCheckedChange={field.onChange} />
               </Field>
             )}
           />

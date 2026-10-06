@@ -39,6 +39,24 @@ describe('prayerFormValues', () => {
   });
 });
 
+describe('showing the prayers in the calendar (form mapping)', () => {
+  it('starts from the settings value, and from off when the row predates the column', () => {
+    expect(prayerFormValues(BASE).showInCalendar).toBe(false);
+    expect(prayerFormValues({ ...BASE, show_prayers_in_calendar: true }).showInCalendar).toBe(true);
+  });
+
+  it('writes the switch as settings.show_prayers_in_calendar', () => {
+    expect(prayerFormToPatch({ ...prayerFormValues(BASE), showInCalendar: true })).toMatchObject({
+      show_prayers_in_calendar: true,
+    });
+    expect(prayerFormToPatch(prayerFormValues(BASE))).toMatchObject({ show_prayers_in_calendar: false });
+  });
+
+  it('is a plain boolean in the form schema', () => {
+    expect(prayerFormSchema.safeParse({ ...prayerFormValues(BASE), showInCalendar: 'yes' }).success).toBe(false);
+  });
+});
+
 describe('prayerFormToPatch', () => {
   it('writes the settings columns, trims the place name and leaves the on/off switch to the RPC', () => {
     const patch = prayerFormToPatch({ ...prayerFormValues(BASE), locationLabel: '  Tunis  ', ishaOffset: -2 });

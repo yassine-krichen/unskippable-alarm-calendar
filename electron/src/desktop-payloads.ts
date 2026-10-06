@@ -64,6 +64,9 @@ const eventSchema = z.object({
   // strips unknown keys, and a prayer row that lost its kind would be scheduled from its start_at.
   kind: z.enum(['normal', 'prayer', 'pre_prayer']).optional(),
   prayer: prayerName.nullable().optional(),
+  // Calendar visibility is presentation only and never read here: a hidden alarm rings exactly like a visible one.
+  // `.catch` makes a malformed value read as absent, so it can never cost an alarm its place in the schedule.
+  show_in_calendar: z.boolean().optional().catch(undefined),
 }).refine((value) => (value.kind ?? 'normal') === 'normal' || (value.prayer ?? null) !== null, {
   message: 'a prayer event needs a prayer',
 });
@@ -114,6 +117,9 @@ const settingsSchema = z.object({
   pre_prayer_minutes: smallInt(0, 120).optional(),
   prayer_max_snoozes: smallInt(0, 10).optional(),
   prayer_snooze_minutes: smallInt(1, 120).optional(),
+  // Whether the calendar draws the prayers: never read here (the prayers ring either way). A malformed value
+  // reads as absent and must not reject the push, which would stop every alarm from being updated.
+  show_prayers_in_calendar: z.boolean().optional().catch(undefined),
   // Exam mode's automatic window (absent in a push from before modes).
   exam_mode_days_before: smallInt(0, 60).optional(),
 });

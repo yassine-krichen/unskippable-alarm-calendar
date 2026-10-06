@@ -28,6 +28,7 @@ const VALUES: ExamFormValues = {
   sessionTime: '18:00',
   sessionMinutes: 45,
   leadMinutes: 60,
+  showInCalendar: true,
 };
 
 function examRow(overrides: Partial<ExamRow> = {}): ExamRow {

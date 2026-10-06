@@ -48,6 +48,7 @@ export function createExamFormSchema(context: ExamFormContext) {
         .int('Use whole minutes.')
         .min(0, 'Minutes can not be negative.')
         .max(MAX_LEAD_MINUTES, 'At most 24 hours before.'),
+      showInCalendar: z.boolean(),
     })
     .superRefine((values, ctx) => {
       if (!context.isNew || !isRealDate(values.examDate) || !TIME_PATTERN.test(values.examTime)) return;
@@ -69,6 +70,7 @@ export function defaultExamFormValues(slotDate: string, tz: string, now: Date): 
     sessionTime: DEFAULT_SESSION_TIME,
     sessionMinutes: DEFAULT_SESSION_MINUTES,
     leadMinutes: DEFAULT_EXAM_LEAD_MINUTES,
+    showInCalendar: true,
   };
 }
 
@@ -95,5 +97,7 @@ export function examToFormValues(exam: ExamRow, events: readonly EventRow[], tz:
     sessionTime: session === undefined ? DEFAULT_SESSION_TIME : zonedParts(new Date(session.start_at), tz).time,
     sessionMinutes: session?.duration_min ?? DEFAULT_SESSION_MINUTES,
     leadMinutes: Math.min(Math.max(lead, 0), MAX_LEAD_MINUTES),
+    // Like the lead, read back from the alarms: the exam alarm decides, else the latest planned session.
+    showInCalendar: (alarm ?? session)?.show_in_calendar ?? true,
   };
 }

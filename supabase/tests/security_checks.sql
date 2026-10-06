@@ -246,4 +246,24 @@ select 'the mode RPCs are security invoker with a fixed search_path', 'true',
    where p.oid in ('public.ensure_builtin_modes()'::regprocedure, 'public.set_manual_mode(uuid,timestamptz,timestamptz)'::regprocedure))::text,
   case when (select bool_and(not p.prosecdef and coalesce(p.proconfig::text, '') like '%search_path%') from pg_proc p
    where p.oid in ('public.ensure_builtin_modes()'::regprocedure, 'public.set_manual_mode(uuid,timestamptz,timestamptz)'::regprocedure)) then 'PASS' else 'FAIL' end
+union all
+-- Calendar visibility (show_in_calendar migration): both flags are client-writable by authenticated and not by anon,
+-- and both are NOT NULL with the defaults the app relies on (alarms visible, prayers hidden).
+select format('%s can %s %s.%s', role, priv, tbl, col), expected::text,
+  has_column_privilege(role, 'public.' || tbl, col, priv)::text,
+  case when has_column_privilege(role, 'public.' || tbl, col, priv) = expected then 'PASS' else 'FAIL' end
+from (values ('settings', 'show_prayers_in_calendar'), ('events', 'show_in_calendar')) as c(tbl, col)
+cross join (values
+  ('authenticated', 'INSERT', true), ('authenticated', 'UPDATE', true), ('authenticated', 'SELECT', true),
+  ('anon', 'INSERT', false), ('anon', 'UPDATE', false), ('anon', 'SELECT', false)
+) as g(role, priv, expected)
+union all
+select format('%s.%s is NOT NULL boolean defaulting to %s', tbl, col, expected_default), 'true',
+  (select (a.attnotnull and a.atttypid = 'boolean'::regtype and pg_get_expr(d.adbin, d.adrelid) = expected_default)::text
+   from pg_attribute a join pg_attrdef d on d.adrelid = a.attrelid and d.adnum = a.attnum
+   where a.attrelid = ('public.' || tbl)::regclass and a.attname = col),
+  case when (select (a.attnotnull and a.atttypid = 'boolean'::regtype and pg_get_expr(d.adbin, d.adrelid) = expected_default)
+   from pg_attribute a join pg_attrdef d on d.adrelid = a.attrelid and d.adnum = a.attnum
+   where a.attrelid = ('public.' || tbl)::regclass and a.attname = col) then 'PASS' else 'FAIL' end
+from (values ('settings', 'show_prayers_in_calendar', 'false'), ('events', 'show_in_calendar', 'true')) as c(tbl, col, expected_default)
 order by 1;

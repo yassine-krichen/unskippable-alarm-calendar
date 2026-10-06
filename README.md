@@ -20,11 +20,17 @@ It is a single-user app. The Windows build is done; the Android build is blocked
 
 ## Features
 
-**Recurrence** — Events repeat every N hours, days, weeks (with chosen weekdays) or months. Hours use absolute intervals, the rest use wall-clock time in the user's zone, so 08:00 stays 08:00 across DST. A monthly event on the 31st lands on the last day of shorter months.
+**Recurrence** — Events repeat every N hours, days, weeks (with chosen weekdays), months or years. Hours use absolute intervals, the rest use wall-clock time in the user's zone, so 08:00 stays 08:00 across DST. A monthly event on the 31st lands on the last day of shorter months.
 
 **Calendar** — Week, Month and Agenda views on FullCalendar, fed by the same recurrence function the alarm engine uses.
 
 **Alarm engine (Electron)** — The scheduler runs in the main process with one timeout aimed at the soonest alarm, a 30 second re-check, and re-evaluation on resume and unlock. Alarms fire with the window closed, the screen asleep and no network.
+
+**Habits and ranks** — Every repeating alarm is a habit scored over its own window (28 days or five of its repeat periods, up to 180) with recent days weighing more, a snooze costing a little and a miss counting double. Bronze to Diamond, streaks and a pooled overall score on the Stats screen, and the rank in the alarm's sheet. The five prayers are one "Prayer" habit (a day counts when all five were prayed). Yearly alarms such as birthdays are not ranked.
+
+**Birthdays and anniversaries** — A template in the New alarm sheet makes two yearly alarms: a prep alarm 7 days before (the gift ideas as its notes) and a wish alarm on the day. They are edited and deleted as a pair, and have a fixed rose color on the calendar. Exam alarms and revision sessions have a fixed indigo one.
+
+**Hiding alarms from the calendar** — "Show in calendar" on an alarm and "Show prayers in calendar" in Settings (off by default) keep alarms off Week, Month and Agenda without changing anything else: they still ring and still count in your ranks. The "Show hidden" toggle in the calendar toolbar shows them faded.
 
 **Prayer times** — Switch on in Settings and you get Fajr, Dhuhr, Asr, Maghrib and Isha as alarms, plus a reminder 15 minutes before each ("Isha in 15 min", or "You haven't logged Dhuhr — you have until Asr" when the previous prayer has no Done). Times are computed offline from your location with [adhan](https://github.com/batoulapps/adhan-js) (Fajr and Isha angles, Asr shadow factor and a per-prayer minute offset are editable; the defaults are Ariana, Tunis with 18 degrees and the Maliki Asr). Cheat days never silence them, Done means prayed, snooze is off unless you raise it, and each prayer is scored like any habit. The prayer sound can be a file of your own (mp3, wav, ogg or m4a, up to 5 MB) in the desktop app, for example a takbir recording; no recording is bundled.
 
@@ -238,6 +244,7 @@ cd android
 | Done | Windows NSIS installer |
 | Done (branch `v2-overnight`, needs `supabase db push`) | Prayer times: five prayers and a reminder before each, offline `adhan` calculation, custom prayer sound |
 | Done (branch `v2-overnight`, needs `supabase db push`) | Exams: an alarm before the exam, revision sessions at 7, 3 and 1 days before (14 for hard), catch-up for a missed session |
+| Done (needs `supabase db push`) | Habits and ranks, birthday template, calendar visibility (hide alarms and the prayers), fixed category colors |
 | Done (branch `v2-overnight`, needs `supabase db push`) | Modes: manual switch, planned ranges, Exam mode before an exam, per-alarm keep / pause / shift / shorten rules |
 | Blocked | Android alarm engine and APK, waiting on the Android SDK |
 | Planned | Code signing for the Windows installer, to remove the SmartScreen warning |

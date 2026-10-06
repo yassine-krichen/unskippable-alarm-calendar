@@ -50,6 +50,7 @@ export const prayerFormSchema = z.object({
   prePrayerMinutes: z.number().int().min(prePrayerMinutes.min).max(prePrayerMinutes.max),
   prayerMaxSnoozes: z.number().int().min(maxSnoozes.min).max(maxSnoozes.max),
   prayerSnoozeMinutes: z.number().int().min(snoozeMinutes.min).max(snoozeMinutes.max),
+  showInCalendar: z.boolean(),
 });
 
 export type PrayerFormValues = z.infer<typeof prayerFormSchema>;
@@ -72,6 +73,7 @@ export function prayerFormValues(settings: Settings): PrayerFormValues {
     prePrayerMinutes: settings.pre_prayer_minutes ?? d.pre_prayer_minutes,
     prayerMaxSnoozes: settings.prayer_max_snoozes ?? d.prayer_max_snoozes,
     prayerSnoozeMinutes: settings.prayer_snooze_minutes ?? d.prayer_snooze_minutes,
+    showInCalendar: settings.show_prayers_in_calendar ?? d.show_prayers_in_calendar,
   };
 }
 
@@ -92,6 +94,7 @@ export function prayerFormToPatch(values: PrayerFormValues): PrayerSettingsPatch
     pre_prayer_minutes: values.prePrayerMinutes,
     prayer_max_snoozes: values.prayerMaxSnoozes,
     prayer_snooze_minutes: values.prayerSnoozeMinutes,
+    show_prayers_in_calendar: values.showInCalendar,
   };
 }
 

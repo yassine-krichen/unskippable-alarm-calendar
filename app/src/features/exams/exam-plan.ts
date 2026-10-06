@@ -46,6 +46,8 @@ export interface ExamFormValues {
   sessionMinutes: number;
   /** Minutes before the exam that its own alarm rings; 0 rings at the start of the exam. */
   leadMinutes: number;
+  /** False keeps the exam alarm and every revision session off the calendar (they still ring). */
+  showInCalendar: boolean;
 }
 
 export const DIFFICULTY_LABELS: Record<ExamDifficulty, string> = { 1: 'Easy', 2: 'Normal', 3: 'Hard' };
@@ -114,6 +116,7 @@ export function planExam(values: ExamFormValues, tz: string, now: Date): ExamPla
       start_at: new Date(examAt.getTime() - values.leadMinutes * 60_000).toISOString(),
       duration_min: Math.max(values.leadMinutes, EXAM_ALARM_MIN_BLOCK_MINUTES),
       passable: false,
+      show_in_calendar: values.showInCalendar,
       exam_role: 'exam',
       catch_up_of: null,
     },
@@ -126,6 +129,7 @@ export function planExam(values: ExamFormValues, tz: string, now: Date): ExamPla
         start_at: session.at.toISOString(),
         duration_min: values.sessionMinutes,
         passable: true,
+        show_in_calendar: values.showInCalendar,
         exam_role: 'session',
         catch_up_of: null,
       },
@@ -145,6 +149,8 @@ export function catchUpWriteInput(exam: ExamRow, missed: EventRow, at: Date): Ev
     max_snoozes: missed.max_snoozes,
     snooze_minutes: missed.snooze_minutes,
     passable: missed.passable,
+    // A catch-up shows up the way the session it replaces did.
+    show_in_calendar: missed.show_in_calendar ?? true,
     exam_id: exam.id,
     exam_role: 'session',
     catch_up_of: missed.id,
@@ -165,6 +171,7 @@ function writeInputOf(row: EventRow): EventWriteInput {
     snooze_minutes: row.snooze_minutes,
     passable: row.passable,
     color: row.color,
+    show_in_calendar: row.show_in_calendar ?? true,
     group_id: row.group_id ?? null,
     exam_id: row.exam_id ?? null,
     exam_role: row.exam_role ?? null,
@@ -184,6 +191,7 @@ function differs(row: EventRow, input: EventWriteInput): boolean {
     row.title !== input.title ||
     (row.notes ?? null) !== (input.notes ?? null) ||
     row.duration_min !== input.duration_min ||
+    (row.show_in_calendar ?? true) !== (input.show_in_calendar ?? true) ||
     Date.parse(row.start_at) !== Date.parse(input.start_at)
   );
 }
@@ -220,7 +228,12 @@ export function diffExamAlarms(examId: string, plan: ExamPlan, events: readonly 
         changes.deactivate.push(row.id);
         continue;
       }
-      const next: EventWriteInput = { ...writeInputOf(row), title: catchUpTitle(plan.exam.title), notes: plan.exam.notes };
+      const next: EventWriteInput = {
+        ...writeInputOf(row),
+        title: catchUpTitle(plan.exam.title),
+        notes: plan.exam.notes,
+        show_in_calendar: plan.examAlarm.show_in_calendar,
+      };
       if (differs(row, next)) changes.update.push({ id: row.id, input: next });
       continue;
     }

@@ -539,3 +539,50 @@ mirror (step 10) and the app code must follow these.
     `event_id` and random ids denied on rules and activations, rule shape bounds (shift +-720, shorten 1 to 1440, value only for its behavior), the
     unique `(mode_id, event_id)` upsert, the manual switch (open-ended, bounded, since this morning, supersession, back to normal, future and
     8-days-back starts denied, inactive and foreign modes denied), anon denied on every table and RPC, the settings column bounds, and cascades.
+
+- **Feedback round 1: habits (2026-10-06).**
+  - **Yearly and template alarms are not habits (`isHabit`).** Chosen: exclude every `repeat_unit = 'year'` alarm and anything with a `group_id`, not just
+    template-shaped pairs. The owner's example is the birthday template, but a rank needs 5 scored occurrences, so any yearly alarm would be
+    "Unranked" for 5 years; a permanent "0 of 5" row on Stats says nothing. `group_id` is also excluded explicitly so a pair whose titles or repeat were
+    edited by hand still stays out. Side effect: the 180-day history read no longer includes yearly alarms. The Modes rule editor still lists them
+    (a mode may reasonably pause a birthday prep alarm).
+  - **One pooled Prayer habit (`pooledPrayerHabit` in `habits.ts`).** Each prayer event is still scored by `computeHabitStats` (weights, grace, prayer-day
+    matching and `prayers_enabled_since` are untouched); `computeHabitsReport` then sums the five into one `HabitStats` with `eventId = PRAYER_HABIT_ID`,
+    `pooled: 'prayer'`. Score = 100 x sum earned / sum possible, the overall score's own formula. The overall score takes that one entry with its summed
+    numerator and denominator, which is numerically what five separate habits gave, so the overall number did not move; Prayer is one entry in "ranked
+    habits" now. If the owner wants Prayer to weigh like one daily alarm instead of five, divide its earned and possible by the number of prayer events
+    before pooling (one line).
+  - **The prayer streak counts prayer-days.** An occurrence belongs to the day it was computed for, `prayerDayOf(config, prayer, instant, tz)`, the same day
+    completions are matched by (review fix: bucketing by the local date of the instant put an Isha pushed past midnight by an offset on the next day, and
+    would split the five of one day over two). Day outcome (`prayerDayOutcome`): any miss makes it missed; else any pending makes it pending; else any done
+    makes it done; only excused or paused keeps a streak alive. Streak rules are then the habit rules: done adds, missed resets, pending skipped.
+    Two incomplete days are left out of the days, `scoredDays` and the streak altogether (review fix): the first day when the window starts part-way
+    through it (the scoring floor is the window start, `created_at` or `prayers_enabled_since`, whichever is latest), even if a prayer on it was missed,
+    and the last day while its later prayers have not come yet, because occurrences only exist up to `now` and a streak would grow at Fajr. A day is
+    "incomplete" when it holds fewer occurrences than there are prayer events. The prayers on those days are still in the counts and the score.
+  - **Ranked from 5 scored prayer-days, not 5 prayers.** Five scored prayers is one day. `scoredDays` is the evidence count and Stats says "3 of 5 days
+    scored"; `scored` stays done + missed (prayers).
+  - **The badge in the prayer sheet** is the pooled one ("All five prayers together"); the pre-prayer reminders show none, as before.
+- **Feedback round 1: calendar visibility.** `events.show_in_calendar boolean not null default true` and `settings.show_prayers_in_calendar boolean not null
+  default false` (migration `20261006173000_show_in_calendar`; `events` is covered by the table-wide grants, the settings column is granted for insert and
+  update like `exam_mode_days_before`; `security_checks.sql` checks grants, NOT NULL and defaults). A prayer follows only the settings flag and ignores its own
+  row's flag (ten rows would be ten things to keep in step). The flag is read in one place, `isHiddenFromCalendar` (`calendar-events.ts`);
+  `expandOccurrences` still returns every occurrence with `hidden`, and `visibleOccurrences` is the only filter, so `dayImpact` keeps counting hidden alarms.
+  Nothing in core's occurrence rules, the schedule list, the engines or habit scoring reads it; Electron's zod schemas list both fields (optional booleans with
+  `.catch(undefined)`, so a malformed value reads as absent and can never drop an event or reject a push) and never use them, tested by comparing the schedule of
+  hidden and visible rows. The toolbar "Show hidden" toggle appears only when something is hidden
+  (an active alarm with the switch off, or prayers on and hidden), is kept in `localStorage` through `device-preference` (`show-hidden-preference.ts`; a
+  refused write still holds for the session) and shows hidden alarms faded with an eye-off icon (and a "Hidden" badge in the Agenda). The Agenda says "N
+  hidden alarms ring in this period" when it is quiet only because of hiding; the number counts distinct alarms (not
+  rings) and leaves the prayers out (`hiddenAlarmCount`). The birthday switch sets both alarms; the exam switch sets the exam alarm and
+  every session, is read back from the exam alarm on edit (like the lead), updates sessions still to come in place (`diffExamAlarms`), and a catch-up copies
+  the flag of the session it replaces.
+- **Feedback round 1: category colors.** `alarmCategoryOf` (`events/category-colors.ts`): `exam_role` exam / session (catch-up when `catch_up_of` is set) and
+  `group_id` (birthday). The colors are `--cat-*` tokens in `index.css`, in oklch, with separate light and dark values. Rose (hue 8) for birthdays; indigo
+  (hue 275) for the exam family: the exam alarm is a solid fill, a session a soft tint with a bold left edge, a catch-up the same tint outlined. The tinted
+  chip is also what sets them apart from the picker's solid blocks: rose sits between the picker's red and pink, so hue alone would not. Each category has an icon (gift,
+  graduation cap, open book, rotate-back arrow), so color is never the only cue. Contrast (WCAG, computed from the oklch values): text on fill 9.98 (birthday) /
+  8.32 (exam) / 9.98 (revision) in light, 10.77 / 7.76 / 11.24 in dark; accent edge against the page 4.36 / 8.71 / 5.14 in light (white) and 7.43 / 8.42 / 6.67 in dark.
+  The category color wins over `events.color`; the form shows "... alarms have a fixed color" instead of the picker (the template and exam forms never had one).
+  Week and Month share the `.cat-*` classes; the month dot takes the accent through FullCalendar's per-event color (a CSS variable string). Prayer styling, cheat-day,
+  paused and hidden treatments stack on top.

@@ -168,6 +168,84 @@
   --fc-classic-strong-border: var(--input);
 }
 
+/*
+ * Fixed category colours (owner feedback, 2026-10-06): birthdays and anniversaries, exam alarms and revision sessions
+ * each get one colour that is not offered in the event colour picker (features/events/event-colors.ts) and that the
+ * person cannot change. They are tinted chips (a soft fill, a bold left edge, dark text), which is also what sets them
+ * apart from the picker's solid blocks. Rose for birthdays; one indigo family for study: the exam alarm is the
+ * strong solid, revision sessions the soft tint, a catch-up the same tint with a full outline.
+ * Contrast (WCAG, checked for both themes): text on its fill 7.7:1 or more (the solid exam chip is about 7.8:1 in dark
+ * and 8.3:1 in light), accent edges 4.3:1 or more against the page. Alarms hidden from the calendar and brought back by
+ * "Show hidden" are faded on purpose (.occurrence-hidden) and are not held to those figures.
+ * Each token is an oklch triple the way the shadcn tokens above are; the dark values are lifted, not inverted.
+ */
+:root {
+  --cat-birthday-accent: oklch(0.6 0.19 8);
+  --cat-birthday-soft: oklch(0.955 0.03 8);
+  --cat-birthday-ink: oklch(0.36 0.13 8);
+  --cat-exam-solid: oklch(0.43 0.19 275);
+  --cat-exam-on-solid: oklch(0.985 0.01 275);
+  --cat-revision-accent: oklch(0.55 0.19 275);
+  --cat-revision-soft: oklch(0.945 0.035 275);
+  --cat-revision-ink: oklch(0.35 0.14 275);
+}
+.dark {
+  --cat-birthday-accent: oklch(0.72 0.15 8);
+  --cat-birthday-soft: oklch(0.3 0.07 8);
+  --cat-birthday-ink: oklch(0.92 0.05 8);
+  --cat-exam-solid: oklch(0.74 0.12 275);
+  --cat-exam-on-solid: oklch(0.2 0.06 275);
+  --cat-revision-accent: oklch(0.68 0.15 275);
+  --cat-revision-soft: oklch(0.29 0.07 275);
+  --cat-revision-ink: oklch(0.92 0.04 275);
+}
+
+/*
+ * The category chips. FullCalendar paints events with its own variables and inline colours, hence the !important
+ * (the same reason as .occurrence-prayer). Birthday and revision are tinted; the exam alarm is solid.
+ */
+.cat-birthday,
+.cat-revision,
+.cat-catch-up {
+  border-width: 1px 1px 1px 4px !important;
+  border-style: solid !important;
+}
+.cat-birthday {
+  background-color: var(--cat-birthday-soft) !important;
+  color: var(--cat-birthday-ink) !important;
+  border-color: var(--cat-birthday-soft) var(--cat-birthday-soft) var(--cat-birthday-soft) var(--cat-birthday-accent) !important;
+}
+.cat-birthday * {
+  color: var(--cat-birthday-ink) !important;
+}
+.cat-revision,
+.cat-catch-up {
+  background-color: var(--cat-revision-soft) !important;
+  color: var(--cat-revision-ink) !important;
+  border-color: var(--cat-revision-soft) var(--cat-revision-soft) var(--cat-revision-soft) var(--cat-revision-accent) !important;
+}
+.cat-catch-up {
+  /* Same tint as the session it replaces, outlined so the two can be told apart. */
+  border-color: var(--cat-revision-accent) !important;
+}
+.cat-revision *,
+.cat-catch-up * {
+  color: var(--cat-revision-ink) !important;
+}
+.cat-exam {
+  background-color: var(--cat-exam-solid) !important;
+  color: var(--cat-exam-on-solid) !important;
+  border: 1px solid var(--cat-exam-solid) !important;
+}
+.cat-exam * {
+  color: var(--cat-exam-on-solid) !important;
+}
+
+/* An alarm hidden from the calendar, shown because "Show hidden" is on: faded, so it reads as "not normally here". */
+.occurrence-hidden {
+  opacity: 0.55;
+}
+
 /* Cheat days: a quiet diagonal hatch, the one decorative device in the app. */
 .cheat-day {
   background-image: repeating-linear-gradient(
