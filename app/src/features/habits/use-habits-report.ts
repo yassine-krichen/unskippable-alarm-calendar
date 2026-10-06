@@ -4,26 +4,15 @@ import {
   type HabitEvent,
   type HabitsReport,
 } from '@alarm-calendar/core';
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 
 import { useEventsStore } from '@/features/events/events-store';
 import { usePassesStore } from '@/features/passes/passes-store';
 import { useSettingsStore } from '@/features/settings/settings-store';
+import { useNow } from '@/hooks/use-now';
 
 import { partitionByCoverage } from './habit-view';
 import { useHabitCompletionsStore } from './habits-store';
-
-const NOW_TICK_MS = 60_000;
-
-/** The current time, refreshed every minute, so an alarm crossing its grace window shows up. */
-function useNow(): Date {
-  const [now, setNow] = useState(() => new Date());
-  useEffect(() => {
-    const timer = setInterval(() => setNow(new Date()), NOW_TICK_MS);
-    return () => clearInterval(timer);
-  }, []);
-  return now;
-}
 
 export interface HabitsView {
   /** Scored habits only: those whose whole window the loaded history covers. */

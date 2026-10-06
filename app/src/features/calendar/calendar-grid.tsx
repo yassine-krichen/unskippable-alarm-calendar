@@ -3,7 +3,7 @@ import dayGridPlugin from '@fullcalendar/react/daygrid';
 import interactionPlugin from '@fullcalendar/react/interaction';
 import classicTheme from '@fullcalendar/react/themes/classic';
 import timeGridPlugin from '@fullcalendar/react/timegrid';
-import { BellOffIcon, MoonStarIcon } from 'lucide-react';
+import { BellOffIcon, BookOpenIcon, GraduationCapIcon, MoonStarIcon } from 'lucide-react';
 import { useEffect, useMemo } from 'react';
 
 import { Badge } from '@/components/ui/badge';
@@ -105,9 +105,12 @@ export function CalendarGrid({
       eventContent={(info) => {
         const silenced = info.event.extendedProps['silenced'] === true;
         const prayer = info.event.extendedProps['prayer'] === true;
+        const examRole: unknown = info.event.extendedProps['examRole'];
         return (
           <>
             {prayer ? <MoonStarIcon aria-label="Prayer" className="mt-0.5 size-3 shrink-0" /> : null}
+            {examRole === 'exam' ? <GraduationCapIcon aria-label="Exam" className="mt-0.5 size-3 shrink-0" /> : null}
+            {examRole === 'session' ? <BookOpenIcon aria-label="Revision" className="mt-0.5 size-3 shrink-0" /> : null}
             {silenced ? (
               <BellOffIcon aria-label="Silenced by a cheat day" className="mt-0.5 size-3 shrink-0" />
             ) : null}

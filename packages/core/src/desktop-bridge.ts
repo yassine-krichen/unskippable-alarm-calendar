@@ -92,6 +92,8 @@ export interface DesktopApi {
   /** Rejects when the payload as a whole is unusable; otherwise reports rows it had to drop. */
   setSchedule(payload: SchedulePayload): Promise<ScheduleResult>;
   drainCompletions(): Promise<CompletionRow[]>;
+  /** Occurrence ids (`<event id>@<instant>`) marked Done on this device that the server has not accepted yet. */
+  getPendingDoneOccurrences(): Promise<string[]>;
   /** Null signs out: main forgets the token and stops flushing. */
   setSession(session: DesktopSession | null): Promise<void>;
   getAutostart(): Promise<boolean>;

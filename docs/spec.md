@@ -35,6 +35,7 @@ The UI talks to the platform through one interface, implemented twice (`Electron
 interface AlarmAdapter {
   setSchedule(payload: SchedulePayload): Promise<void>   // the precomputed schedule, see below
   drainCompletions(): Promise<CompletionRow[]>   // completions made while the app was closed or offline
+  getPendingDoneOccurrences(): Promise<string[]>   // Done presses not yet saved to the server (desktop); [] elsewhere
   getPermissionStatus(): Promise<PermissionStatus>
   openPermissionSettings(): Promise<void>
 }
@@ -152,7 +153,24 @@ All tables have RLS: `user_id = auth.uid()` for select/insert/update/delete.
 | kind | enum `normal, prayer, pre_prayer` | default `normal` (roadmap-v2 phase 3b). A prayer row is one of the five daily prayers, a pre-prayer row its reminder; their times come from the prayer settings, and `start_at`, repeat and `ends_at` are ignored |
 | prayer | text | `fajr, dhuhr, asr, maghrib, isha`; required exactly when `kind <> 'normal'`. Unique per `(user_id, kind, prayer)` for non-normal rows, so at most 10 per user |
 | group_id | uuid | nullable, links the alarms a template created together (roadmap-v2 phase 2) |
+| exam_id | uuid | nullable fk `exams(id)` (on delete set null), the exam an alarm belongs to (roadmap-v2 phase 4). The alarm itself stays a plain `kind = 'normal'`, one-off event |
+| exam_role | text | `exam` (the alarm before the exam) or `session` (a revision session); null for any other alarm. At most one active `exam` alarm per exam |
+| catch_up_of | uuid | nullable fk `events(id)`, for a catch-up session: the missed session it replaces. Plain unique index, so at most one catch-up per missed session |
 | updated_at | timestamptz | trigger-updated |
+
+**exams** (roadmap-v2 phase 4; RLS and grants like events, in the realtime publication)
+| column | type | notes |
+|---|---|---|
+| id | uuid pk | |
+| user_id | uuid | default `auth.uid()` |
+| title | text | required, not blank |
+| exam_at | timestamptz | when the exam starts |
+| difficulty | smallint | 1 to 3, default 2 |
+| notes | text | optional |
+| active | bool | default true, delete = set false |
+| created_at, updated_at | timestamptz | `updated_at` trigger-updated |
+
+An exam owns ordinary one-off alarms through `events.exam_id`: one at the exam (`exam_role = 'exam'`, not passable, ringing a configurable time before it, 60 minutes by default) and revision sessions (`exam_role = 'session'`, passable) at 7, 3 and 1 days before the exam day (14 as well for difficulty 3) at a chosen time of day in the settings zone. `planRevisionSessions`, `planCatchUp` and `planCatchUps` in `packages/core/src/exams.ts` plan them. A session that is past its grace window with no completion (and not silenced by a cheat day) gets one catch-up session: halfway between now and the exam, on a quarter hour in 08:00 to 21:00 local, at least 30 minutes ahead and 1 hour before the exam, only while 3 hours or more remain; a catch-up is never caught up. The engines see these as normal occurrences and need no exam logic.
 
 **completions**
 | column | type | notes |

@@ -1,5 +1,6 @@
 import { loadRecentCompletions } from '@/features/completions/completions-store';
 import { loadEvents } from '@/features/events/events-store';
+import { loadExamCompletions, loadExams } from '@/features/exams/exams-store';
 import { loadHabitCompletions } from '@/features/habits/habits-store';
 import { fetchWalletAnchored } from '@/features/passes/passes-api';
 import { loadCheatDays, syncPassWallet } from '@/features/passes/passes-store';
@@ -44,8 +45,15 @@ export async function bootstrap(userId: string): Promise<string | null> {
   return cheatDays.error ?? events.error;
 }
 
+/** The session completions are looked up by event id, so they need the events; skipped when those failed. */
+async function loadExamCompletionsAfter(eventsError: string | null): Promise<void> {
+  if (eventsError !== null) return;
+  const result = await loadExamCompletions();
+  if (result.error !== null) console.warn('Could not load exam completions:', result.error);
+}
+
 /**
- * Window-focus refresh. The six loads are independent, so they run in parallel; the wallet sync
+ * Window-focus refresh. The loads are independent, so they run in parallel; the wallet sync
  * is included so a weekly grant that landed while away shows up. Returns the failure messages.
  */
 export async function refreshAll(): Promise<string[]> {
@@ -56,6 +64,10 @@ export async function refreshAll(): Promise<string[]> {
     loadEvents(),
     loadRecentCompletions(),
     loadHabitCompletions(),
+    loadExams(),
   ]);
-  return results.flatMap((result) => (result.error === null ? [] : [result.error]));
+  const failures = results.flatMap((result) => (result.error === null ? [] : [result.error]));
+  // After the events, which say which alarms belong to an exam.
+  await loadExamCompletionsAfter(results[3]?.error ?? null);
+  return failures;
 }

@@ -4,6 +4,8 @@ import { getAlarmAdapter } from '@/features/alarm-adapter/create-alarm-adapter';
 import { startScheduleSync } from '@/features/alarm-adapter/schedule-sync';
 import { startSessionSync } from '@/features/alarm-adapter/session-sync';
 import { useAuthStore } from '@/features/auth/auth-store';
+import { startCatchUpSync } from '@/features/exams/catch-up-sync';
+import { loadExamData } from '@/features/exams/exams-store';
 import { startHabitHistorySync } from '@/features/habits/habits-store';
 import { startRealtime } from '@/features/realtime/realtime';
 import { parseEnv } from '@/lib/env';
@@ -29,7 +31,8 @@ export function useDesktopSession(): void {
 /**
  * Once the first load finished: push the schedule to the platform alarm engine and keep it
  * current from the stores, and subscribe to realtime changes so another device's edits, passes
- * and completions reach this one while the app is open.
+ * and completions reach this one while the app is open. Also starts the check that gives a missed revision
+ * session its catch-up.
  */
 export function useLiveSync(ready: boolean): void {
   const userId = useAuthStore((state) => state.session?.user.id ?? null);
@@ -38,12 +41,17 @@ export function useLiveSync(ready: boolean): void {
     if (!ready || userId === null) return;
     const stopSchedule = startScheduleSync({ adapter: getAlarmAdapter() });
     const stopHabitHistory = startHabitHistorySync();
+    // Not blocking, and not left to the realtime catch-up: if the channel never subscribes the Exams screen
+    // would otherwise wait forever.
+    void loadExamData();
+    const stopCatchUps = startCatchUpSync();
     const stopRealtime = startRealtime(supabase, userId, () => {
       // After every (re)subscribe, catch up on whatever changed while the socket was not up.
       void refreshAll();
     });
     return () => {
       stopRealtime();
+      stopCatchUps();
       stopHabitHistory();
       stopSchedule();
     };

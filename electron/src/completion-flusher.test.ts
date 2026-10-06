@@ -91,6 +91,17 @@ function setup(cache: CacheData = emptyCache(), now = NOW) {
 }
 
 describe('CompletionFlusher', () => {
+  it('lists the Done occurrences the server has not accepted yet, as ids only, and drops them once flushed', async () => {
+    const cache = emptyCache();
+    cache.pendingCompletions.push(row(1), row(2, { status: 'skipped_cheat' }));
+    const h = setup(cache);
+    expect(h.flusher.pendingDoneOccurrenceIds()).toEqual([`${EVENT}@${cache.pendingCompletions[0]?.occurrence_at}`]);
+
+    h.flusher.setSession(session());
+    await h.flusher.flush();
+    expect(h.flusher.pendingDoneOccurrenceIds()).toEqual([]);
+  });
+
   it('sends nothing without a session and keeps everything queued', async () => {
     const cache = emptyCache();
     cache.pendingCompletions.push(row(1));

@@ -94,6 +94,7 @@ function fakeAdapter() {
       return Promise.resolve();
     },
     drainCompletions: () => Promise.resolve([]),
+    getPendingDoneOccurrences: () => Promise.resolve([]),
     getPermissionStatus: () => Promise.reject(new Error('unused')),
     openPermissionSettings: () => Promise.resolve(),
   };
@@ -118,10 +119,10 @@ afterEach(() => {
 });
 
 describe('startRealtime', () => {
-  it('subscribes to the four tables on one channel and removes it when stopped', () => {
+  it('subscribes to the five tables on one channel and removes it when stopped', () => {
     const client = new FakeRealtime();
     const stop = startRealtime(client, 'u1', () => undefined);
-    expect([...client.handlers.keys()].sort()).toEqual(['cheat_days', 'completions', 'events', 'settings']);
+    expect([...client.handlers.keys()].sort()).toEqual(['cheat_days', 'completions', 'events', 'exams', 'settings']);
     stop();
     expect(client.removed).toBe(1);
   });

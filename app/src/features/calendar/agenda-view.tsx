@@ -1,5 +1,5 @@
 import type { EventRow } from '@alarm-calendar/core';
-import { BellOffIcon, CalendarPlusIcon, MoonStarIcon } from 'lucide-react';
+import { BellOffIcon, BookOpenIcon, CalendarPlusIcon, GraduationCapIcon, MoonStarIcon } from 'lucide-react';
 import { useMemo } from 'react';
 
 import { Badge } from '@/components/ui/badge';
@@ -91,6 +91,10 @@ export function AgendaView({
                         </span>
                         {occurrence.kind === 'prayer' ? (
                           <MoonStarIcon aria-label="Prayer" className="size-3.5 shrink-0" />
+                        ) : occurrence.examRole === 'exam' ? (
+                          <GraduationCapIcon aria-label="Exam" className="size-3.5 shrink-0" />
+                        ) : occurrence.examRole === 'session' ? (
+                          <BookOpenIcon aria-label="Revision" className="size-3.5 shrink-0" />
                         ) : (
                           <span
                             aria-hidden="true"

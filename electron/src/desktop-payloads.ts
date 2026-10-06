@@ -335,6 +335,20 @@ export function parseSessionPayload(
   return parsed;
 }
 
+/** The id getter takes no arguments; anything extra is refused. */
+export function parseNoArguments(args: readonly unknown[]): ParseResult<[]> {
+  return parseWith(z.tuple([]), args);
+}
+
+/** Ids only, each exactly `<uuid>@<ISO UTC instant>`, bounded in count: all the id getter may return. */
+const occurrenceIdList = z
+  .array(z.string().max(100).refine((value) => parseOccurrenceId(value) !== null, { message: 'bad occurrence id' }))
+  .max(10_000);
+
+export function parseOccurrenceIdList(ids: unknown): ParseResult<string[]> {
+  return parseWith(occurrenceIdList, ids);
+}
+
 export function parseBoolean(payload: unknown): ParseResult<boolean> {
   return typeof payload === 'boolean' ? { ok: true, value: payload } : { ok: false, reason: 'not a boolean' };
 }

@@ -26,14 +26,19 @@ const PAYLOAD: SchedulePayload = buildSchedulePayload({
   now: new Date('2026-03-02T09:00:00.000Z'),
 });
 
-function fakeBridge(drained: CompletionRow[] = [], dropped: ScheduleDropped = NOTHING_DROPPED) {
+function fakeBridge(
+  drained: CompletionRow[] = [],
+  dropped: ScheduleDropped = NOTHING_DROPPED,
+  pendingDone: string[] = []
+) {
   const received: SchedulePayload[] = [];
-  const bridge: Pick<DesktopApi, 'setSchedule' | 'drainCompletions'> = {
+  const bridge: Pick<DesktopApi, 'setSchedule' | 'drainCompletions' | 'getPendingDoneOccurrences'> = {
     setSchedule: (payload) => {
       received.push(payload);
       return Promise.resolve({ dropped: dropped });
     },
     drainCompletions: () => Promise.resolve(drained),
+    getPendingDoneOccurrences: () => Promise.resolve(pendingDone),
   };
   return { bridge, received };
 }
@@ -61,6 +66,7 @@ describe('ElectronAlarmAdapter', () => {
     const bridge = {
       setSchedule: () => Promise.reject(new Error('invalid schedule payload')),
       drainCompletions: () => Promise.resolve([]),
+      getPendingDoneOccurrences: () => Promise.resolve([]),
     };
     await expect(new ElectronAlarmAdapter(bridge).setSchedule(PAYLOAD)).rejects.toThrow(
       'invalid schedule payload'
@@ -71,6 +77,12 @@ describe('ElectronAlarmAdapter', () => {
     const row = { id: 'c1' } as CompletionRow;
     const { bridge } = fakeBridge([row]);
     expect(await new ElectronAlarmAdapter(bridge).drainCompletions()).toEqual([row]);
+  });
+
+  it('hands on the occurrences marked Done on this device that main has not flushed yet', async () => {
+    const id = '11111111-1111-4111-8111-111111111111@2026-03-13T18:00:00.000Z';
+    const { bridge } = fakeBridge([], NOTHING_DROPPED, [id]);
+    expect(await new ElectronAlarmAdapter(bridge).getPendingDoneOccurrences()).toEqual([id]);
   });
 
   it('reports every permission as granted on desktop and has nothing to open', async () => {
@@ -90,6 +102,10 @@ describe('createAlarmAdapter', () => {
 
   it('picks the Electron adapter when the shell is Electron and the bridge exists', () => {
     expect(createAlarmAdapter({ platform: 'electron', bridge })).toBeInstanceOf(ElectronAlarmAdapter);
+  });
+
+  it('the no-op adapter has no unflushed Done to report', async () => {
+    expect(await new NoopAlarmAdapter().getPendingDoneOccurrences()).toEqual([]);
   });
 
   it('falls back to the no-op adapter in the browser', () => {

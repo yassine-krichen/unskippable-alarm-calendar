@@ -373,3 +373,84 @@ mirror (step 10) and the app code must follow these.
   `PRAYER_LIMITS` and the Electron schema. If a corrupt row still produces no times, nothing crashes: the calendar and the cheat
   day dialog skip that event (`expandOccurrences` takes an `onEventFailed` callback, and the page shows one line), the Stats report
   lists it in `failed` (one line there too), and the schedule reports it through `onEventFailed` as before.
+
+- **Exams and revision (roadmap-v2 phase 4): the alarms are plain one-off `normal` events linked by `exam_id`.** The alternative, a new
+  `events.kind` like the prayers, would have made every consumer of `eventOccurrencesBetween` (schedule, calendar, habits, Electron's
+  schema and scheduler) learn a second source whose times are not computed but fixed. A session has a fixed instant, so it is exactly a
+  one-off normal alarm: recurrence, the schedule list, cheat-day silencing, completions, realtime and the engines work unchanged
+  (Electron needs no change; its zod schema strips the new columns, which it never reads). `exam_id` is the only link the app needs.
+  Sessions are not habits (`repeat_unit = 'none'`), so they are never scored.
+- **Migration `exams_and_revision`.** Table `exams` (RLS own rows, grants like `events`, realtime, `updated_at` trigger, soft delete with
+  `active`), and on `events`: `exam_id` (fk, on delete set null), `catch_up_of` (fk to `events`, on delete cascade) and one column that was
+  not in the brief, `exam_role` (`exam` or `session`). It exists because the exam's own alarm and a session are otherwise
+  indistinguishable (a title convention would be fragile, and `passable` would be an implicit marker), and because it lets the database
+  keep "at most one active exam alarm per exam" with a partial unique index. `events_insert` and `events_update` now also check
+  `exam_id is null or exists (own exam)`: foreign key checks ignore RLS, so without it a client could link an alarm to someone else's exam
+  (the same pattern as `completions`). The first draft of the catch-up shape check, `catch_up_of is null or (exam_role = 'session' ...)`,
+  let a null role through (an unknown check passes, as with the prayer shape in 3b); `is not distinct from` fixes it. Found by running the
+  migration in PGlite.
+- **`catch_up_of` has a plain unique index, not a partial one.** The app writes a catch-up with `INSERT ... ON CONFLICT (catch_up_of) DO
+  NOTHING` (supabase-js `upsert(..., { onConflict: 'catch_up_of', ignoreDuplicates: true })`), and PostgREST cannot pass the predicate of a
+  partial index, so the conflict target could not name it. Postgres treats NULLs as distinct, so the many events without a catch-up do
+  not collide. A deactivated catch-up keeps its row, so the missed session never gets a second one: that is deliberate, the miss has been
+  dealt with once.
+- **What is a missed session, and when to act.** `classifySession` (core): completed (done, or `skipped_cheat`) is done or skipped; a cheat
+  day silencing a passable session is skipped (the person chose the day off, so no catch-up); otherwise upcoming, due (inside
+  `grace_minutes`) or missed. For catch-ups the app waits a further 10 minutes (`CATCH_UP_SETTLE_MINUTES`), because a Done pressed on an
+  offline device reaches the database only when it reconnects. Before writing, `runCatchUps` asks the database for the completions of the
+  sessions it is about to act on, so a stale local list can never cause a catch-up nobody needed; if that read fails, nothing is written
+  and the next run retries. The check runs from `use-live-sync` (after the first load), on a 1 second debounce after any change to
+  events, exams, exam completions, cheat days or settings (so realtime completions and edits trigger it), on window focus and every 5
+  minutes (time passing is what turns a session missed; nothing in a store changes when it does), never inside rendering. A module-level
+  set remembers missed sessions already handled in this run of the app so the 5 minute tick does not re-ask the database about them; the
+  unique index, not that set, is what protects against another device.
+- **Catch-up timing (`planCatchUp`).** The ideal is halfway between now and the exam. The chosen time is the quarter hour nearest to it
+  that is inside 08:00 to 21:00 local (the settings zone, DST included), at least 30 minutes after now, at least an hour before the exam
+  and at least an hour from every other alarm of the exam (so two missed sessions get catch-ups that do not stack, and a catch-up never
+  sits on a session). That is a search outward from the ideal rather than clamping it, so a halfway point at 03:00 goes to whichever of
+  21:00 the evening before and 08:00 that morning is nearer and still fits. No slot, or under 3 hours left, means no catch-up; a catch-up
+  is never itself caught up. Reference values live in `exams.test.ts`.
+- **Passable.** Revision sessions are passable (a plain alarm's default), so a pass silences them; the exam alarm is not, so a cheat day
+  never silences it. Reason: a cheat day is a day the person chose to switch off, and forcing revision through it would contradict the
+  pass; the exam itself is the one thing that must not be slept through. A session silenced that way counts as skipped, not missed.
+- **The exam alarm.** It rings `leadMinutes` before the exam (default 60, 0 to 1440, a field in the form), is not passable, and its calendar
+  block runs from the alarm to the start of the exam (at least 15 minutes). Because `exams` has no columns for the form's session time,
+  session length or lead, they are read back from the alarms when an exam is edited: the lead from the exam alarm, the time and length
+  from the latest planned (not catch-up) session, so sessions kept from before an edit do not outvote the new ones. Defaults when absent.
+- **Editing regenerates by diff, not by delete and recreate (`diffExamAlarms`).** Sessions whose time has passed (done or missed) are
+  kept untouched. Sessions to come are matched to the new plan by their start instant: matches are updated in place (a new title), the
+  rest are deactivated and the unmatched planned ones inserted; a future catch-up is kept (retitled) while it still has an hour before
+  the, possibly moved, exam. So a title edit keeps every id, a date edit replaces only what moved, and saving again after a failed write
+  repairs a half-applied edit, because the diff is against what exists. The edit is several requests (exam row, inserts, updates,
+  deactivation), not a transaction. Creating writes the exam, then every alarm in one insert; if the alarms fail it deactivates the exam.
+  Deleting switches off the exam's alarms first, then the exam, so nothing keeps ringing if the last step fails.
+- **UI.** The creation flow is the third tab "Exam" of the New alarm sheet, like Birthday / anniversary: the choice "what is this for" comes
+  first and the form that follows shares nothing with the others. A separate Exams screen (`/exams`, graduation cap in the header) lists
+  upcoming then past exams with done / to go / missed counts and opens the same sheet for edit; clicking any alarm of an exam on the
+  calendar opens the exam form, since editing one session alone would let the plan drift. The form previews the sessions and the exam
+  alarm. A new exam defaults to the clicked day, or the next day once 09:00 has passed. The calendar tags the exam alarm with a graduation
+  cap and sessions with an open book.
+- **Exam data loads after the first render, like the habit history.** `loadExams` and `loadExamCompletions` run from `refreshAll`, which
+  the realtime subscription calls on subscribe, so startup and the schedule push never wait for them. The completions of the exam
+  alarms are fetched by event id (an exam can be weeks old, beyond the 3 day recent list). The app requires the migration (it selects
+  `exam_id`, `exam_role`, `catch_up_of` with the events), like 3b.
+- **Phase 5 hook.** Exam mode's auto-activation can read `useExamsStore` (`exam_at`, `active`); nothing else about exams needs to change.
+- **Review fixes (phase 4).**
+  - `catch_up_of` must belong to the caller: `rls.owns_event(uuid)` (security definer, in a schema PostgREST does not expose, execute for
+    `authenticated` only) is part of the WITH CHECK of `events_insert` and `events_update`. A plain `exists` on `events` inside an `events`
+    policy would recurse, and the foreign key check ignores RLS.
+  - A Done pressed offline on this device: before inserting, `runCatchUps` also asks the adapter for the occurrence ids main has not flushed
+    yet (`AlarmAdapter.getPendingDoneOccurrences`; Electron: channel `desktop:pending-done-occurrences`, main window only, no arguments,
+    zod-checked ids only, read from `cache.pendingCompletions`; the no-op adapter returns `[]`). If the adapter cannot answer the run writes
+    nothing (a late catch-up beats a spare one). A future catch-up whose session later gets a completion is switched off
+    (`catchUpsToCancel`); a past one is left as history.
+  - The exam data loads once from `use-live-sync` (`loadExamData`: exams, then completions), independent of the realtime subscribe, so the
+    Exams screen shows an error with a retry instead of a skeleton that never ends. Completions are loaded only for exams that are still to
+    come or ended under 7 days ago (`EXAM_COMPLETION_HORIZON_DAYS`); the progress of an older exam is not shown (it would be computed from a
+    list that leaves its completions out). A realtime completion that arrives during that load is merged and replayed over its result;
+    it no longer invalidates the load, which used to leave the status on "loading".
+  - Catch-up runs do not overlap; a trigger that arrives during a run sets a pending flag and one more run follows.
+- **Known limits (phase 4).** A catch-up is created only by an app that is running (the desktop app runs in the tray; a laptop that is
+  off all day creates it on the next start, possibly late). A Done made on another device that is offline and not yet saved is invisible
+  to this one until it reaches the database. Changing the exam time keeps catch-ups still to come; one that is now before an
+  earlier-moved session is not re-planned.

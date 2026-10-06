@@ -4,6 +4,7 @@ import {
   isEventPassable,
   type EventKind,
   type EventRow,
+  type ExamRole,
   type OccurrenceSettings,
   type PrayerName,
 } from '@alarm-calendar/core';
@@ -31,6 +32,8 @@ export interface Occurrence {
   /** 'prayer' for one of the five daily prayers; the calendar draws those apart. */
   kind: EventKind;
   prayer: PrayerName | null;
+  /** 'exam' for the alarm before an exam, 'session' for a revision session; null for any other alarm. */
+  examRole: ExamRole | null;
 }
 
 export interface TimeRange {
@@ -88,6 +91,7 @@ export function expandOccurrences(
         silenced: passable && cheatDaySet.has(day),
         kind,
         prayer: event.prayer ?? null,
+        examRole: event.exam_role ?? null,
       });
     }
   }
@@ -162,7 +166,13 @@ export interface CalendarEvent {
   contrastColor?: string;
   /** Space-separated classes; the calendar attaches them to the event element. */
   className: string;
-  extendedProps: { eventId: string; silenced: boolean; passable: boolean; prayer: boolean };
+  extendedProps: {
+    eventId: string;
+    silenced: boolean;
+    passable: boolean;
+    prayer: boolean;
+    examRole: ExamRole | null;
+  };
 }
 
 export function toCalendarEvent(occurrence: Occurrence): CalendarEvent {
@@ -182,6 +192,7 @@ export function toCalendarEvent(occurrence: Occurrence): CalendarEvent {
       silenced: occurrence.silenced,
       passable: occurrence.passable,
       prayer: occurrence.kind === 'prayer',
+      examRole: occurrence.examRole,
     },
   };
 }

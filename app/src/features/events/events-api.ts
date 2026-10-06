@@ -7,7 +7,7 @@ import { fail, ok, type Result } from '@/lib/result';
 import type { EventWriteInput } from './event-form';
 
 const BASE_COLUMNS =
-  'id, user_id, title, notes, start_at, duration_min, repeat_unit, repeat_interval, repeat_weekdays, ends_at, max_snoozes, snooze_minutes, passable, color, active, created_at, updated_at, kind, prayer';
+  'id, user_id, title, notes, start_at, duration_min, repeat_unit, repeat_interval, repeat_weekdays, ends_at, max_snoozes, snooze_minutes, passable, color, active, created_at, updated_at, kind, prayer, exam_id, exam_role, catch_up_of';
 
 // Until the events_group_id migration is pushed the column does not exist and a select that names it
 // fails as a whole. The first such failure turns the column off for the session and the read is retried
@@ -77,6 +77,23 @@ export async function createEvent(input: EventWriteInput): Promise<Result<EventR
 export async function createEvents(inputs: EventWriteInput[]): Promise<Result<EventRow[]>> {
   const { data, error } = await withEventColumns((columns) =>
     supabase.from('events').insert(inputs).select(columns).overrideTypes<EventRow[], { merge: false }>()
+  );
+  if (error || data === null) return fail(error?.message ?? 'No data');
+  return ok(data);
+}
+
+/**
+ * Inserts catch-up sessions with INSERT ... ON CONFLICT (catch_up_of) DO NOTHING (the unique index on
+ * events.catch_up_of): a miss two devices both notice gets one catch-up. Returns only the rows this call
+ * inserted, so a conflict is an empty list, not an error.
+ */
+export async function insertCatchUps(inputs: EventWriteInput[]): Promise<Result<EventRow[]>> {
+  const { data, error } = await withEventColumns((columns) =>
+    supabase
+      .from('events')
+      .upsert(inputs, { onConflict: 'catch_up_of', ignoreDuplicates: true })
+      .select(columns)
+      .overrideTypes<EventRow[], { merge: false }>()
   );
   if (error || data === null) return fail(error?.message ?? 'No data');
   return ok(data);

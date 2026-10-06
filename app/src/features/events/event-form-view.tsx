@@ -1,5 +1,5 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import type { EventRow, Settings } from '@alarm-calendar/core';
+import type { EventRow, ExamRow, Settings } from '@alarm-calendar/core';
 import { InfoIcon, Trash2Icon } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Controller, useForm, useWatch } from 'react-hook-form';
@@ -72,6 +72,10 @@ export interface EventFormTarget {
   slot: { date: string; time: string };
   /** Set when `event` belongs to a birthday / anniversary template: the edit opens that form instead. */
   group?: RelationshipGroup | null;
+  /** Set when `event` is an alarm of an exam (its own alarm or a revision session): the edit opens the exam form. */
+  exam?: ExamRow | null;
+  /** A new target that opens on the Exam tab, for the Exams screen's "New exam". */
+  startOn?: 'exam';
 }
 
 interface EventFormViewProps {

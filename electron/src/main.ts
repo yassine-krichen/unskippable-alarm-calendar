@@ -28,6 +28,8 @@ import { resolveConfig, resolveUserDataDir, START_HIDDEN_ARG } from './config';
 import { buildDevSeed } from './dev-seed';
 import {
   parseBoolean,
+  parseNoArguments,
+  parseOccurrenceIdList,
   parseSchedulePayload,
   parseSessionPayload,
   upgradeLegacyPayload,
@@ -356,6 +358,15 @@ function registerDesktopIpc(
   ipcMain.handle(DESKTOP_CHANNELS.drainCompletions, (event): [] => {
     requireTrusted(event);
     return [];
+  });
+
+  // Read-only, main window only, no arguments, ids only: which Done presses the server has not got yet.
+  ipcMain.handle(DESKTOP_CHANNELS.pendingDoneOccurrences, (event, ...args: unknown[]): string[] => {
+    requireTrusted(event);
+    if (!parseNoArguments(args).ok) throw new Error('unexpected arguments');
+    const ids = parseOccurrenceIdList(flusher.pendingDoneOccurrenceIds());
+    if (!ids.ok) throw new Error('invalid pending ids');
+    return ids.value;
   });
 
   ipcMain.handle(DESKTOP_CHANNELS.setSession, (event, payload: unknown): void => {

@@ -14,6 +14,7 @@ export const ALARM_CHANNELS = {
 export const DESKTOP_CHANNELS = {
   setSchedule: 'desktop:set-schedule',
   drainCompletions: 'desktop:drain-completions',
+  pendingDoneOccurrences: 'desktop:pending-done-occurrences',
   setSession: 'desktop:set-session',
   getAutostart: 'desktop:get-autostart',
   setAutostart: 'desktop:set-autostart',

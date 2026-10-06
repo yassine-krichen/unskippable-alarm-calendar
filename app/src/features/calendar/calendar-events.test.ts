@@ -103,9 +103,31 @@ describe('toCalendarEvent', () => {
     });
   });
 
+  it('carries the exam role of an exam alarm and a revision session, so the grid can tag them', () => {
+    const range1 = { from: new Date('2026-10-05T00:00:00Z'), to: new Date('2026-10-06T00:00:00Z') };
+    const [session, alarm, plain] = expandOccurrences(
+      [
+        eventRow({ id: 's', repeat_unit: 'none', exam_id: 'x', exam_role: 'session' }),
+        eventRow({ id: 'a', repeat_unit: 'none', exam_id: 'x', exam_role: 'exam', start_at: '2026-10-05T09:00:00.000Z' }),
+        eventRow({ id: 'p', repeat_unit: 'none', start_at: '2026-10-05T10:00:00.000Z' }),
+      ],
+      range1,
+      UTC,
+      []
+    );
+    expect([session?.examRole, alarm?.examRole, plain?.examRole]).toEqual(['session', 'exam', null]);
+    expect(toCalendarEvent(session!).extendedProps.examRole).toBe('session');
+  });
+
   it('marks silenced occurrences so the grid can grey them', () => {
     expect(toCalendarEvent(occurrence!).className).toBe('occurrence-silenced');
-    expect(toCalendarEvent(occurrence!).extendedProps).toEqual({ eventId: 'e1', silenced: true, passable: true, prayer: false });
+    expect(toCalendarEvent(occurrence!).extendedProps).toEqual({
+      eventId: 'e1',
+      silenced: true,
+      passable: true,
+      prayer: false,
+      examRole: null,
+    });
   });
 
   it('adds no class and no color for a normal, uncolored occurrence', () => {

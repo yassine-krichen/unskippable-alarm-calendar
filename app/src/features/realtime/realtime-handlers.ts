@@ -1,7 +1,13 @@
-import type { CompletionRow, EventRow, PrayerSettings, Settings } from '@alarm-calendar/core';
+import type { CompletionRow, EventRow, ExamRow, PrayerSettings, Settings } from '@alarm-calendar/core';
 
 import { removeCompletion, upsertCompletion } from '@/features/completions/completions-store';
 import { recordRealtimeEventChange, useEventsStore } from '@/features/events/events-store';
+import {
+  recordRealtimeExamChange,
+  removeExamCompletion,
+  upsertExamCompletion,
+  useExamsStore,
+} from '@/features/exams/exams-store';
 import { removeHabitCompletion, upsertHabitCompletion } from '@/features/habits/habits-store';
 import type { HabitCompletionRow } from '@/features/habits/habits-api';
 import { loadCheatDays } from '@/features/passes/passes-store';
@@ -44,6 +50,32 @@ export function handleEventChange(payload: ChangePayload): void {
     if (existing === undefined) return { events: [...state.events, row] };
     if (Date.parse(existing.updated_at) > Date.parse(row.updated_at)) return state;
     return { events: state.events.map((event) => (event.id === row.id ? row : event)) };
+  });
+}
+
+function isExamRow(row: Record<string, unknown>): boolean {
+  return hasString(row, 'id') && hasString(row, 'title') && hasString(row, 'exam_at') && hasString(row, 'updated_at');
+}
+
+/** exams: like events, a soft-deleted exam (active = false) leaves the list, and an older echo is ignored. */
+export function handleExamChange(payload: ChangePayload): void {
+  if (payload.eventType === 'DELETE') {
+    const id = payload.old.id;
+    if (typeof id === 'string') {
+      recordRealtimeExamChange(id, null);
+      useExamsStore.setState((state) => ({ exams: state.exams.filter((exam) => exam.id !== id) }));
+    }
+    return;
+  }
+  if (!isExamRow(payload.new)) return;
+  const row = payload.new as unknown as ExamRow;
+  recordRealtimeExamChange(row.id, row);
+  useExamsStore.setState((state) => {
+    if (!row.active) return { exams: state.exams.filter((exam) => exam.id !== row.id) };
+    const existing = state.exams.find((exam) => exam.id === row.id);
+    if (existing === undefined) return { exams: [...state.exams, row] };
+    if (Date.parse(existing.updated_at) > Date.parse(row.updated_at)) return state;
+    return { exams: state.exams.map((exam) => (exam.id === row.id ? row : exam)) };
   });
 }
 
@@ -112,6 +144,7 @@ export function handleCompletionChange(payload: ChangePayload): void {
     if (typeof id === 'string') {
       removeCompletion(id);
       removeHabitCompletion(id);
+      removeExamCompletion(id);
     }
     return;
   }
@@ -119,4 +152,5 @@ export function handleCompletionChange(payload: ChangePayload): void {
   if (!hasString(row, 'id') || !hasString(row, 'event_id') || !hasString(row, 'occurrence_at')) return;
   upsertCompletion(row as unknown as CompletionRow);
   upsertHabitCompletion(row as unknown as HabitCompletionRow);
+  upsertExamCompletion(row as unknown as CompletionRow);
 }

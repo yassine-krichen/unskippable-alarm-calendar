@@ -3,6 +3,7 @@ import {
   ChartNoAxesColumnIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
+  GraduationCapIcon,
   PlusIcon,
   SettingsIcon,
 } from 'lucide-react';
@@ -16,6 +17,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { EventSheet } from '@/features/events/event-sheet';
 import type { EventFormTarget } from '@/features/events/event-form-view';
 import { loadEvents, useEventsStore } from '@/features/events/events-store';
+import { useExamsStore } from '@/features/exams/exams-store';
 import { findRelationshipGroup } from '@/features/events/relationship-template';
 import { PassChip } from '@/features/passes/pass-chip';
 import { PassDialog } from '@/features/passes/pass-dialog';
@@ -48,6 +50,7 @@ export function CalendarPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const settings = useSettingsStore((state) => state.settings);
   const events = useEventsStore((state) => state.events);
+  const exams = useExamsStore((state) => state.exams);
   const eventsStatus = useEventsStore((state) => state.status);
   const cheatDays = usePassesStore((state) => state.cheatDays);
 
@@ -92,9 +95,16 @@ export function CalendarPage() {
   function openEdit(eventId: string): void {
     const event = events.find((candidate) => candidate.id === eventId);
     if (event && settings) {
+      const slot = { date: todayInZone, time: '09:00' };
+      // An alarm of an exam (its own alarm, a session, a catch-up) edits as that exam.
+      const exam = event.exam_id ? exams.find((candidate) => candidate.id === event.exam_id) : undefined;
+      if (exam) {
+        setFormTarget({ event, exam, slot });
+        return;
+      }
       // An alarm made by the birthday / anniversary template edits as that pair.
       const group = findRelationshipGroup(event, events);
-      setFormTarget({ event, group, slot: { date: todayInZone, time: '09:00' } });
+      setFormTarget({ event, group, slot });
     }
   }
 
@@ -117,6 +127,9 @@ export function CalendarPage() {
           <Button className="hidden sm:inline-flex" onClick={() => openCreate()}>
             <PlusIcon data-icon="inline-start" />
             New alarm
+          </Button>
+          <Button variant="ghost" size="icon" aria-label="Exams" onClick={() => navigate('/exams')}>
+            <GraduationCapIcon />
           </Button>
           <Button variant="ghost" size="icon" aria-label="Habits and ranks" onClick={() => navigate('/stats')}>
             <ChartNoAxesColumnIcon />

@@ -20,6 +20,10 @@ export class NoopAlarmAdapter implements AlarmAdapter {
     return Promise.resolve([]);
   }
 
+  getPendingDoneOccurrences(): Promise<[]> {
+    return Promise.resolve([]);
+  }
+
   getPermissionStatus(): Promise<PermissionStatus> {
     return Promise.resolve(NOTHING_TO_GRANT);
   }

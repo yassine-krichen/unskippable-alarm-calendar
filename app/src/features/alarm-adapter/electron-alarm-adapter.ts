@@ -21,7 +21,7 @@ const ALL_GRANTED: PermissionStatus = {
  */
 export class ElectronAlarmAdapter implements AlarmAdapter {
   constructor(
-    private readonly bridge: Pick<DesktopApi, 'setSchedule' | 'drainCompletions'>,
+    private readonly bridge: Pick<DesktopApi, 'setSchedule' | 'drainCompletions' | 'getPendingDoneOccurrences'>,
     /** Called when main refused rows of a schedule it otherwise accepted. */
     private readonly onRowsDropped: (dropped: ScheduleDropped) => void = () => undefined
   ) {}
@@ -40,6 +40,10 @@ export class ElectronAlarmAdapter implements AlarmAdapter {
    */
   drainCompletions(): Promise<CompletionRow[]> {
     return this.bridge.drainCompletions();
+  }
+
+  getPendingDoneOccurrences(): Promise<string[]> {
+    return this.bridge.getPendingDoneOccurrences();
   }
 
   getPermissionStatus(): Promise<PermissionStatus> {

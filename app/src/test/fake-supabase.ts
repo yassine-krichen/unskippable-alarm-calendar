@@ -14,6 +14,8 @@ export interface RecordedCall {
 
 export const fake = {
   calls: [] as RecordedCall[],
+  /** Options of each upsert (onConflict, ignoreDuplicates) in call order, for tests that check what a write asked for. */
+  upsertOptions: [] as unknown[],
   /** Range filters (gte, lt, in) in call order, for tests that check what a query asked for. */
   filters: [] as Array<{ op: string; args: unknown[] }>,
   responses: {} as Record<string, FakeResponse>,
@@ -25,6 +27,7 @@ export const fake = {
   reset(): void {
     this.calls = [];
     this.filters = [];
+    this.upsertOptions = [];
     this.responses = {};
     this.queued = {};
   },
@@ -64,9 +67,10 @@ function builder(table: string) {
       record(`insert:${table}`, payload);
       return chain;
     },
-    upsert(payload: unknown) {
+    upsert(payload: unknown, options?: unknown) {
       operation = 'upsert';
       record(`upsert:${table}`, payload);
+      fake.upsertOptions.push(options);
       return chain;
     },
     eq: () => chain,

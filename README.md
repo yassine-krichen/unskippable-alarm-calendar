@@ -28,6 +28,8 @@ It is a single-user app. The Windows build is done; the Android build is blocked
 
 **Prayer times** — Switch on in Settings and you get Fajr, Dhuhr, Asr, Maghrib and Isha as alarms, plus a reminder 15 minutes before each ("Isha in 15 min", or "You haven't logged Dhuhr — you have until Asr" when the previous prayer has no Done). Times are computed offline from your location with [adhan](https://github.com/batoulapps/adhan-js) (Fajr and Isha angles, Asr shadow factor and a per-prayer minute offset are editable; the defaults are Ariana, Tunis with 18 degrees and the Maliki Asr). Cheat days never silence them, Done means prayed, snooze is off unless you raise it, and each prayer is scored like any habit. The prayer sound can be a file of your own (mp3, wav, ogg or m4a, up to 5 MB) in the desktop app, for example a takbir recording; no recording is bundled.
 
+**Exams and revision** — Add an exam (title, date and time, difficulty 1 to 3) from the Exam tab of the New alarm sheet or the Exams screen. It creates an alarm before the exam (60 minutes by default, never silenced by a cheat day) and revision session alarms 7, 3 and 1 days before, plus 14 for a hard exam, at a time of day you pick. Miss a session (the alarm window was never answered, say because the PC was off) and the app adds one catch-up session halfway between then and the exam, in the daytime, if at least 3 hours remain; two devices noticing the same miss still create just one. Editing an exam regenerates the sessions that have not happened yet and keeps the finished ones. The Exams screen shows done, to go and missed sessions per exam.
+
 **Snooze limits** — `max_snoozes` from 0 to 10 per event. The button reads "Snooze 5 min (2 left)" and disappears at the limit.
 
 **Cheat passes** — Weekly grant, cap of 2, multi-week catch-up, spend on today or a future day, refund for future days only. Events marked non-passable (medication, say) ring anyway.
@@ -233,6 +235,7 @@ cd android
 | Done | React app: auth, event form, Week / Month / Agenda, passes, settings |
 | Done | Windows NSIS installer |
 | Done (branch `v2-overnight`, needs `supabase db push`) | Prayer times: five prayers and a reminder before each, offline `adhan` calculation, custom prayer sound |
+| Done (branch `v2-overnight`, needs `supabase db push`) | Exams: an alarm before the exam, revision sessions at 7, 3 and 1 days before (14 for hard), catch-up for a missed session |
 | Blocked | Android alarm engine and APK, waiting on the Android SDK |
 | Planned | Code signing for the Windows installer, to remove the SmartScreen warning |
 

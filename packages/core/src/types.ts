@@ -50,6 +50,33 @@ export interface EventRow {
    * earlier than this. Optional so rows from before the column existed, and test fixtures, stay valid.
    */
   created_at?: string;
+  /** The exam this alarm belongs to (its own alarm or a revision session); null or absent for any other alarm. */
+  exam_id?: string | null;
+  /** What it is for its exam: 'exam' (the alarm before the exam itself) or 'session' (a revision session). */
+  exam_role?: ExamRole | null;
+  /** For a catch-up session: the id of the missed session it replaces. At most one catch-up per missed session. */
+  catch_up_of?: string | null;
+}
+
+/** The two kinds of alarm an exam owns (roadmap v2, phase 4). Both are one-off 'normal' events. */
+export type ExamRole = 'exam' | 'session';
+
+/** 1 easy, 2 normal, 3 hard (hard exams get one more, earlier, revision session). */
+export type ExamDifficulty = 1 | 2 | 3;
+
+/** An exam. Its alarms are events rows linked by events.exam_id. */
+export interface ExamRow {
+  id: string;
+  user_id: string;
+  title: string;
+  /** When the exam starts, ISO 8601. */
+  exam_at: string;
+  difficulty: ExamDifficulty;
+  notes: string | null;
+  /** Delete = false, like events. */
+  active: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface CompletionRow {
@@ -257,6 +284,12 @@ export interface AlarmAdapter {
   setSchedule(payload: SchedulePayload): Promise<void>;
   /** Completions made while the app was closed or offline. */
   drainCompletions(): Promise<CompletionRow[]>;
+  /**
+   * Occurrence ids (`<event id>@<instant>`) the person marked Done on this device that have not reached
+   * the server yet. The app checks it before treating a revision session as missed. Empty where the app
+   * itself writes completions straight away (the browser and, for now, Android).
+   */
+  getPendingDoneOccurrences(): Promise<string[]>;
   getPermissionStatus(): Promise<PermissionStatus>;
   openPermissionSettings(): Promise<void>;
 }

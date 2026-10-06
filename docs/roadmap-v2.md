@@ -47,7 +47,7 @@ Each phase ends with tests green, a code review, and a commit. Android work stay
 
 Built on branch `v2-overnight`, not yet pushed or released. Needs the two migrations `20261006010617_repeat_unit_year` and `20261006010618_events_group_id` pushed to the database before the app can save a yearly alarm or a birthday.
 
-- New `repeat_unit` value `year`. Same month and day as `start_at`, every N years, wall-clock in the user's zone. Feb 29 lands on Feb 28 in non-leap years, clamped from the original date each year (so it returns to Feb 29 in leap years). Shared vectors in `recurrence.json`; habit nominal period is `interval × 365` days, so a yearly habit has the 180-day window and is almost always "Unranked". The repeat picker has an "Every year" preset and a custom unit "years".
+- New `repeat_unit` value `year`. Same month and day as `start_at`, every N years, wall-clock in the user's zone. Feb 29 lands on Feb 28 in non-leap years, clamped from the original date each year (so it returns to Feb 29 in leap years). Shared vectors in `recurrence.json`; habit nominal period is `interval Ã— 365` days, so a yearly habit has the 180-day window and is almost always "Unranked". The repeat picker has an "Every year" preset and a custom unit "years".
 - "Birthday / anniversary" template, a second tab at the top of the New alarm sheet (Alarm | Birthday / anniversary). Fields: kind (birthday or anniversary), person, month and day, optional year, one alarm time, gift ideas. Saving writes two yearly alarms in one insert, linked by the new nullable `events.group_id`:
   - prep, 7 days before: "Prep for <name>'s birthday", notes = the gift ideas;
   - wish, on the day: "Wish <name> a happy birthday".
@@ -84,11 +84,16 @@ Original plan:
 - Pre-prayer alarm 15 minutes before each prayer. If the previous prayer has no Done, it says "You haven't logged Dhuhr, you have until Asr".
 - Prayer sound: a user-chosen audio file (for example a takbir recording), because no bundled recording is shipped. It falls back to a bundled tone.
 
-## Phase 4: exams and revision
+## Phase 4: exams and revision (done on branch `v2-overnight`, not yet pushed or released)
 
-- Exam entity: title, date and time, difficulty from 1 to 3.
-- Revision sessions are generated backwards from the exam date: 7, 3 and 1 days before, plus 14 days before for difficulty 3. Each one is a one-off alarm event linked to the exam.
-- A missed session schedules one catch-up session halfway between now and the exam, if there is room.
+Needs migration `20261006050221_exams_and_revision` pushed (after `20261006010617`, `20261006010618` and `20261006042009`); the app selects the new `events` columns and the `exams` table. Built as specified below; details and the reasons for the choices are in `docs/decisions.md`.
+
+- Exam entity: title, date and time, difficulty from 1 to 3 (table `exams`, soft delete with `active`, realtime).
+- Revision sessions are generated backwards from the exam date: 7, 3 and 1 days before, plus 14 days before for difficulty 3. Each one is a one-off alarm event (`kind = 'normal'`, no repeat) linked to the exam by `events.exam_id`, at a time of day chosen in the form (default 18:00, in the settings zone). Sessions already in the past when the exam is created are skipped. Pure planning in `packages/core/src/exams.ts` (`planRevisionSessions`, `planCatchUp`, `planCatchUps`, `classifySession`, `examProgress`).
+- The exam itself is an alarm too (`exam_role = 'exam'`), by default 60 minutes before the start (the form's "Exam alarm" field), not passable.
+- A missed session (past its grace window, with no completion, not silenced by a cheat day) gets one catch-up session halfway between now and the exam, rounded to a quarter hour and moved to the nearest slot in 08:00 to 21:00 local time, at least 30 minutes ahead and 1 hour before the exam, only while 3 hours or more remain. A catch-up never spawns another. One per missed session, kept by the unique index on `events.catch_up_of` (the app inserts with `ON CONFLICT (catch_up_of) DO NOTHING`), so two devices cannot both add one.
+- UI: an "Exam" tab in the New alarm sheet next to Birthday / anniversary, an Exams screen (graduation cap in the header) with done / to go / missed per exam, and edit and delete. Editing regenerates the sessions still to come and keeps the finished ones; deleting switches off every alarm of the exam. Sessions and exam alarms carry a book or graduation cap icon on the calendar and open the exam form when clicked.
+- Habits: sessions are one-off, so they are never scored.
 
 ## Phase 5: modes
 

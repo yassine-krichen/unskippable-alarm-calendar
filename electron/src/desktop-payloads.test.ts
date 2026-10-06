@@ -7,6 +7,8 @@ import {
   MAX_EVENTS,
   MAX_OCCURRENCES,
   parseBoolean,
+  parseNoArguments,
+  parseOccurrenceIdList,
   parseSchedulePayload,
   parseSessionPayload,
   upgradeLegacyPayload,
@@ -408,5 +410,21 @@ describe('parseBoolean', () => {
     expect(parseBoolean(true).ok).toBe(true);
     expect(parseBoolean('true').ok).toBe(false);
     expect(parseBoolean(1).ok).toBe(false);
+  });
+});
+
+describe('the pending-done id getter', () => {
+  it('takes no arguments', () => {
+    expect(parseNoArguments([]).ok).toBe(true);
+    expect(parseNoArguments(['x']).ok).toBe(false);
+  });
+
+  it('returns ids only: each exactly <uuid>@<ISO UTC instant>', () => {
+    const good = `${EVENT}@2026-03-02T09:01:00.000Z`;
+    expect(parseOccurrenceIdList([good])).toEqual({ ok: true, value: [good] });
+    expect(parseOccurrenceIdList([]).ok).toBe(true);
+    expect(parseOccurrenceIdList([`${EVENT}`]).ok).toBe(false);
+    expect(parseOccurrenceIdList([{ id: good }]).ok).toBe(false);
+    expect(parseOccurrenceIdList('nope').ok).toBe(false);
   });
 });

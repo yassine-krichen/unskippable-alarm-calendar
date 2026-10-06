@@ -17,6 +17,8 @@ const desktopApi: DesktopApi = {
   setSchedule: (payload) => ipcRenderer.invoke(DESKTOP_CHANNELS.setSchedule, payload) as Promise<ScheduleResult>,
   drainCompletions: () =>
     ipcRenderer.invoke(DESKTOP_CHANNELS.drainCompletions) as Promise<CompletionRow[]>,
+  getPendingDoneOccurrences: () =>
+    ipcRenderer.invoke(DESKTOP_CHANNELS.pendingDoneOccurrences) as Promise<string[]>,
   setSession: (session) => ipcRenderer.invoke(DESKTOP_CHANNELS.setSession, session) as Promise<void>,
   getAutostart: () => ipcRenderer.invoke(DESKTOP_CHANNELS.getAutostart) as Promise<boolean>,
   setAutostart: (enabled) =>

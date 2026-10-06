@@ -11,6 +11,9 @@ import { AuthScreen } from '@/features/auth/auth-screen';
 import { startAuthListener, useAuthStore } from '@/features/auth/auth-store';
 import { CalendarPage } from '@/features/calendar/calendar-page';
 import { useEventsStore } from '@/features/events/events-store';
+import { resetCatchUps } from '@/features/exams/catch-up-sync';
+import { resetExams } from '@/features/exams/exams-store';
+import { ExamsPage } from '@/features/exams/exams-page';
 import { StatsPage } from '@/features/habits/stats-page';
 import { resetHabitCompletions } from '@/features/habits/habits-store';
 import { usePassesStore } from '@/features/passes/passes-store';
@@ -26,6 +29,8 @@ function resetAppData(): void {
   useEventsStore.setState({ events: [], status: 'idle', error: null });
   usePassesStore.setState({ wallet: null, walletBeforeSync: null, cheatDays: [] });
   resetHabitCompletions();
+  resetExams();
+  resetCatchUps();
 }
 
 export function App() {
@@ -74,6 +79,7 @@ function SignedInApp() {
     <HashRouter>
       <Routes>
         <Route path="/" element={<CalendarPage />} />
+        <Route path="/exams" element={<ExamsPage />} />
         <Route path="/stats" element={<StatsPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />

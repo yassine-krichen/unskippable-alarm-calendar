@@ -105,11 +105,7 @@ export async function removeEvent(id: string): Promise<Result<null>> {
 /** Creates the alarms of a template in one write; they appear together or not at all. */
 export async function saveNewEventGroup(inputs: EventWriteInput[]): Promise<Result<EventRow[]>> {
   const result = await createEvents(inputs);
-  const saved = result.data;
-  if (saved) {
-    invalidateEventsLoad();
-    useEventsStore.setState((state) => ({ events: [...state.events, ...saved], status: 'ready' }));
-  }
+  if (result.data) addEventsToStore(result.data);
   return result;
 }
 
@@ -132,6 +128,21 @@ export async function saveEventGroup(
   }
   applySavedEvents(saved);
   return { data: saved, error: null };
+}
+
+/**
+ * Puts alarms that were created somewhere other than this store's own save functions (the catch-ups the
+ * app makes by itself) into the list. Replaces a row that is already there: a realtime echo of the same
+ * insert may have arrived first.
+ */
+export function addEventsToStore(rows: EventRow[]): void {
+  if (rows.length === 0) return;
+  invalidateEventsLoad();
+  const added = new Set(rows.map((row) => row.id));
+  useEventsStore.setState((state) => ({
+    events: [...state.events.filter((event) => !added.has(event.id)), ...rows],
+    status: 'ready',
+  }));
 }
 
 function applySavedEvents(saved: EventRow[]): void {

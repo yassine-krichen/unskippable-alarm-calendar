@@ -5,6 +5,7 @@ export * from './occurrences';
 export * from './snooze';
 export * from './wallet';
 export * from './habits';
+export * from './exams';
 export * from './schedule';
 export {
   assertValidTimeZone,

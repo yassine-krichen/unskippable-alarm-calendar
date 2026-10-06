@@ -1,5 +1,6 @@
 import type { CompletionRow, DesktopSession } from '@alarm-calendar/core';
 
+import { makeOccurrenceId } from './alarm-ipc';
 import type { CacheData } from './cache';
 
 /**
@@ -61,6 +62,17 @@ export class CompletionFlusher {
 
   hasPending(): boolean {
     return this.deps.cache.pendingCompletions.length > 0;
+  }
+
+  /**
+   * Ids (`<event id>@<instant>`) of the occurrences the person marked Done on this device that the server
+   * has not accepted yet. Read-only, and nothing but ids: the app uses it to tell a session that was done
+   * offline from one that was missed, before it creates a catch-up for it.
+   */
+  pendingDoneOccurrenceIds(): string[] {
+    return this.deps.cache.pendingCompletions
+      .filter((row) => row.status === 'done')
+      .map((row) => makeOccurrenceId(row.event_id, new Date(row.occurrence_at)));
   }
 
   /** Single-flight: a call during a flush schedules one more pass instead of a parallel one. */

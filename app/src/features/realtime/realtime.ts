@@ -2,6 +2,7 @@ import {
   handleCheatDayChange,
   handleCompletionChange,
   handleEventChange,
+  handleExamChange,
   handleSettingsChange,
   type ChangePayload,
 } from './realtime-handlers';
@@ -22,7 +23,7 @@ export interface RealtimeClientLike {
 }
 
 /**
- * Subscribes to changes of the user's events, cheat days, settings and completions (RLS limits
+ * Subscribes to changes of the user's events, exams, cheat days, settings and completions (RLS limits
  * what arrives to their own rows). Whenever the channel (re)subscribes, `onSubscribed` runs so
  * the caller can refetch whatever changed while the socket was down or before it was up.
  * Returns the unsubscribe function.
@@ -36,6 +37,7 @@ export function startRealtime(
   const channel = client
     .channel(`app-data-${userId}`)
     .on('postgres_changes', table('events'), handleEventChange)
+    .on('postgres_changes', table('exams'), handleExamChange)
     .on('postgres_changes', table('cheat_days'), handleCheatDayChange)
     .on('postgres_changes', table('settings'), handleSettingsChange)
     .on('postgres_changes', table('completions'), handleCompletionChange);

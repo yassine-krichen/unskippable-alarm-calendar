@@ -5,11 +5,11 @@
 select 'rls enabled: ' || c.relname as name, 'true' as expected, c.relrowsecurity::text as actual,
   case when c.relrowsecurity then 'PASS' else 'FAIL' end as result
 from pg_class c join pg_namespace n on n.oid = c.relnamespace
-where n.nspname = 'public' and c.relname in ('events', 'completions', 'settings', 'pass_wallet', 'cheat_days')
+where n.nspname = 'public' and c.relname in ('events', 'completions', 'settings', 'pass_wallet', 'cheat_days', 'exams')
 union all
 select 'policy count: ' || t, expected::text, coalesce(p.cnt, 0)::text,
   case when coalesce(p.cnt, 0) = expected then 'PASS' else 'FAIL' end
-from (values ('events', 4), ('completions', 4), ('settings', 3), ('pass_wallet', 1), ('cheat_days', 1)) as v(t, expected)
+from (values ('events', 4), ('completions', 4), ('settings', 3), ('pass_wallet', 1), ('cheat_days', 1), ('exams', 4)) as v(t, expected)
 left join (select tablename, count(*) cnt from pg_policies where schemaname = 'public' group by tablename) p on p.tablename = v.t
 union all
 select 'policies only to authenticated: ' || tablename, 'true', bool_and(roles = '{authenticated}')::text,
@@ -24,7 +24,10 @@ from (values
   ('authenticated', 'pass_wallet', 'DELETE', false), ('authenticated', 'cheat_days', 'INSERT', false),
   ('authenticated', 'cheat_days', 'UPDATE', false), ('authenticated', 'cheat_days', 'DELETE', false),
   ('authenticated', 'pass_wallet', 'SELECT', true), ('authenticated', 'cheat_days', 'SELECT', true),
-  ('anon', 'events', 'SELECT', false), ('anon', 'pass_wallet', 'SELECT', false)
+  ('anon', 'events', 'SELECT', false), ('anon', 'pass_wallet', 'SELECT', false),
+  ('anon', 'exams', 'SELECT', false), ('anon', 'exams', 'INSERT', false), ('anon', 'exams', 'UPDATE', false), ('anon', 'exams', 'DELETE', false),
+  ('authenticated', 'exams', 'SELECT', true), ('authenticated', 'exams', 'INSERT', true),
+  ('authenticated', 'exams', 'UPDATE', true), ('authenticated', 'exams', 'DELETE', true)
 ) as t(role, tbl, priv, expected)
 union all
 -- TRUNCATE, REFERENCES and TRIGGER are never needed by a client role.
@@ -33,7 +36,7 @@ select format('%s can %s %s', role, priv, tbl), 'false',
   case when has_table_privilege(role, 'public.' || tbl, priv) then 'FAIL' else 'PASS' end
 from unnest(array['anon', 'authenticated']) as role
 cross join unnest(array['TRUNCATE', 'REFERENCES', 'TRIGGER']) as priv
-cross join unnest(array['events', 'completions', 'settings', 'pass_wallet', 'cheat_days']) as tbl
+cross join unnest(array['events', 'completions', 'settings', 'pass_wallet', 'cheat_days', 'exams']) as tbl
 union all
 -- settings is writable by column: pass_cap must stay out of reach, and so must
 -- the table-level privileges that would imply every column.
@@ -97,7 +100,7 @@ union all
 select 'realtime publication has ' || t, 'true',
   exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = t)::text,
   case when exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = t) then 'PASS' else 'FAIL' end
-from unnest(array['events', 'completions', 'cheat_days', 'settings']) as t
+from unnest(array['events', 'completions', 'cheat_days', 'settings', 'exams']) as t
 union all
 -- events.created_at is table-writable by the client roles, so a trigger must pin it
 -- (set on insert, unchanged on update). Needs the events_created_at migration.
@@ -116,4 +119,64 @@ select 'events has the prayer shape check and the unique index', 'true',
    and exists (select 1 from pg_indexes where schemaname = 'public' and indexname = 'events_prayer_unique'))::text,
   case when exists (select 1 from pg_constraint where conrelid = 'public.events'::regclass and conname = 'events_prayer_shape')
         and exists (select 1 from pg_indexes where schemaname = 'public' and indexname = 'events_prayer_unique') then 'PASS' else 'FAIL' end
+union all
+-- Exams (exams_and_revision migration): the catch-up idempotency rests on a plain unique index on
+-- events.catch_up_of (the app inserts with ON CONFLICT (catch_up_of) DO NOTHING, which cannot name a partial
+-- index), one active exam alarm per exam, and the shape checks.
+select 'events has the exam link columns', 'true',
+  (select count(*) = 3 from pg_attribute a where a.attrelid = 'public.events'::regclass and not a.attisdropped
+     and a.attname in ('exam_id', 'exam_role', 'catch_up_of'))::text,
+  case when (select count(*) = 3 from pg_attribute a where a.attrelid = 'public.events'::regclass and not a.attisdropped
+     and a.attname in ('exam_id', 'exam_role', 'catch_up_of')) then 'PASS' else 'FAIL' end
+union all
+select 'events.catch_up_of has a plain unique index', 'true',
+  exists (select 1 from pg_index i join pg_class c on c.oid = i.indexrelid
+          where i.indrelid = 'public.events'::regclass and c.relname = 'events_catch_up_of_unique'
+            and i.indisunique and i.indpred is null)::text,
+  case when exists (select 1 from pg_index i join pg_class c on c.oid = i.indexrelid
+          where i.indrelid = 'public.events'::regclass and c.relname = 'events_catch_up_of_unique'
+            and i.indisunique and i.indpred is null) then 'PASS' else 'FAIL' end
+union all
+select 'events has the one-exam-alarm unique index and the exam checks', 'true',
+  (exists (select 1 from pg_indexes where schemaname = 'public' and indexname = 'events_exam_alarm_unique')
+   and exists (select 1 from pg_constraint where conrelid = 'public.events'::regclass and conname = 'events_exam_role_values')
+   and exists (select 1 from pg_constraint where conrelid = 'public.events'::regclass and conname = 'events_catch_up_shape'))::text,
+  case when exists (select 1 from pg_indexes where schemaname = 'public' and indexname = 'events_exam_alarm_unique')
+        and exists (select 1 from pg_constraint where conrelid = 'public.events'::regclass and conname = 'events_exam_role_values')
+        and exists (select 1 from pg_constraint where conrelid = 'public.events'::regclass and conname = 'events_catch_up_shape') then 'PASS' else 'FAIL' end
+union all
+select 'events insert and update policies check the exam link', 'true',
+  (select bool_and(coalesce(with_check, '') like '%exams%') from pg_policies
+   where schemaname = 'public' and tablename = 'events' and policyname in ('events_insert', 'events_update'))::text,
+  case when (select bool_and(coalesce(with_check, '') like '%exams%') from pg_policies
+   where schemaname = 'public' and tablename = 'events' and policyname in ('events_insert', 'events_update')) then 'PASS' else 'FAIL' end
+union all
+select 'exams has the updated_at trigger and the difficulty check', 'true',
+  (exists (select 1 from pg_trigger where tgrelid = 'public.exams'::regclass and tgname = 'exams_set_updated_at' and not tgisinternal)
+   and exists (select 1 from pg_constraint where conrelid = 'public.exams'::regclass and contype = 'c' and pg_get_constraintdef(oid) like '%difficulty%'))::text,
+  case when exists (select 1 from pg_trigger where tgrelid = 'public.exams'::regclass and tgname = 'exams_set_updated_at' and not tgisinternal)
+        and exists (select 1 from pg_constraint where conrelid = 'public.exams'::regclass and contype = 'c' and pg_get_constraintdef(oid) like '%difficulty%') then 'PASS' else 'FAIL' end
+union all
+-- catch_up_of must belong to the caller (rls.owns_event, security definer, in a schema PostgREST does not expose).
+select 'events insert and update policies check that catch_up_of is owned', 'true',
+  (select bool_and(coalesce(with_check, '') like '%catch_up_of%' and coalesce(with_check, '') like '%owns_event%') from pg_policies
+   where schemaname = 'public' and tablename = 'events' and policyname in ('events_insert', 'events_update'))::text,
+  case when (select bool_and(coalesce(with_check, '') like '%catch_up_of%' and coalesce(with_check, '') like '%owns_event%') from pg_policies
+   where schemaname = 'public' and tablename = 'events' and policyname in ('events_insert', 'events_update')) then 'PASS' else 'FAIL' end
+union all
+select format('%s can execute rls.owns_event(uuid)', role), expected::text,
+  has_function_privilege(role, 'rls.owns_event(uuid)', 'EXECUTE')::text,
+  case when has_function_privilege(role, 'rls.owns_event(uuid)', 'EXECUTE') = expected then 'PASS' else 'FAIL' end
+from (values ('anon', false), ('authenticated', true)) as f(role, expected)
+union all
+select format('%s has usage on schema %s', role, sch), expected::text,
+  has_schema_privilege(role, sch, 'USAGE')::text,
+  case when has_schema_privilege(role, sch, 'USAGE') = expected then 'PASS' else 'FAIL' end
+from (values ('anon', 'rls', false), ('authenticated', 'rls', true), ('anon', 'private', false), ('authenticated', 'private', false)) as f(role, sch, expected)
+union all
+select 'rls.owns_event is security definer with a fixed search_path', 'true',
+  coalesce((select (p.prosecdef and coalesce(p.proconfig::text, '') like '%search_path%') from pg_proc p
+    where p.oid = 'rls.owns_event(uuid)'::regprocedure), false)::text,
+  case when coalesce((select (p.prosecdef and coalesce(p.proconfig::text, '') like '%search_path%') from pg_proc p
+    where p.oid = 'rls.owns_event(uuid)'::regprocedure), false) then 'PASS' else 'FAIL' end
 order by 1;
