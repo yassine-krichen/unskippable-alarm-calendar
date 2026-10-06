@@ -23,7 +23,11 @@ export type { ActionResult, AlarmApi, AlarmView } from '@alarm-calendar/core';
 const EVENT_ID_PATTERN = /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 const ISO_UTC_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 
-/** An occurrence is identified by its event and its scheduled instant. */
+/**
+ * An occurrence is identified by its event and its scheduled instant. Same format as core's
+ * makeOccurrenceId (the id of a schedule list entry); not imported from core because the preload
+ * bundles this file and must not pull in the recurrence code (alarm-ipc.test.ts checks they agree).
+ */
 export function makeOccurrenceId(eventId: string, occurrenceAt: Date): string {
   return `${eventId}@${occurrenceAt.toISOString()}`;
 }

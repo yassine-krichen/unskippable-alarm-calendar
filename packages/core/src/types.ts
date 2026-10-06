@@ -103,19 +103,88 @@ export interface AlarmSettings extends Settings {
   sound?: string;
 }
 
+/**
+ * One concrete ring, ready for an engine to schedule. Deliberately thin: what is the same for every
+ * ring of an alarm (text, snooze rules, sound) lives once per event in `SchedulePayload.eventInfo`,
+ * so a 60 day list of a daily alarm repeats nothing. An engine needs no recurrence, cheat day, mode
+ * or prayer logic to use it.
+ */
+export interface ScheduleOccurrence {
+  /** `${eventId}@${at}`, the same id the alarm screen and the completion upsert use. */
+  id: string;
+  eventId: string;
+  /** Instant of the ring, ISO 8601 UTC with milliseconds ('...T09:01:00.000Z'). */
+  at: string;
+  /** A cheat day covers this occurrence (passable events only). A silenced occurrence never rings. */
+  silenced: boolean;
+  /** A completion is known for it (any device). A completed occurrence never rings. */
+  completed: boolean;
+}
+
+/** What an engine needs to show and snooze every occurrence of one event. */
+export interface ScheduleEventInfo {
+  title: string;
+  notes: string | null;
+  /** 0 means no snooze button at all. */
+  maxSnoozes: number;
+  snoozeMinutes: number;
+  /** Id of the bundled alarm sound to loop, or null for the platform default. */
+  soundId: string | null;
+}
+
+/**
+ * The precomputed schedule an engine consumes (AlarmAdapter.setSchedule). The list is complete for
+ * every active event from `generatedAt` minus the grace window up to `horizonEnd`, inclusive; before
+ * `generatedAt` it holds only the latest occurrence per event (the one a missed-while-asleep ring
+ * would be about).
+ */
+export interface SchedulePayload {
+  version: 2;
+  /** When the list was computed, ISO 8601 UTC. */
+  generatedAt: string;
+  /**
+   * The list is complete up to here. Normally generatedAt plus the horizon (60 days); earlier when
+   * the list hit a size cap, so an engine never assumes silence where occurrences were cut. Never
+   * earlier than generatedAt.
+   */
+  horizonEnd: string;
+  /** True when a size cap shortened the horizon. */
+  truncated: boolean;
+  /** Timezone, grace and re-fire rules the engine still needs; the sound rides along as before. */
+  settings: AlarmSettings;
+  /** Ascending by `at`, then event id, no duplicate ids. */
+  occurrences: ScheduleOccurrence[];
+  /**
+   * Per active event, including ones with no occurrence in the window (so the keys are the active
+   * event ids). An engine dismisses a ringing or snoozed alarm only when its event is missing here
+   * (deleted or switched off), and reads title, snooze rules and sound from here.
+   */
+  eventInfo: Record<string, ScheduleEventInfo>;
+  /**
+   * The inputs the list was computed from. Only the Electron main process reads this, to extend
+   * the list on its own while the app window is closed; other engines ignore it.
+   */
+  refillSource: {
+    events: EventRow[];
+    cheatDays: string[];
+  };
+}
+
+/** The schedule push before the precomputed list: the engine received the raw events. */
+export interface LegacySchedulePayload {
+  events: EventRow[];
+  cheatDays: string[];
+  settings: AlarmSettings;
+  completions: CompletionRow[];
+}
+
 export interface AlarmAdapter {
   /**
-   * Replaces the device's cached schedule. `completions` are recent completions
-   * synced from Supabase (any device); an occurrence that is already done must
-   * not ring again when the device wakes inside the grace window. Optional so a
-   * caller with nothing synced yet can omit it.
+   * Replaces the device's schedule with a precomputed one (see expandSchedule in core). Whatever
+   * completions the device knew about are already folded into `completed`, so an occurrence that is
+   * done on any device does not ring again when the device wakes inside the grace window.
    */
-  setSchedule(
-    events: EventRow[],
-    cheatDays: string[],
-    settings: AlarmSettings,
-    completions?: CompletionRow[]
-  ): Promise<void>;
+  setSchedule(payload: SchedulePayload): Promise<void>;
   /** Completions made while the app was closed or offline. */
   drainCompletions(): Promise<CompletionRow[]>;
   getPermissionStatus(): Promise<PermissionStatus>;

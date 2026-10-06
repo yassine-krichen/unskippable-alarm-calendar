@@ -1,4 +1,4 @@
-import type { AlarmSettings, CompletionRow, EventRow } from './types';
+import type { CompletionRow, SchedulePayload } from './types';
 
 /**
  * Types shared by the Electron main process, its preload scripts and the React
@@ -33,20 +33,15 @@ export interface AlarmApi {
 
 /** How many rows main refused from one schedule push; all zero when everything was accepted. */
 export interface ScheduleDropped {
+  occurrences: number;
   events: number;
   cheatDays: number;
+  /** Only a push in the old events-based format carries completions. */
   completions: number;
 }
 
 export interface ScheduleResult {
   dropped: ScheduleDropped;
-}
-
-export interface SchedulePayload {
-  events: EventRow[];
-  cheatDays: string[];
-  settings: AlarmSettings;
-  completions: CompletionRow[];
 }
 
 /**

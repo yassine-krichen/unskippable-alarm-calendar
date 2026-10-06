@@ -1,4 +1,4 @@
-import type { AlarmAdapter, CompletionRow, EventRow, Settings } from '@alarm-calendar/core';
+import type { AlarmAdapter, EventRow, Settings } from '@alarm-calendar/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { fake } from '@/test/fake-supabase';
@@ -31,7 +31,15 @@ const SETTINGS: Settings = {
 const row = (overrides: Partial<EventRow> & { id: string }): EventRow =>
   ({
     title: 'Take medication',
+    notes: null,
     start_at: '2026-03-02T09:01:00+00:00',
+    repeat_unit: 'none',
+    repeat_interval: 1,
+    repeat_weekdays: null,
+    ends_at: null,
+    max_snoozes: 3,
+    snooze_minutes: 5,
+    passable: true,
     updated_at: '2026-03-01T10:00:00+00:00',
     active: true,
     ...overrides,
@@ -75,10 +83,14 @@ class FakeRealtime implements RealtimeClientLike {
 }
 
 function fakeAdapter() {
-  const pushes: Array<{ events: EventRow[]; cheatDays: string[]; completions: CompletionRow[] | undefined }> = [];
+  const pushes: Array<{ events: EventRow[]; cheatDays: string[]; completedIds: string[] }> = [];
   const adapter: AlarmAdapter = {
-    setSchedule: (events, cheatDays, _settings, completions) => {
-      pushes.push({ events, cheatDays, completions });
+    setSchedule: (payload) => {
+      pushes.push({
+        events: payload.refillSource.events,
+        cheatDays: payload.refillSource.cheatDays,
+        completedIds: payload.occurrences.filter((o) => o.completed).map((o) => o.id),
+      });
       return Promise.resolve();
     },
     drainCompletions: () => Promise.resolve([]),
@@ -90,8 +102,9 @@ function fakeAdapter() {
 
 beforeEach(() => {
   vi.useFakeTimers();
-  // The completions list only keeps recent rows, so the clock sits next to the test data.
-  vi.setSystemTime(new Date('2026-03-02T10:00:00.000Z'));
+  // The completions list only keeps recent rows, and the schedule list reaches back only by the
+  // grace window, so the clock sits next to the test data.
+  vi.setSystemTime(new Date('2026-03-02T09:10:00.000Z'));
   fake.reset();
   resetSoundIdForTests();
   useSettingsStore.setState({ settings: SETTINGS });
@@ -229,7 +242,7 @@ describe('realtime change reaches the alarm adapter', () => {
     };
     client.deliver('completions', { eventType: 'INSERT', new: done });
     vi.advanceTimersByTime(300);
-    expect(pushes[0]?.completions).toEqual([done]);
+    expect(pushes[0]?.completedIds).toEqual(['a@2026-03-02T09:01:00.000Z']);
   });
 
   it('a second upsert of the same occurrence replaces the first instead of listing it twice', () => {

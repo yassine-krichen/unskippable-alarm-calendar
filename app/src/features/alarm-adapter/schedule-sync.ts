@@ -1,4 +1,11 @@
-import type { AlarmAdapter } from '@alarm-calendar/core';
+import { buildSchedulePayload } from '@alarm-calendar/core';
+import type {
+  AlarmAdapter,
+  CompletionRow,
+  EventRow,
+  SchedulePayload,
+  Settings,
+} from '@alarm-calendar/core';
 
 import { useCompletionsStore } from '@/features/completions/completions-store';
 import { useEventsStore } from '@/features/events/events-store';
@@ -8,18 +15,49 @@ import { getSoundId, subscribeSoundId } from '@/features/settings/sound-preferen
 import { useSettingsStore } from '@/features/settings/settings-store';
 
 const PUSH_DEBOUNCE_MS = 300;
+// The list is computed for a fixed horizon from the moment of the push, so it is renewed daily even
+// when nothing changed; the desktop main process also extends it on its own (see its scheduler).
+const REPUSH_INTERVAL_MS = 24 * 60 * 60 * 1000;
+// A focus that finds the inputs unchanged and a list younger than this has nothing new to say.
+const FOCUS_REPUSH_MIN_AGE_MS = 60 * 60 * 1000;
+
+/** What the expansion depends on, compared by identity: the stores replace a value when it changes. */
+interface ScheduleInputs {
+  events: EventRow[];
+  cheatDays: string[];
+  settings: Settings;
+  completions: CompletionRow[];
+  sound: string;
+}
+
+function sameInputs(a: ScheduleInputs, b: ScheduleInputs): boolean {
+  return (
+    a.events === b.events &&
+    a.cheatDays === b.cheatDays &&
+    a.settings === b.settings &&
+    a.completions === b.completions &&
+    a.sound === b.sound
+  );
+}
 
 export interface ScheduleSyncOptions {
   adapter: AlarmAdapter;
   debounceMs?: number;
+  /** Clock for the expansion; injectable for tests. */
+  now?: () => Date;
+  /** Where focus events come from; the window unless a test supplies one (there is none in node). */
+  focusTarget?: Pick<EventTarget, 'addEventListener' | 'removeEventListener'>;
   onError?: (error: unknown) => void;
 }
 
 /**
- * Keeps the platform alarm engine in step with the app's data: pushes the schedule once now, then
+ * Keeps the platform alarm engine in step with the app's data: expands the schedule (core's
+ * buildSchedulePayload: the concrete occurrences of the next 60 days) and pushes it once now, then
  * after any change to events, cheat days, settings, completions (which covers pass changes and
- * every realtime update, since those land in the same stores) or the sound choice. Debounced so a
- * burst, such as the loads after a window focus, becomes one push. Returns the stop function.
+ * every realtime update, since those land in the same stores) or the sound choice, whenever the
+ * window gains focus, and once a day. Debounced so a burst, such as the loads after a window focus,
+ * becomes one push. Expansion is memoized on the identity of its inputs for an hour, and a focus
+ * with unchanged inputs inside that hour pushes nothing. Returns the stop function.
  *
  * Call it only once the first load finished: a half-loaded store (no cheat days yet) would tell
  * the engine to ring on a day that is silenced.
@@ -27,26 +65,75 @@ export interface ScheduleSyncOptions {
 export function startScheduleSync({
   adapter,
   debounceMs = PUSH_DEBOUNCE_MS,
+  now = () => new Date(),
+  focusTarget = typeof window === 'undefined' ? undefined : window,
   onError = (error) => {
     console.warn('Could not update the alarm schedule:', error);
     reportScheduleProblem();
   },
 }: ScheduleSyncOptions): () => void {
   let timer: ReturnType<typeof setTimeout> | null = null;
+  // The last expansion that was handed to the adapter; cleared when the adapter refuses it.
+  let last: { inputs: ScheduleInputs; payload: SchedulePayload; atMs: number } | null = null;
+
+  const currentInputs = (): ScheduleInputs | null => {
+    const settings = useSettingsStore.getState().settings;
+    const events = useEventsStore.getState();
+    if (settings === null || events.status !== 'ready') return null;
+    return {
+      events: events.events,
+      cheatDays: usePassesStore.getState().cheatDays,
+      settings,
+      completions: useCompletionsStore.getState().completions,
+      sound: getSoundId(),
+    };
+  };
+
+  const isFresh = (inputs: ScheduleInputs, nowMs: number): boolean =>
+    last !== null && sameInputs(last.inputs, inputs) && nowMs - last.atMs < FOCUS_REPUSH_MIN_AGE_MS;
+
+  function onPushFailed(error: unknown): void {
+    last = null;
+    onError(error);
+  }
 
   const push = (): void => {
     timer = null;
-    const settings = useSettingsStore.getState().settings;
-    const events = useEventsStore.getState();
-    if (settings === null || events.status !== 'ready') return;
-    adapter
-      .setSchedule(
-        events.events,
-        usePassesStore.getState().cheatDays,
-        { ...settings, sound: getSoundId() },
-        useCompletionsStore.getState().completions
-      )
-      .catch(onError);
+    const inputs = currentInputs();
+    if (inputs === null) return;
+    const at = now();
+
+    // Same inputs and a list under an hour old: the expansion would come out the same.
+    if (last !== null && isFresh(inputs, at.getTime())) {
+      adapter.setSchedule(last.payload).catch(onPushFailed);
+      return;
+    }
+
+    const failedEventIds: string[] = [];
+    let payload: SchedulePayload;
+    try {
+      payload = buildSchedulePayload({
+        events: inputs.events,
+        cheatDays: inputs.cheatDays,
+        settings: { ...inputs.settings, sound: inputs.sound },
+        completions: inputs.completions,
+        now: at,
+        onEventFailed: (eventId) => failedEventIds.push(eventId),
+      });
+    } catch (error) {
+      // An unusable time zone: there is nothing to schedule from.
+      onError(error);
+      return;
+    }
+    if (payload.truncated) {
+      console.warn('The alarm schedule was cut at its size cap; it ends at', payload.horizonEnd);
+    }
+    last = { inputs, payload, atMs: at.getTime() };
+    adapter.setSchedule(payload).catch(onPushFailed);
+    // The rest of the schedule is pushed regardless; the user is told that one alarm will not ring.
+    if (failedEventIds.length > 0) {
+      onError(new Error(`Could not schedule ${failedEventIds.length} alarm(s): ${failedEventIds.join(', ')}`));
+    }
   };
 
   const pushSoon = (): void => {
@@ -70,9 +157,20 @@ export function startScheduleSync({
     subscribeSoundId(pushSoon),
   ];
 
+  // A window coming to the front is when a long-hidden app is most likely to be stale.
+  const onFocus = (): void => {
+    const inputs = currentInputs();
+    if (inputs !== null && isFresh(inputs, now().getTime())) return;
+    pushSoon();
+  };
+  focusTarget?.addEventListener('focus', onFocus);
+  const dailyTimer = setInterval(pushSoon, REPUSH_INTERVAL_MS);
+
   push();
   return () => {
     if (timer !== null) clearTimeout(timer);
+    clearInterval(dailyTimer);
+    focusTarget?.removeEventListener('focus', onFocus);
     stops.forEach((stop) => stop());
   };
 }

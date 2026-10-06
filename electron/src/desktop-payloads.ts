@@ -1,6 +1,15 @@
-import { assertValidTimeZone } from '@alarm-calendar/core';
-import type { DesktopSession, ScheduleDropped, SchedulePayload } from '@alarm-calendar/core';
+import { assertValidTimeZone, buildSchedulePayload, MAX_LOOKBACK_MINUTES } from '@alarm-calendar/core';
+import type {
+  DesktopSession,
+  LegacySchedulePayload,
+  ScheduleDropped,
+  ScheduleEventInfo,
+  ScheduleOccurrence,
+  SchedulePayload,
+} from '@alarm-calendar/core';
 import { z } from 'zod';
+
+import { parseOccurrenceId } from './alarm-ipc';
 
 /**
  * Validation of everything the main window sends over IPC. The renderer is not
@@ -12,6 +21,8 @@ import { z } from 'zod';
 export const MAX_EVENTS = 5000;
 export const MAX_CHEAT_DAYS = 5000;
 export const MAX_COMPLETIONS = 5000;
+// Same as core's MAX_SCHEDULE_OCCURRENCES: a list core built never exceeds it.
+export const MAX_OCCURRENCES = 5000;
 
 const uuid = z.string().regex(/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i);
 // Supabase returns '+00:00' offsets, the scheduler writes 'Z'; both are fine.
@@ -60,7 +71,8 @@ const settingsSchema = z.object({
   week_starts_on: smallInt(0, 6),
   refire_seconds: smallInt(1, 604_800),
   pass_cap: smallInt(0, 1000),
-  grace_minutes: smallInt(0, 525_600),
+  // Core states a larger setting as the look-back, so a payload never needs more.
+  grace_minutes: smallInt(0, MAX_LOOKBACK_MINUTES),
   sound: z
     .string()
     .regex(/^[a-z0-9-]{1,32}$/)
@@ -77,13 +89,59 @@ const completionSchema = z.object({
   done_at: timestamp,
 });
 
-// Rows are validated one at a time (see parseSchedulePayload); the envelope only fixes the shape.
-const schedulePayloadEnvelope = z.object({
+// Rows are validated one at a time (see parseSchedulePayload); the envelopes only fix the shape.
+const legacyPayloadEnvelope = z.object({
   events: z.array(z.unknown()).max(MAX_EVENTS),
   cheatDays: z.array(z.unknown()).max(MAX_CHEAT_DAYS),
   settings: settingsSchema,
   completions: z.array(z.unknown()).max(MAX_COMPLETIONS),
 });
+
+const payloadEnvelope = z.object({
+  version: z.literal(2),
+  generatedAt: timestamp,
+  horizonEnd: timestamp,
+  truncated: z.boolean(),
+  settings: settingsSchema,
+  occurrences: z.array(z.unknown()).max(MAX_OCCURRENCES),
+  eventInfo: z.record(z.string(), z.unknown()),
+  refillSource: z.object({
+    events: z.array(z.unknown()).max(MAX_EVENTS),
+    cheatDays: z.array(z.unknown()).max(MAX_CHEAT_DAYS),
+  }),
+});
+
+const eventInfoSchema = z.object({
+  title: z
+    .string()
+    .max(2000)
+    .refine((value) => value.trim().length > 0, { message: 'blank title' }),
+  notes: z.string().max(20_000).nullable(),
+  maxSnoozes: smallInt(0, 10),
+  snoozeMinutes: smallInt(1, 100_000),
+  soundId: z
+    .string()
+    .regex(/^[a-z0-9-]{1,32}$/)
+    .nullable(),
+});
+
+const occurrenceSchema = z
+  .object({
+    id: z.string().max(100),
+    eventId: uuid,
+    at: timestamp,
+    silenced: z.boolean(),
+    completed: z.boolean(),
+  })
+  .refine(
+    // The id and the instant are what the alarm screen and the completion upsert are keyed by; a
+    // list whose id disagrees with its own fields could ring one thing and complete another.
+    (value) => {
+      const parsed = parseOccurrenceId(value.id);
+      return parsed !== null && parsed.eventId === value.eventId && parsed.occurrenceAt === value.at;
+    },
+    { message: 'id does not match eventId and at' }
+  );
 
 const cheatDaySchema = z.iso.date();
 
@@ -108,7 +166,8 @@ function parseWith<T>(schema: z.ZodType<T>, payload: unknown): ParseResult<T> {
 }
 
 export type ScheduleParseResult =
-  | { ok: true; value: SchedulePayload; dropped: ScheduleDropped }
+  | { ok: true; version: 1; value: LegacySchedulePayload; dropped: ScheduleDropped }
+  | { ok: true; version: 2; value: SchedulePayload; dropped: ScheduleDropped }
   | { ok: false; reason: string };
 
 function keepValid<T>(items: readonly unknown[], schema: z.ZodType<T>): { kept: T[]; dropped: number } {
@@ -121,27 +180,102 @@ function keepValid<T>(items: readonly unknown[], schema: z.ZodType<T>): { kept: 
 }
 
 /**
- * One malformed row must not freeze the whole schedule: invalid events, cheat days and
+ * One malformed row must not freeze the whole schedule: invalid occurrences, events, cheat days and
  * completions are dropped one at a time and counted, so the rest still reaches the scheduler.
  * Only a bad envelope (not an object, arrays too large) or invalid settings rejects the payload,
  * since without a time zone nothing can be scheduled at all.
+ *
+ * A payload with `version: 2` is the precomputed schedule. One without a version is the older
+ * events-based push from a renderer that predates it; it is accepted as version 1 and the caller
+ * expands it (see upgradeLegacyPayload).
  */
 export function parseSchedulePayload(payload: unknown): ScheduleParseResult {
-  const envelope = parseWith(schedulePayloadEnvelope, payload);
+  const isVersioned =
+    typeof payload === 'object' && payload !== null && 'version' in payload;
+  return isVersioned ? parseVersion2(payload) : parseVersion1(payload);
+}
+
+function parseVersion1(payload: unknown): ScheduleParseResult {
+  const envelope = parseWith(legacyPayloadEnvelope, payload);
   if (!envelope.ok) return envelope;
   const events = keepValid(envelope.value.events, eventSchema);
   const cheatDays = keepValid(envelope.value.cheatDays, cheatDaySchema);
   const completions = keepValid(envelope.value.completions, completionSchema);
   return {
     ok: true,
+    version: 1,
     value: {
       events: events.kept,
       cheatDays: cheatDays.kept,
       settings: envelope.value.settings,
       completions: completions.kept,
     },
-    dropped: { events: events.dropped, cheatDays: cheatDays.dropped, completions: completions.dropped },
+    dropped: {
+      occurrences: 0,
+      events: events.dropped,
+      cheatDays: cheatDays.dropped,
+      completions: completions.dropped,
+    },
   };
+}
+
+function parseVersion2(payload: unknown): ScheduleParseResult {
+  const envelope = parseWith(payloadEnvelope, payload);
+  if (!envelope.ok) return envelope;
+  const { value } = envelope;
+  if (Object.keys(value.eventInfo).length > MAX_EVENTS) {
+    return { ok: false, reason: 'eventInfo: too many entries' };
+  }
+  const events = keepValid(value.refillSource.events, eventSchema);
+  const cheatDays = keepValid(value.refillSource.cheatDays, cheatDaySchema);
+
+  // The list, its per-event info and the events it can be refilled from must agree: an entry for
+  // an event that is not among the kept events (dropped as invalid, or never sent) is dropped too.
+  const keptEventIds = new Set(events.kept.map((event) => event.id));
+  const eventInfo: Record<string, ScheduleEventInfo> = {};
+  let droppedInfo = 0;
+  for (const [eventId, info] of Object.entries(value.eventInfo)) {
+    const parsedInfo = eventInfoSchema.safeParse(info);
+    if (keptEventIds.has(eventId) && parsedInfo.success) eventInfo[eventId] = parsedInfo.data;
+    else droppedInfo++;
+  }
+  const occurrences = keepValid<ScheduleOccurrence>(value.occurrences, occurrenceSchema);
+  const listed = occurrences.kept.filter((occurrence) => Object.hasOwn(eventInfo, occurrence.eventId));
+  const droppedOccurrences = value.occurrences.length - listed.length;
+
+  return {
+    ok: true,
+    version: 2,
+    value: {
+      version: 2,
+      generatedAt: value.generatedAt,
+      horizonEnd: value.horizonEnd,
+      truncated: value.truncated,
+      settings: value.settings,
+      occurrences: listed,
+      eventInfo,
+      refillSource: { events: events.kept, cheatDays: cheatDays.kept },
+    },
+    dropped: {
+      // Occurrences of a dropped event and info entries without a valid event count here too.
+      occurrences: droppedOccurrences + droppedInfo,
+      events: events.dropped,
+      cheatDays: cheatDays.dropped,
+      completions: 0,
+    },
+  };
+}
+
+/**
+ * Turns an events-based push into the precomputed schedule, with the same core pipeline the
+ * renderer now runs itself, so an older renderer keeps working during the transition.
+ */
+export function upgradeLegacyPayload(
+  legacy: LegacySchedulePayload,
+  now: Date,
+  onEventFailed?: (eventId: string, error: unknown) => void
+): SchedulePayload {
+  return buildSchedulePayload({ ...legacy, now, onEventFailed });
 }
 
 /**

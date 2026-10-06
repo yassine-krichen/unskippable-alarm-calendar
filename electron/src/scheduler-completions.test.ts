@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
-import type { CompletionRow, EventRow, Settings } from '@alarm-calendar/core';
+import { buildSchedulePayload } from '@alarm-calendar/core';
+import type {
+  AlarmSettings,
+  CompletionRow,
+  EventRow,
+  SchedulePayload,
+  Settings,
+} from '@alarm-calendar/core';
 
 import type { AlarmView } from './alarm-ipc';
 import { emptyCache } from './cache';
@@ -82,6 +89,31 @@ function createHarness(cache: CacheData = emptyCache()) {
     cache,
     rings,
     scheduler,
+    /** What the app does: expands the events at the current time, completions folded in, and pushes the list. */
+    push(
+      events: EventRow[],
+      cheatDays: string[],
+      settings: AlarmSettings,
+      completions: CompletionRow[] = []
+    ): void {
+      scheduler.setSchedule(
+        buildSchedulePayload({ events, cheatDays, settings, completions, now: new Date(time) })
+      );
+    },
+    scheduleOf(
+      events: EventRow[],
+      extra: (payload: SchedulePayload) => void
+    ): void {
+      const payload = buildSchedulePayload({
+        events,
+        cheatDays: [],
+        settings: SETTINGS,
+        completions: [],
+        now: new Date(time),
+      });
+      extra(payload);
+      scheduler.setSchedule(payload);
+    },
     // The machine was asleep through the alarm and wakes up `ms` after START.
     wakeAt(ms: number): void {
       time = START + ms;
@@ -93,7 +125,7 @@ function createHarness(cache: CacheData = emptyCache()) {
 describe('completed occurrences and the grace window', () => {
   it('rings an occurrence missed during sleep when nothing says it was done (control)', () => {
     const h = createHarness();
-    h.scheduler.setSchedule([makeEvent()], [], SETTINGS);
+    h.push([makeEvent()], [], SETTINGS);
     h.wakeAt(10 * MINUTE);
     expect(h.rings).toHaveLength(1);
   });
@@ -101,7 +133,7 @@ describe('completed occurrences and the grace window', () => {
   it('does not ring on resume an occurrence another device already completed', () => {
     const h = createHarness();
     const occurrenceAt = new Date(START + MINUTE).toISOString();
-    h.scheduler.setSchedule([makeEvent()], [], SETTINGS, [completion(occurrenceAt)]);
+    h.push([makeEvent()], [], SETTINGS, [completion(occurrenceAt)]);
     h.wakeAt(10 * MINUTE);
     expect(h.rings).toHaveLength(0);
   });
@@ -109,7 +141,7 @@ describe('completed occurrences and the grace window', () => {
   it('matches a synced completion written with a +00:00 offset, as Supabase returns it', () => {
     const h = createHarness();
     const synced = completion('2026-03-02T09:01:00+00:00');
-    h.scheduler.setSchedule([makeEvent()], [], SETTINGS, [synced]);
+    h.push([makeEvent()], [], SETTINGS, [synced]);
     h.wakeAt(10 * MINUTE);
     expect(h.rings).toHaveLength(0);
   });
@@ -119,7 +151,7 @@ describe('completed occurrences and the grace window', () => {
     const cache = emptyCache();
     cache.pendingCompletions.push(completion(new Date(START + MINUTE).toISOString()));
     const h = createHarness(cache);
-    h.scheduler.setSchedule([makeEvent()], [], SETTINGS);
+    h.push([makeEvent()], [], SETTINGS);
     h.wakeAt(10 * MINUTE);
     expect(h.rings).toHaveLength(0);
   });
@@ -131,7 +163,7 @@ describe('completed occurrences and the grace window', () => {
       start_at: new Date(START - 24 * 60 * MINUTE + MINUTE).toISOString(),
     });
     const yesterday = new Date(START - 24 * 60 * MINUTE + MINUTE).toISOString();
-    h.scheduler.setSchedule([daily], [], SETTINGS, [completion(yesterday)]);
+    h.push([daily], [], SETTINGS, [completion(yesterday)]);
     h.wakeAt(10 * MINUTE);
     expect(h.rings).toHaveLength(1);
     expect(h.rings[0]?.occurrenceAt).toBe(new Date(START + MINUTE).toISOString());
@@ -140,7 +172,7 @@ describe('completed occurrences and the grace window', () => {
   it('does not ring a completed occurrence again after the cache is reloaded', () => {
     const first = createHarness();
     const occurrenceAt = new Date(START + MINUTE).toISOString();
-    first.scheduler.setSchedule([makeEvent()], [], SETTINGS, [completion(occurrenceAt)]);
+    first.push([makeEvent()], [], SETTINGS, [completion(occurrenceAt)]);
 
     // Same data through a JSON round trip, as the app being restarted. Watermarks dropped to
     // prove the known completion alone is what suppresses the ring.
@@ -156,8 +188,8 @@ describe('known completions merge', () => {
   it('keeps a completion seen earlier when a later sync carries none', () => {
     const h = createHarness();
     const occurrenceAt = new Date(START + MINUTE).toISOString();
-    h.scheduler.setSchedule([makeEvent()], [], SETTINGS, [completion(occurrenceAt)]);
-    h.scheduler.setSchedule([makeEvent()], [], SETTINGS, []);
+    h.push([makeEvent()], [], SETTINGS, [completion(occurrenceAt)]);
+    h.push([makeEvent()], [], SETTINGS, []);
     expect(h.cache.knownCompletions).toHaveLength(1);
   });
 
@@ -165,8 +197,8 @@ describe('known completions merge', () => {
     const h = createHarness();
     const occurrenceAt = new Date(START + MINUTE).toISOString();
     const row = completion(occurrenceAt);
-    h.scheduler.setSchedule([makeEvent()], [], SETTINGS, [row, row]);
-    h.scheduler.setSchedule([makeEvent()], [], SETTINGS, [row]);
+    h.push([makeEvent()], [], SETTINGS, [row, row]);
+    h.push([makeEvent()], [], SETTINGS, [row]);
     h.scheduler.markCompleted(row);
     expect(h.cache.knownCompletions).toHaveLength(1);
   });
@@ -175,7 +207,19 @@ describe('known completions merge', () => {
     const h = createHarness();
     const old = new Date(START - KNOWN_COMPLETION_RETENTION_MS - MINUTE).toISOString();
     const recent = new Date(START - MINUTE).toISOString();
-    h.scheduler.setSchedule([makeEvent()], [], SETTINGS, [completion(old), completion(recent)]);
+    // Occurrences this old are never in a list core builds (it reaches back by the grace window),
+    // so they are added by hand: the scheduler's own pruning is what is under test.
+    h.scheduleOf([makeEvent()], (payload) => {
+      for (const at of [old, recent]) {
+        payload.occurrences.push({
+          id: `${EVENT}@${at}`,
+          eventId: EVENT,
+          at,
+          silenced: false,
+          completed: true,
+        });
+      }
+    });
     expect(h.cache.knownCompletions).toEqual([`${EVENT}@${recent}`]);
   });
 });
@@ -183,12 +227,12 @@ describe('known completions merge', () => {
 describe('sound on the alarm view', () => {
   it('passes the sound from the pushed settings to the alarm screen, null when unset', () => {
     const withSound = createHarness();
-    withSound.scheduler.setSchedule([makeEvent()], [], { ...SETTINGS, sound: 'chime' });
+    withSound.push([makeEvent()], [], { ...SETTINGS, sound: 'chime' });
     withSound.wakeAt(2 * MINUTE);
     expect(withSound.rings[0]?.soundId).toBe('chime');
 
     const without = createHarness();
-    without.scheduler.setSchedule([makeEvent()], [], SETTINGS);
+    without.push([makeEvent()], [], SETTINGS);
     without.wakeAt(2 * MINUTE);
     expect(without.rings[0]?.soundId).toBeNull();
   });

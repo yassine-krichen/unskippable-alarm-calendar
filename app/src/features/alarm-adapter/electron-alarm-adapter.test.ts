@@ -1,10 +1,5 @@
-import type {
-  CompletionRow,
-  DesktopApi,
-  EventRow,
-  ScheduleDropped,
-  SchedulePayload,
-} from '@alarm-calendar/core';
+import { buildSchedulePayload } from '@alarm-calendar/core';
+import type { CompletionRow, DesktopApi, ScheduleDropped, SchedulePayload } from '@alarm-calendar/core';
 import { describe, expect, it, vi } from 'vitest';
 
 import { createAlarmAdapter } from './create-alarm-adapter';
@@ -21,7 +16,15 @@ const SETTINGS = {
   sound: 'bell',
 };
 
-const NOTHING_DROPPED: ScheduleDropped = { events: 0, cheatDays: 0, completions: 0 };
+const NOTHING_DROPPED: ScheduleDropped = { occurrences: 0, events: 0, cheatDays: 0, completions: 0 };
+
+const PAYLOAD: SchedulePayload = buildSchedulePayload({
+  events: [],
+  cheatDays: ['2026-03-04'],
+  settings: SETTINGS,
+  completions: [],
+  now: new Date('2026-03-02T09:00:00.000Z'),
+});
 
 function fakeBridge(drained: CompletionRow[] = [], dropped: ScheduleDropped = NOTHING_DROPPED) {
   const received: SchedulePayload[] = [];
@@ -36,31 +39,21 @@ function fakeBridge(drained: CompletionRow[] = [], dropped: ScheduleDropped = NO
 }
 
 describe('ElectronAlarmAdapter', () => {
-  it('sends events, cheat days, settings and completions to the bridge as one payload', async () => {
+  it('sends the precomputed schedule to the bridge unchanged', async () => {
     const { bridge, received } = fakeBridge();
-    const events = [{ id: 'e1' }] as EventRow[];
-    const completions = [{ id: 'c1' }] as CompletionRow[];
-
-    await new ElectronAlarmAdapter(bridge).setSchedule(events, ['2026-03-04'], SETTINGS, completions);
-
-    expect(received).toEqual([{ events, cheatDays: ['2026-03-04'], settings: SETTINGS, completions }]);
-  });
-
-  it('defaults to no completions when the caller has none', async () => {
-    const { bridge, received } = fakeBridge();
-    await new ElectronAlarmAdapter(bridge).setSchedule([], [], SETTINGS);
-    expect(received[0]?.completions).toEqual([]);
+    await new ElectronAlarmAdapter(bridge).setSchedule(PAYLOAD);
+    expect(received).toEqual([PAYLOAD]);
   });
 
   it('reports rows main had to drop, once per push, and stays quiet when nothing was dropped', async () => {
-    const dropped = { events: 1, cheatDays: 0, completions: 2 };
+    const dropped = { occurrences: 3, events: 1, cheatDays: 0, completions: 2 };
     const onRowsDropped = vi.fn();
 
-    await new ElectronAlarmAdapter(fakeBridge([], dropped).bridge, onRowsDropped).setSchedule([], [], SETTINGS);
+    await new ElectronAlarmAdapter(fakeBridge([], dropped).bridge, onRowsDropped).setSchedule(PAYLOAD);
     expect(onRowsDropped).toHaveBeenCalledWith(dropped);
 
     onRowsDropped.mockClear();
-    await new ElectronAlarmAdapter(fakeBridge().bridge, onRowsDropped).setSchedule([], [], SETTINGS);
+    await new ElectronAlarmAdapter(fakeBridge().bridge, onRowsDropped).setSchedule(PAYLOAD);
     expect(onRowsDropped).not.toHaveBeenCalled();
   });
 
@@ -69,7 +62,7 @@ describe('ElectronAlarmAdapter', () => {
       setSchedule: () => Promise.reject(new Error('invalid schedule payload')),
       drainCompletions: () => Promise.resolve([]),
     };
-    await expect(new ElectronAlarmAdapter(bridge).setSchedule([], [], SETTINGS)).rejects.toThrow(
+    await expect(new ElectronAlarmAdapter(bridge).setSchedule(PAYLOAD)).rejects.toThrow(
       'invalid schedule payload'
     );
   });

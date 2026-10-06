@@ -57,8 +57,16 @@ Built on branch `v2-overnight`, not yet pushed or released. Needs the two migrat
 
 ## Phase 3: precomputed schedule and salat
 
-- Adapter contract change: `packages/core` expands concrete occurrences for the next 60 days and pushes that list to the adapters. Electron still runs its scheduler, but from the list. Android then needs almost no logic.
-- The list is re-pushed on every change, on launch and focus, and once a day while running.
+### 3a: precomputed schedule (done on branch `v2-overnight`, not yet pushed or released)
+
+- Adapter contract change: `packages/core` expands concrete occurrences for the next 60 days (`expandSchedule`, `buildSchedulePayload` in `schedule.ts`) and pushes that list to the adapters (`SchedulePayload` version 2, spec section 2). Electron still runs its scheduler, but from the list. Android then needs almost no logic.
+- The list is re-pushed on every change, on launch and focus, and once a day while running. Electron main also keeps the events, cheat days and settings it was last given and re-expands the list itself when under 7 days of horizon remain and at least daily, so a closed or crashed window does not run the alarms dry.
+- Caps: 1500 occurrences per event, 5000 in all; a cap shortens `horizonEnd` instead of silently dropping the tail. Details in `docs/decisions.md`.
+- Electron cache is `version: 2` (migrated from 1 on load); a version 1 push from an older renderer is still accepted.
+- For salat (3b): prayer times become another occurrence source inside `expandSchedule`, with `passable: false` (so a cheat day never silences them), a sound id for the user-chosen file, and snooze rules from settings (default off). The engines need no change. Text that depends on state, such as "You haven't logged Dhuhr", is fixed when the list is built, so the list must be rebuilt when a prayer is logged; the app already re-pushes on every completion change.
+
+### 3b: salat
+
 - Prayer times use the `adhan` library (offline). Its Kotlin twin exists for Android.
   - Defaults for Tunis/Ariana: Fajr 18°, Isha 18° (the Tunisian ministry convention), Asr shadow factor 1 (Maliki), location Ariana (about 36.86 N, 10.19 E).
   - Method, location and per-prayer minute offsets are editable in Settings.

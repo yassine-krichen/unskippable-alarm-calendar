@@ -3,6 +3,7 @@ export * from './recurrence';
 export * from './snooze';
 export * from './wallet';
 export * from './habits';
+export * from './schedule';
 export {
   assertValidTimeZone,
   dateStringFromDayNumber,

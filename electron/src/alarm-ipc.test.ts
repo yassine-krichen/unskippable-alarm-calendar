@@ -1,9 +1,18 @@
 import { describe, expect, it } from 'vitest';
 
+import { makeOccurrenceId as coreMakeOccurrenceId } from '@alarm-calendar/core';
+
 import { makeOccurrenceId, parseOccurrenceId } from './alarm-ipc';
 
 const EVENT_ID = '11111111-1111-4111-8111-111111111111';
 const INSTANT = '2026-03-02T09:01:00.000Z';
+
+describe('makeOccurrenceId', () => {
+  it('builds the same id as core, which names the entries of the schedule list', () => {
+    const at = new Date(INSTANT);
+    expect(makeOccurrenceId(EVENT_ID, at)).toBe(coreMakeOccurrenceId(EVENT_ID, at));
+  });
+});
 
 describe('parseOccurrenceId', () => {
   it('round-trips an id built by makeOccurrenceId', () => {

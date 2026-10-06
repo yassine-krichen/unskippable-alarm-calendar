@@ -102,7 +102,7 @@ mirror (step 10) and the app code must follow these.
 - **Signing out keeps the cached schedule.** On sign-out main drops the token and the sink client but
   leaves `cache.json` as is, so alarms keep ringing until another account signs in and replaces it (an
   unskippable alarm should not be switchable off by signing out). Two side effects: event titles and
-  notes stay on disk in `cache.json` until the next push replaces them, and deleting `cache.json`
+  notes stay on disk in `schedule.json` (and, while ringing, `cache.json`) until the next push replaces them, and deleting `cache.json`
   (a cache reset) re-applies the packaged autostart default, because `autostartInitialized` lives there.
 - **A hidden main window recovers on its own.** It is created at launch and never throttled
   (`backgroundThrottling: false`). A renderer crash or a failed page load is retried with backoff
@@ -200,3 +200,83 @@ mirror (step 10) and the app code must follow these.
   29th. Editing a pair with no typed year plans from the pair's `created_at`, the basis the form uses to decide whether a
   year was typed, so a later edit never turns a derived year into a shown one.
 
+
+- **Precomputed schedule (roadmap-v2 phase 3a): the engines consume a list, core computes it.** `expandSchedule` in
+  `packages/core/src/schedule.ts` produces concrete occurrences (id `${eventId}@${utcIso}`, as before) with cheat day
+  silencing and completions already applied; `SchedulePayload` version 2 replaces the events-based push. Reason: the
+  Kotlin AlarmEngine would otherwise need the recurrence mirror, the cheat day rule and, from the next phases, prayer
+  times, modes and exam sessions. The pipeline is sources (event series now; prayer and exam sessions later) then
+  annotations (cheat days, completions; modes later) then sort, dedupe and bound, all on one `ScheduleOccurrence`
+  record, so a new source never touches an engine. An occurrence is thin (`id`, `eventId`, `at`, `silenced`,
+  `completed`); title, notes, snooze rules and sound are stored once per event in `eventInfo`, whose keys are also the
+  active event ids. A later source that needs a per-occurrence text (the pre-prayer "You haven't logged Dhuhr") adds an
+  optional override on the occurrence rather than a second copy of everything.
+- **`expandSchedule` returns an object, not a bare array.** A caller also needs the horizon the list is actually complete
+  to (a cap can shorten it) and which events were active. `buildSchedulePayload` wraps it for the adapters.
+- **Horizon 60 days, grace look-back at most 7 days, caps 1500 per event and 5000 in all.** The horizon is uniform: a
+  shorter horizon for sub-daily alarms was considered and dropped, because it would make `horizonEnd` the minimum over
+  all events and shrink everyone's safety margin for one hourly alarm (one hourly alarm is 1440 occurrences and fits).
+  Instead a cap that cuts anything moves `horizonEnd` back to just before the first occurrence cut and sets `truncated`,
+  so the list is always truthful ("complete through horizonEnd") and an engine never mistakes a cut for silence. The 7 day
+  look-back equals how long the scheduler remembers completions; it only matters for a `grace_minutes` setting above
+  that. Before `now` only the latest occurrence of each event is listed (the only one that can ring), and a cap never
+  cuts at or before `now`, so `horizonEnd` is never earlier than `generatedAt`; if the backfilled occurrences alone
+  exceed the cap (more than 5000 active events) they all stay and the horizon ends at `now`. `grace_minutes` is validated
+  up to the look-back (10080) and the scheduler clamps to it; `buildSchedulePayload` states a larger database setting as
+  the look-back, so a legitimate push is never refused. Measured (Europe/Paris, `JSON.stringify`, titles about 35
+  characters): 20 daily alarms are 1220 occurrences, 240 KB as pushed and as `schedule.json`; four hourly alarms hit the
+  5000 cap, 0.94 MB; the worst case found, four hourly alarms with 20 kB notes each, is 1.10 MB (the notes are stored
+  twice, once in `eventInfo` and once in `refillSource.events`); 100 daily alarms hit the cap at 0.99 MB. The previous
+  shape (title, notes, snooze rules and sound repeated in every occurrence) was about 330 bytes per occurrence, 1.6 MB
+  at the cap, plus the notes once per occurrence.
+- **The list is renewed by the app and by main.** The app re-pushes on every change, launch, window focus and once a day.
+  Electron main additionally keeps the events, cheat days and settings it was last given (`refillSource`, stored in
+  `schedule.json`) and re-expands the list itself when it is a day old or under 7 days of horizon remain (at most hourly,
+  so a cap-shortened horizon does not re-expand every 30 s), when none exists, or when it is dated in the future after a
+  clock change. Reason: a renderer that is closed, crashed or signed out for weeks must not leave the alarms without a
+  future, and the daily rule bounds the damage of a wrong `horizonEnd`.
+- **Android implication.** A native engine that only stores the list has no way to extend it: after 60 days without the
+  app opening it goes silent. 3a does not change that, it makes the fix small: either a periodic WorkManager job that
+  wakes the app to re-push (and, when the horizon is under 7 days, notifies the user to open it), or the Kotlin side
+  mirrors `expandSchedule`'s recurrence. Prefer the first; decide when the Android project exists. The engine also needs
+  `eventInfo` (to dismiss an alarm whose event was deleted) and must keep its own copy of the title and snooze rules
+  of a ringing or snoozed alarm, as Electron now does, because an occurrence leaves the list once it is older than the grace window.
+- **`completed` and `silenced` are flags in the list, not rules in the engine.** Completions no longer travel in the
+  payload; an occurrence done on any device arrives as `completed: true`. The Electron scheduler still keeps the ids it
+  has seen for 7 days (`knownCompletions`), so a later push with fewer flags cannot make a done occurrence ring again.
+  The cost: a cheat day or completion added while the app is closed is not seen by an engine until the next push (before:
+  cheat days had the same limit, they came from the last push).
+- **Ringing and snoozed state carries its own copy of the alarm's text and snooze rules.** The list drops an occurrence
+  once it is older than the grace window, but a long snooze or an unclosed alarm outlives that. A new push refreshes the
+  copy from the event's `eventInfo` (an edited title applies to a ringing alarm, as before).
+- **The cache is two files, so a ring does not rewrite the list.** `schedule.json` (events, cheat days, settings and the
+  schedule, written atomically by `createCachePersister`) is rewritten only when a push or a refill replaced those
+  objects (compared by identity); `cache.json` (ringing and snoozed state, watermarks, pending and known completions,
+  autostart flag) is small and written on every state change, also atomically (temp file, fsync, rename). Measured: a
+  typical ring writes 7 KB (20 alarms ringing at once) instead of the 240 KB list, and about 1.6 KB with nothing
+  ringing; the schedule file is written at most once per push, once per focus after an hour, daily, and per refill. The
+  schedule file is written first, so a crash between the two leaves state one step behind a newer schedule, which the
+  watermarks make harmless. The files fail independently: a corrupt `schedule.json` is moved aside and costs the
+  schedule (the next push rebuilds it), not the ringing state or the pending completions.
+- **Electron cache `version: 2` (state in `cache.json`, schedule in `schedule.json`), migrated on load; an old build cannot read it.** A version 1 file keeps its events,
+  cheat days, settings, watermarks and completions; ringing and snoozed states are filled from their events (and dropped if
+  the event is gone); the list is rebuilt on the first start. Going back is not supported: a build that predates 3a moves a
+  version 2 file aside as unreadable and starts empty until the next push. Do not point an old build at a data folder the
+  new one has used (the daily dev folder `%APPDATA%\alarm-calendar-dev` is shared by worktrees).
+- **A push in the old events-based format is still accepted by Electron main** and expanded there with the same function,
+  so a renderer that predates 3a (an app bundle cached or not yet rebuilt) keeps ringing. Delete `upgradeLegacyPayload`
+  and the version 1 parse path once that cannot happen. The payload check keeps the three parts consistent: an
+  occurrence or `eventInfo` entry of an event that is not among the kept `refillSource` events (invalid or absent) is
+  dropped and counted in `dropped.occurrences`. Main's `makeOccurrenceId` is a copy of core's (the preload bundles
+  `alarm-ipc.ts` and must not pull in the recurrence code); a test keeps them equal.
+- **Parity is proven against the real phase 2 scheduler, vendored.** `electron/test-fixtures/legacy/` holds frozen copies
+  of `scheduler.ts`, `cache.ts` and `alarm-ipc.ts` from commit 3ab5731 (outside `src/`, so not in the build);
+  `schedule-parity.test.ts` runs the old and the list-driven scheduler on one fake clock with the same pushes and the
+  same user actions and compares (occurrence id, ring instant, snooze label) and the pending completions. Variants: every
+  alarm answered at once for 30 days (Paris across both DST changes and the Feb 28 clamp, Tunis as the no-DST control),
+  never answered (window closed, refire), snoozed to the limit then done, and a mid-run re-push with an edited time. The
+  30 day runs use an hourly alarm every hour only in the spring window (every 6 hours elsewhere) to keep the suite near
+  15 s. Delete the fixtures and the test once phase 3b has shipped.
+- **The renderer skips redundant pushes.** Expansion is memoized on the identity of its inputs (events, cheat days,
+  settings, completions, sound) for an hour; a focus with unchanged inputs and a list under an hour old pushes nothing.
+  A refused push clears the memo.

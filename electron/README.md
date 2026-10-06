@@ -43,12 +43,40 @@ loader for the shared React app (`app/`). See `docs/spec.md` sections 6 and 9.
   (custom protocol, path-traversal guarded, serves `app/dist`). Navigation and redirects are
   allowed only within that exact origin; windows and webviews are never opened. CSP: Supabase over
   https and wss, nothing else; inline scripts only in dev (react-refresh).
-- **Schedule.** The renderer pushes events, cheat days, settings (with the sound choice) and
-  recent completions through `desktopApi.setSchedule` after the first load and after every change
-  (including realtime changes). Main validates the payload with zod (`desktop-payloads.ts`),
-  persists it to the cache and re-evaluates, so alarms keep working with the app closed and offline.
-  Invalid rows are dropped one at a time (counted, logged, and the app shows one toast); only bad
-  settings or an invalid envelope reject the push.
+- **Schedule.** The renderer expands the schedule with core (`buildSchedulePayload`: every
+  occurrence from now minus the grace window to now plus 60 days, with cheat days and completions
+  already applied) and pushes that list through `desktopApi.setSchedule` after the first load, after
+  every change (including realtime changes), when the window gains focus and once a day. Main
+  validates the payload with zod (`desktop-payloads.ts`), persists it to the cache and re-evaluates,
+  so alarms keep working with the app closed and offline. Invalid rows are dropped one at a time
+  (counted, logged, and the app shows one toast); only bad settings or an invalid envelope reject the
+  push. The scheduler (`scheduler.ts`) only rings what is in the list; it has no recurrence logic.
+- **Self-refill.** The payload also carries the events and cheat days the list was built from
+  (`refillSource`); main keeps them in `schedule.json` with the settings. `AlarmScheduler` re-expands the
+  list itself (log `schedule.refilled`) when it is a day old, when under 7 days of horizon remain (at
+  most hourly), when there is no list yet (first start after a version 1 cache) or when it is dated in
+  the future. So a window that stays closed or crashed for weeks does not leave the alarms without a
+  future; the 100-day test in `schedule-engine.test.ts` runs the engine with a single push.
+- **Parity test.** `test-fixtures/legacy/` is a frozen copy of the phase 2 scheduler;
+  `schedule-parity.test.ts` runs it beside the current one and compares what rings. Remove after 3b.
+- **Older renderer.** A push without `version` (events, cheat days, settings, completions) is still
+  accepted: main expands it with the same core function (`upgradeLegacyPayload`). Remove once no
+  renderer older than phase 3a can be running.
+- **Size caps.** Occurrences are thin (the text and snooze rules sit once per event in `eventInfo`);
+  before now only the latest occurrence per event is listed. 1500 occurrences per event, 5000 in all. When a cap cuts occurrences off, the
+  horizon moves back to just before the first one cut and main logs `schedule.truncated`; the refill
+  extends it again. One hourly alarm (1440 in 60 days) fits; four or more do not and shorten the horizon.
+- **Cache version 2, two files.** `schedule.json` holds the list next to the events, cheat days and
+  settings it was built from; it is rewritten only when a push or a refill replaced them (a 5000 entry list
+  is about 1 MB). `cache.json` holds the small rest (ringing and snoozed state, watermarks, pending and
+  known completions) and is rewritten on every ring, snooze and Done. Both writes are atomic. Each
+  ringing or snoozed state carries a copy of its title, notes and snooze rules (the list drops an
+  occurrence once it is older than the grace window, and a long snooze must outlive that). A version 1 file
+  is migrated on load: states are filled from their events and the list is rebuilt on the first start.
+  An older build reading a version 2 file treats it as unreadable, moves it aside and starts empty
+  until the next push, so do not run a pre-3a build on a data folder a 3a build has used.
+  Which ringing alarms an edit dismisses is decided by `eventInfo` (an event without an entry is deleted or inactive).
+  A corrupt `schedule.json` is moved aside and costs only the schedule (rebuilt by the next push).
 - **The window exists from launch.** The main window is created hidden at start (an autostarted
   launch passes `--hidden` and stays in the tray) because the React app is what syncs from Supabase.
 - **Completions: main is the only flush owner.** Done writes a pending row into the cache; the

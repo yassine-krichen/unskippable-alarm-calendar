@@ -33,12 +33,57 @@ The UI talks to the platform through one interface, implemented twice (`Electron
 
 ```ts
 interface AlarmAdapter {
-  setSchedule(events: EventRow[], cheatDays: string[], settings: Settings): Promise<void>
+  setSchedule(payload: SchedulePayload): Promise<void>   // the precomputed schedule, see below
   drainCompletions(): Promise<CompletionRow[]>   // completions made while the app was closed or offline
   getPermissionStatus(): Promise<PermissionStatus>
   openPermissionSettings(): Promise<void>
 }
+
+interface SchedulePayload {
+  version: 2
+  generatedAt: string       // ISO UTC, when the list was computed
+  horizonEnd: string        // the list is complete for every active event up to here, inclusive
+  truncated: boolean        // a size cap shortened the horizon
+  settings: AlarmSettings   // timezone, grace_minutes, refire_seconds, ... plus the device's sound id
+  occurrences: ScheduleOccurrence[]   // ascending by `at`, then event id
+  eventInfo: Record<string, ScheduleEventInfo>   // per active event, even one with no occurrence in the window
+  refillSource: { events: EventRow[]; cheatDays: string[] }   // Electron main only; other engines ignore it
+}
+
+interface ScheduleOccurrence {   // thin on purpose: what differs per ring
+  id: string                // `${eventId}@${at}`, the id the alarm screen and the completion upsert use
+  eventId: string
+  at: string                // ISO UTC with milliseconds
+  silenced: boolean         // a cheat day covers it (passable only): never rings
+  completed: boolean        // a completion is known for it, on any device: never rings
+}
+
+interface ScheduleEventInfo {   // what is the same for every ring of an event, stored once
+  title: string; notes: string | null
+  maxSnoozes: number; snoozeMinutes: number
+  soundId: string | null
+}
 ```
+
+**Precomputed schedule (roadmap v2, phase 3a).** The engines do not compute recurrence. `expandSchedule` and
+`buildSchedulePayload` in `packages/core/src/schedule.ts` turn events, cheat days, settings and completions into the
+list above: every occurrence from `now` to `now + 60 days`, plus, per event, the latest occurrence inside the grace
+window before `now` (at most 7 days back; of several missed ones only the latest can ring), deduplicated, sorted, with
+cheat days (by local date in the settings time zone) and completions already applied. A platform engine rings what is in
+the list, applies the grace window, the snooze and re-fire rules (sections 6, 9, 10) and tracks its own ringing state,
+and needs no recurrence, cheat day, mode or prayer logic. Later phases add their occurrences (prayer times, exam
+revision sessions) as further sources of the same record, and modes as transforms of it, inside core.
+
+Bounds: at most 1500 occurrences per event and 5000 in all. When a cap cuts occurrences off, `horizonEnd` moves back to
+just before the first one cut and `truncated` is true, so an engine never reads silence as "nothing scheduled". A cap
+never cuts at or before `now` (`horizonEnd` is never earlier than `generatedAt`). `grace_minutes` is validated up to the
+7 day look-back, and `buildSchedulePayload` states a larger setting as the look-back.
+The app pushes a fresh list on every change, on launch, when the window gains focus, and once a day. An engine that can
+re-expand itself (Electron main, via `refillSource`) does so when under 7 days of horizon remain and at least daily.
+`eventInfo` is how an engine learns an event was deleted or switched off: it dismisses a ringing or snoozed
+alarm only when its event has no entry there (an occurrence that has aged out of the list, such as a snooze longer than the
+grace window, must not end the alarm). An older renderer that still pushes the version 1 payload (`events`, `cheatDays`,
+`settings`, `completions`) is accepted by Electron main, which expands it with the same core function.
 
 ## 2a. Environment, secrets and Supabase setup
 
@@ -222,17 +267,17 @@ Auth screen: **email one-time code** (enter email, receive a 6-digit code, enter
 
 - Main process owns the scheduler, not the renderer, so alarms fire even if the main window is closed. Closing the main window hides to tray. Quit only from the tray menu.
 - Autostart: `app.setLoginItemSettings({ openAtLogin: true })`. Add a toggle in Settings.
-- Scheduler: keep the next due occurrence per event in memory, one `setTimeout` to the soonest. Also re-evaluate every 30 seconds and on `powerMonitor` `resume` and `unlock-screen`, to survive sleep and timer drift. Apply the grace-window rule on resume.
+- Scheduler: works from the precomputed occurrence list (section 2) held in the cache: one `setTimeout` to the soonest occurrence not yet handled, plus the wake-up times of snoozed and re-firing alarms. Also re-evaluate every 30 seconds and on `powerMonitor` `resume` and `unlock-screen`, to survive sleep and timer drift. Apply the grace-window rule on resume.
 - Alarm window: `BrowserWindow` with `frame: false`, `alwaysOnTop: true` at level `screen-saver`, `skipTaskbar: false`, `fullscreen` or maximized, focused, no close button. Loads the React route `/alarm?occurrence=...`. If it gets closed anyway, the main process re-opens it after `refire_seconds`.
 - Sound: HTMLAudioElement looping in the alarm window, bundled mp3.
-- Local cache: events, cheat days, settings, and pending completions in a JSON or SQLite file in `userData`. Sync from Supabase on launch plus a realtime subscription, flush pending completions when online.
+- Local cache: the occurrence list, the events, cheat days and settings it was built from (main re-expands the list from them, see section 2), the ringing and snoozed state, and pending completions in a JSON file in `userData` (`version: 2`; a version 1 file is migrated on load and its list rebuilt on the first start). Sync from Supabase on launch plus a realtime subscription, flush pending completions when online.
 - Known limit: always-on-top does not draw over **exclusive fullscreen** games. Document this in the README: run matches in borderless windowed. Sound and taskbar flash still happen.
 
 ## 10. Android specifics (AlarmEngine plugin, Kotlin)
 
 Components:
-- **Plugin class** exposing the `AlarmAdapter` methods. `setSchedule` stores events, cheat days and settings in local storage (Room or SharedPreferences JSON) and reschedules.
-- **Scheduler:** for each event compute `nextOccurrence` (Kotlin mirror of section 5) and schedule the single soonest alarm with `AlarmManager.setAlarmClock()` (Doze exempt, shows the system alarm icon). When one fires, schedule the next soonest. Snoozes and re-fires use `setAlarmClock` too.
+- **Plugin class** exposing the `AlarmAdapter` methods. `setSchedule` stores the precomputed `SchedulePayload` (section 2) in local storage (Room or SharedPreferences JSON) and reschedules. Nothing in it needs the recurrence mirror.
+- **Scheduler:** from the stored occurrence list take the soonest one that is not `silenced`, not `completed` and not yet handled, and schedule it with `AlarmManager.setAlarmClock()` (Doze exempt, shows the system alarm icon). When one fires, schedule the next soonest. Snoozes and re-fires use `setAlarmClock` too.
 - **AlarmReceiver** (BroadcastReceiver) starts **AlarmService**.
 - **AlarmService:** foreground service, notification channel with importance HIGH and a **full-screen intent** pointing to AlarmActivity. Plays the sound looping on `AudioAttributes.USAGE_ALARM` at the alarm stream volume, holds a partial wake lock while ringing.
 - **AlarmActivity:** native screen, `setShowWhenLocked(true)`, `setTurnScreenOn(true)`, keeps the screen on. Shows title, time, Done, and Snooze (with remaining count, hidden when none left). Style it dark and clean to match the app: big type, large rounded buttons. Back button is disabled. If it is dismissed without a choice, AlarmService schedules a re-fire after `refire_seconds`.

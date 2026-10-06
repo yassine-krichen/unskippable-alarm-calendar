@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
-import type { EventRow, Settings } from '@alarm-calendar/core';
+import { buildSchedulePayload } from '@alarm-calendar/core';
+import type { AlarmSettings, EventRow, Settings } from '@alarm-calendar/core';
 
 import type { AlarmView } from './alarm-ipc';
 import { emptyCache } from './cache';
 import type { CacheData } from './cache';
+import { FakeClock } from './fake-clock';
 import { AlarmScheduler, REEVALUATE_INTERVAL_MS } from './scheduler';
-import type { Timers } from './scheduler';
 
 const SECOND = 1000;
 const MINUTE = 60 * SECOND;
@@ -17,77 +18,6 @@ const START = Date.parse('2026-03-02T09:00:00.000Z');
 
 const EVENT_A = '11111111-1111-4111-8111-111111111111';
 const EVENT_B = '22222222-2222-4222-8222-222222222222';
-
-interface FakeTimer {
-  at: number;
-  callback: () => void;
-  interval: number | null;
-}
-
-class FakeClock {
-  time = START;
-  private nextId = 1;
-  private readonly pending = new Map<number, FakeTimer>();
-  /** Every delay ever passed to setTimeout, to check what the scheduler asked for. */
-  readonly timeoutDelays: number[] = [];
-
-  readonly timers: Timers = {
-    setTimeout: (callback, ms) => {
-      this.timeoutDelays.push(ms);
-      return this.add(callback, ms, null);
-    },
-    clearTimeout: (handle) => this.pending.delete(handle as number),
-    setInterval: (callback, ms) => this.add(callback, ms, ms),
-    clearInterval: (handle) => this.pending.delete(handle as number),
-  };
-
-  now = (): Date => new Date(this.time);
-
-  get timerCount(): number {
-    return this.pending.size;
-  }
-
-  /** Forgets every pending one-shot timeout, as if the timer had drifted or never fired. */
-  dropTimeouts(): void {
-    for (const [id, timer] of this.pending) {
-      if (timer.interval === null) this.pending.delete(id);
-    }
-  }
-
-  dropIntervals(): void {
-    for (const [id, timer] of this.pending) {
-      if (timer.interval !== null) this.pending.delete(id);
-    }
-  }
-
-  /** Runs timers in order up to the new time, like real time passing while awake. */
-  advance(ms: number): void {
-    const target = this.time + ms;
-    for (;;) {
-      const next = [...this.pending.entries()]
-        .filter(([, timer]) => timer.at <= target)
-        .sort((a, b) => a[1].at - b[1].at)[0];
-      if (next === undefined) break;
-      const [id, timer] = next;
-      this.time = Math.max(this.time, timer.at);
-      if (timer.interval === null) this.pending.delete(id);
-      else timer.at += timer.interval;
-      timer.callback();
-    }
-    this.time = target;
-  }
-
-  /** Moves the clock without running any timer, like the machine being asleep. */
-  sleepFor(ms: number): void {
-    this.time += ms;
-  }
-
-  private add(callback: () => void, ms: number, interval: number | null): number {
-    const id = this.nextId++;
-    this.pending.set(id, { at: this.time + ms, callback, interval });
-    return id;
-  }
-}
 
 function makeEvent(overrides: Partial<EventRow> & { id: string }): EventRow {
   return {
@@ -124,7 +54,7 @@ interface HarnessOptions {
 }
 
 function createHarness(cache: CacheData = emptyCache(), options: HarnessOptions = {}) {
-  const clock = new FakeClock();
+  const clock = new FakeClock(START);
   const rings: AlarmView[] = [];
   const dismissed: string[] = [];
   const logs: string[] = [];
@@ -159,6 +89,12 @@ function createHarness(cache: CacheData = emptyCache(), options: HarnessOptions 
     dismissed,
     logs,
     scheduler,
+    /** What the app does: expands the events at the current time and pushes the list. */
+    push(events: EventRow[], cheatDays: string[], settings: AlarmSettings): void {
+      scheduler.setSchedule(
+        buildSchedulePayload({ events, cheatDays, settings, completions: [], now: clock.now() })
+      );
+    },
     get afterEvaluateCount() {
       return afterEvaluateCount;
     },
@@ -177,7 +113,7 @@ function ringingView(rings: AlarmView[]): AlarmView {
 describe('AlarmScheduler', () => {
   it('rings an event at its start time and not before', () => {
     const h = createHarness();
-    h.scheduler.setSchedule([makeEvent({ id: EVENT_A })], [], SETTINGS);
+    h.push([makeEvent({ id: EVENT_A })], [], SETTINGS);
     h.scheduler.start();
 
     h.clock.advance(MINUTE - SECOND);
@@ -193,7 +129,7 @@ describe('AlarmScheduler', () => {
 
   it('uses one timeout aimed at the soonest event', () => {
     const h = createHarness();
-    h.scheduler.setSchedule(
+    h.push(
       [
         makeEvent({ id: EVENT_A, start_at: new Date(START + 10 * MINUTE).toISOString() }),
         makeEvent({ id: EVENT_B, start_at: new Date(START + 5 * MINUTE).toISOString() }),
@@ -213,7 +149,7 @@ describe('AlarmScheduler', () => {
 
   it('re-evaluates every 30 seconds so a drifted timer cannot miss an alarm', () => {
     const h = createHarness();
-    h.scheduler.setSchedule([makeEvent({ id: EVENT_A })], [], SETTINGS);
+    h.push([makeEvent({ id: EVENT_A })], [], SETTINGS);
     h.scheduler.start();
 
     // The one-shot timeout never fires; only the interval is left to notice.
@@ -228,7 +164,7 @@ describe('AlarmScheduler', () => {
     const maxTimeoutMs = 2 ** 31 - 1;
     const thirtyDays = 30 * 24 * HOUR;
     const h = createHarness();
-    h.scheduler.setSchedule(
+    h.push(
       [makeEvent({ id: EVENT_A, start_at: new Date(START + thirtyDays).toISOString() })],
       [],
       SETTINGS
@@ -247,7 +183,7 @@ describe('AlarmScheduler', () => {
 
   it('tells the host after every evaluation and logs only when something happened', () => {
     const h = createHarness();
-    h.scheduler.setSchedule([makeEvent({ id: EVENT_A })], [], SETTINGS);
+    h.push([makeEvent({ id: EVENT_A })], [], SETTINGS);
     h.scheduler.start();
     const evaluationsBefore = h.afterEvaluateCount;
     const logsBefore = h.logs.length;
@@ -260,7 +196,7 @@ describe('AlarmScheduler', () => {
   describe('snoozing', () => {
     it('allows exactly max_snoozes snoozes, then offers none', () => {
       const h = createHarness();
-      h.scheduler.setSchedule(
+      h.push(
         [makeEvent({ id: EVENT_A, max_snoozes: 3, snooze_minutes: 5 })],
         [],
         SETTINGS
@@ -293,7 +229,7 @@ describe('AlarmScheduler', () => {
 
     it('never offers or accepts a snooze when max_snoozes is 0', () => {
       const h = createHarness();
-      h.scheduler.setSchedule([makeEvent({ id: EVENT_A, max_snoozes: 0 })], [], SETTINGS);
+      h.push([makeEvent({ id: EVENT_A, max_snoozes: 0 })], [], SETTINGS);
       h.scheduler.start();
       h.clock.advance(MINUTE);
 
@@ -305,7 +241,7 @@ describe('AlarmScheduler', () => {
 
     it('records the snoozes used on the completion', () => {
       const h = createHarness();
-      h.scheduler.setSchedule(
+      h.push(
         [makeEvent({ id: EVENT_A, max_snoozes: 2, snooze_minutes: 1 })],
         [],
         SETTINGS
@@ -329,7 +265,7 @@ describe('AlarmScheduler', () => {
   describe('closing the alarm window without a choice', () => {
     it('re-rings after refire_seconds and keeps the snoozes already used', () => {
       const h = createHarness();
-      h.scheduler.setSchedule(
+      h.push(
         [makeEvent({ id: EVENT_A, max_snoozes: 2, snooze_minutes: 1 })],
         [],
         { ...SETTINGS, refire_seconds: 20 }
@@ -355,7 +291,7 @@ describe('AlarmScheduler', () => {
 
     it('does not re-ring a window closed by the app after Done or Snooze', () => {
       const h = createHarness();
-      h.scheduler.setSchedule([makeEvent({ id: EVENT_A, snooze_minutes: 60 })], [], SETTINGS);
+      h.push([makeEvent({ id: EVENT_A, snooze_minutes: 60 })], [], SETTINGS);
       h.scheduler.start();
       h.clock.advance(MINUTE);
       const view = ringingView(h.rings);
@@ -368,7 +304,7 @@ describe('AlarmScheduler', () => {
 
     it('rings an alarm that was on screen when the app was killed', () => {
       const first = createHarness();
-      first.scheduler.setSchedule([makeEvent({ id: EVENT_A })], [], SETTINGS);
+      first.push([makeEvent({ id: EVENT_A })], [], SETTINGS);
       first.scheduler.start();
       first.clock.advance(MINUTE);
       expect(first.rings).toHaveLength(1);
@@ -384,7 +320,7 @@ describe('AlarmScheduler', () => {
 
     it('keeps a window-closed refire across a restart', () => {
       const first = createHarness();
-      first.scheduler.setSchedule([makeEvent({ id: EVENT_A })], [], SETTINGS);
+      first.push([makeEvent({ id: EVENT_A })], [], SETTINGS);
       first.scheduler.start();
       first.clock.advance(MINUTE);
       first.scheduler.windowClosed(ringingView(first.rings).occurrenceId);
@@ -403,7 +339,7 @@ describe('AlarmScheduler', () => {
 
     it('rings at once after a restart when the refire time already passed', () => {
       const first = createHarness();
-      first.scheduler.setSchedule([makeEvent({ id: EVENT_A })], [], SETTINGS);
+      first.push([makeEvent({ id: EVENT_A })], [], SETTINGS);
       first.scheduler.start();
       first.clock.advance(MINUTE);
       first.scheduler.windowClosed(ringingView(first.rings).occurrenceId);
@@ -417,7 +353,7 @@ describe('AlarmScheduler', () => {
 
     it('rings a snoozed alarm at once after a restart when its wake time already passed', () => {
       const first = createHarness();
-      first.scheduler.setSchedule(
+      first.push(
         [makeEvent({ id: EVENT_A, max_snoozes: 3, snooze_minutes: 5 })],
         [],
         SETTINGS
@@ -437,7 +373,7 @@ describe('AlarmScheduler', () => {
 
     it('keeps a snoozed alarm waiting across a restart when its wake time is ahead', () => {
       const first = createHarness();
-      first.scheduler.setSchedule([makeEvent({ id: EVENT_A, snooze_minutes: 5 })], [], SETTINGS);
+      first.push([makeEvent({ id: EVENT_A, snooze_minutes: 5 })], [], SETTINGS);
       first.scheduler.start();
       first.clock.advance(MINUTE);
       first.scheduler.snooze(ringingView(first.rings).occurrenceId);
@@ -457,7 +393,7 @@ describe('AlarmScheduler', () => {
           if (attempt === 1) throw new Error('window creation failed');
         },
       });
-      h.scheduler.setSchedule([makeEvent({ id: EVENT_A })], [], {
+      h.push([makeEvent({ id: EVENT_A })], [], {
         ...SETTINGS,
         refire_seconds: 20,
       });
@@ -476,7 +412,7 @@ describe('AlarmScheduler', () => {
   describe('grace window after sleep', () => {
     it('rings immediately on resume when the occurrence is within grace_minutes', () => {
       const h = createHarness();
-      h.scheduler.setSchedule([makeEvent({ id: EVENT_A })], [], SETTINGS);
+      h.push([makeEvent({ id: EVENT_A })], [], SETTINGS);
       h.scheduler.start();
 
       h.clock.sleepFor(MINUTE + 10 * MINUTE);
@@ -487,7 +423,7 @@ describe('AlarmScheduler', () => {
 
     it('ignores an occurrence older than grace_minutes', () => {
       const h = createHarness();
-      h.scheduler.setSchedule([makeEvent({ id: EVENT_A })], [], SETTINGS);
+      h.push([makeEvent({ id: EVENT_A })], [], SETTINGS);
       h.scheduler.start();
 
       h.clock.sleepFor(MINUTE + 31 * MINUTE);
@@ -497,7 +433,7 @@ describe('AlarmScheduler', () => {
 
     it('rings only once for a long sleep across several recurrences', () => {
       const h = createHarness();
-      h.scheduler.setSchedule(
+      h.push(
         [makeEvent({ id: EVENT_A, repeat_unit: 'hour', repeat_interval: 1 })],
         [],
         { ...SETTINGS, grace_minutes: 180 }
@@ -510,9 +446,34 @@ describe('AlarmScheduler', () => {
       expect(h.rings[0]?.occurrenceAt).toBe(new Date(START + 3 * HOUR + MINUTE - HOUR).toISOString());
     });
 
+    it('never reaches back further than the 7 day look-back, however large grace_minutes is', () => {
+      const h = createHarness();
+      h.scheduler.start();
+      const base = buildSchedulePayload({
+        events: [makeEvent({ id: EVENT_A }), makeEvent({ id: EVENT_B, title: 'Recent' })],
+        cheatDays: [],
+        settings: { ...SETTINGS, grace_minutes: 525_600 },
+        completions: [],
+        now: h.clock.now(),
+      });
+      const at = (days: number): string => new Date(START - days * 24 * HOUR).toISOString();
+      const occurrence = (eventId: string, days: number) => ({
+        id: `${eventId}@${at(days)}`,
+        eventId,
+        at: at(days),
+        silenced: false,
+        completed: false,
+      });
+      h.scheduler.setSchedule({
+        ...base,
+        occurrences: [occurrence(EVENT_A, 8), occurrence(EVENT_B, 6)],
+      });
+      expect(h.rings.map((r) => r.title)).toEqual(['Recent']);
+    });
+
     it('does not ring an occurrence that was already marked Done', () => {
       const h = createHarness();
-      h.scheduler.setSchedule([makeEvent({ id: EVENT_A })], [], SETTINGS);
+      h.push([makeEvent({ id: EVENT_A })], [], SETTINGS);
       h.scheduler.start();
       h.clock.advance(MINUTE);
       h.scheduler.done(ringingView(h.rings).occurrenceId);
@@ -527,7 +488,7 @@ describe('AlarmScheduler', () => {
   describe('cheat days', () => {
     it('silences passable events and still rings non-passable ones', () => {
       const h = createHarness();
-      h.scheduler.setSchedule(
+      h.push(
         [
           makeEvent({ id: EVENT_A, title: 'Passable', passable: true }),
           makeEvent({ id: EVENT_B, title: 'Medication', passable: false }),
@@ -543,7 +504,7 @@ describe('AlarmScheduler', () => {
 
     it('does not silence an occurrence on a different day', () => {
       const h = createHarness();
-      h.scheduler.setSchedule([makeEvent({ id: EVENT_A })], ['2026-03-03'], SETTINGS);
+      h.push([makeEvent({ id: EVENT_A })], ['2026-03-03'], SETTINGS);
       h.scheduler.start();
       h.clock.advance(MINUTE);
       expect(h.rings).toHaveLength(1);
@@ -551,7 +512,7 @@ describe('AlarmScheduler', () => {
 
     it('does not ring a silenced occurrence later via the grace window', () => {
       const h = createHarness();
-      h.scheduler.setSchedule([makeEvent({ id: EVENT_A })], ['2026-03-02'], SETTINGS);
+      h.push([makeEvent({ id: EVENT_A })], ['2026-03-02'], SETTINGS);
       h.scheduler.start();
       h.clock.advance(MINUTE);
       h.clock.advance(5 * MINUTE);
@@ -563,7 +524,7 @@ describe('AlarmScheduler', () => {
   describe('recurring events', () => {
     it('drops a new occurrence while the previous one is still ringing', () => {
       const h = createHarness();
-      h.scheduler.setSchedule(
+      h.push(
         [makeEvent({ id: EVENT_A, repeat_unit: 'hour', repeat_interval: 1 })],
         [],
         SETTINGS
@@ -580,7 +541,7 @@ describe('AlarmScheduler', () => {
 
     it('also drops a new occurrence while the same event is snoozed', () => {
       const h = createHarness();
-      h.scheduler.setSchedule(
+      h.push(
         [
           makeEvent({
             id: EVENT_A,
@@ -608,7 +569,7 @@ describe('AlarmScheduler', () => {
 
     it('rings the next occurrence after Done and not the dropped one', () => {
       const h = createHarness();
-      h.scheduler.setSchedule(
+      h.push(
         [makeEvent({ id: EVENT_A, repeat_unit: 'hour', repeat_interval: 1 })],
         [],
         SETTINGS
@@ -627,7 +588,7 @@ describe('AlarmScheduler', () => {
 
     it('still rings a different event while one is ringing', () => {
       const h = createHarness();
-      h.scheduler.setSchedule(
+      h.push(
         [makeEvent({ id: EVENT_A }), makeEvent({ id: EVENT_B, title: 'Second' })],
         [],
         SETTINGS
@@ -641,30 +602,100 @@ describe('AlarmScheduler', () => {
   describe('setSchedule', () => {
     it('dismisses a ringing alarm whose event was deleted', () => {
       const h = createHarness();
-      h.scheduler.setSchedule([makeEvent({ id: EVENT_A })], [], SETTINGS);
+      h.push([makeEvent({ id: EVENT_A })], [], SETTINGS);
       h.scheduler.start();
       h.clock.advance(MINUTE);
       const view = ringingView(h.rings);
 
-      h.scheduler.setSchedule([makeEvent({ id: EVENT_A, active: false })], [], SETTINGS);
+      h.push([makeEvent({ id: EVENT_A, active: false })], [], SETTINGS);
       expect(h.dismissed).toEqual([view.occurrenceId]);
       expect(h.scheduler.getAlarm(view.occurrenceId)).toBeNull();
     });
 
     it('forgets handled-through watermarks of events that left the schedule', () => {
       const h = createHarness();
-      h.scheduler.setSchedule([makeEvent({ id: EVENT_A }), makeEvent({ id: EVENT_B })], [], SETTINGS);
+      h.push([makeEvent({ id: EVENT_A }), makeEvent({ id: EVENT_B })], [], SETTINGS);
       h.scheduler.start();
       h.clock.advance(MINUTE);
       expect(Object.keys(h.cache.handledThrough).sort()).toEqual([EVENT_A, EVENT_B]);
 
-      h.scheduler.setSchedule([makeEvent({ id: EVENT_A })], [], SETTINGS);
+      h.push([makeEvent({ id: EVENT_A })], [], SETTINGS);
       expect(Object.keys(h.cache.handledThrough)).toEqual([EVENT_A]);
+    });
+
+    it('keeps a snoozed alarm after a new push whose list no longer contains its occurrence', () => {
+      const h = createHarness();
+      const event = makeEvent({ id: EVENT_A, title: 'Take medication', snooze_minutes: 90 });
+      h.push([event], [], SETTINGS);
+      h.scheduler.start();
+      h.clock.advance(MINUTE);
+      h.scheduler.snooze(ringingView(h.rings).occurrenceId);
+
+      // An hour later the 09:01 occurrence is older than the grace window, so a fresh list has
+      // left it out; the snoozed alarm must not go with it.
+      h.clock.advance(HOUR);
+      h.push([event], [], SETTINGS);
+      expect(h.dismissed).toEqual([]);
+      expect(h.cache.occurrences).toHaveLength(1);
+
+      h.clock.advance(30 * MINUTE);
+      expect(h.rings).toHaveLength(2);
+      expect(ringingView(h.rings)).toMatchObject({
+        title: 'Take medication',
+        occurrenceAt: new Date(START + MINUTE).toISOString(),
+      });
+      h.scheduler.done(ringingView(h.rings).occurrenceId);
+      expect(h.cache.pendingCompletions[0]).toMatchObject({ event_id: EVENT_A, user_id: SETTINGS.user_id });
+    });
+
+    it('applies an edit of the title and the snooze rules to an alarm that is already ringing', () => {
+      const h = createHarness();
+      h.push([makeEvent({ id: EVENT_A, max_snoozes: 3, snooze_minutes: 5 })], [], SETTINGS);
+      h.scheduler.start();
+      h.clock.advance(MINUTE);
+      const view = ringingView(h.rings);
+
+      h.push([makeEvent({ id: EVENT_A, title: 'Renamed', max_snoozes: 1, snooze_minutes: 9 })], [], SETTINGS);
+      expect(h.scheduler.getAlarm(view.occurrenceId)).toMatchObject({
+        title: 'Renamed',
+        snoozeLabel: 'Snooze 9 min (1 left)',
+      });
+    });
+
+    it('rings from a list pushed out of order', () => {
+      const h = createHarness();
+      h.scheduler.start();
+      const payload = buildSchedulePayload({
+        events: [
+          makeEvent({ id: EVENT_A, start_at: new Date(START + 2 * MINUTE).toISOString() }),
+          makeEvent({ id: EVENT_B, start_at: new Date(START + MINUTE).toISOString(), title: 'First' }),
+        ],
+        cheatDays: [],
+        settings: SETTINGS,
+        completions: [],
+        now: h.clock.now(),
+      });
+      h.scheduler.setSchedule({ ...payload, occurrences: [...payload.occurrences].reverse() });
+      h.clock.advance(2 * MINUTE);
+      expect(h.rings.map((r) => r.title)).toEqual(['First', 'Take medication']);
+    });
+
+    it('logs when the list was cut by a size cap', () => {
+      const h = createHarness();
+      const payload = buildSchedulePayload({
+        events: [makeEvent({ id: EVENT_A })],
+        cheatDays: [],
+        settings: SETTINGS,
+        completions: [],
+        now: h.clock.now(),
+      });
+      h.scheduler.setSchedule({ ...payload, truncated: true });
+      expect(h.logs).toContain('schedule.truncated');
     });
 
     it('rejects Done for an occurrence that is not ringing', () => {
       const h = createHarness();
-      h.scheduler.setSchedule([makeEvent({ id: EVENT_A })], [], SETTINGS);
+      h.push([makeEvent({ id: EVENT_A })], [], SETTINGS);
       h.scheduler.start();
       expect(h.scheduler.done(`${EVENT_A}@${new Date(START + MINUTE).toISOString()}`)).toBe(false);
       expect(h.cache.pendingCompletions).toHaveLength(0);

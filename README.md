@@ -64,7 +64,7 @@ The React app talks to the platform through one interface, `AlarmAdapter`. `Elec
 
 ```ts
 interface AlarmAdapter {
-  setSchedule(events, cheatDays, settings, completions?): Promise<void>;
+  setSchedule(payload: SchedulePayload): Promise<void>; // precomputed occurrences, built by core
   drainCompletions(): Promise<CompletionRow[]>;
   getPermissionStatus(): Promise<PermissionStatus>;
   openPermissionSettings(): Promise<void>;

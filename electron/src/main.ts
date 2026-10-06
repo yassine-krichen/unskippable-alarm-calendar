@@ -4,6 +4,7 @@ import { join } from 'node:path';
 
 import { app, ipcMain, Menu, nativeImage, powerMonitor, session, Tray } from 'electron';
 import type { BrowserWindow, IpcMainInvokeEvent } from 'electron';
+import { buildSchedulePayload } from '@alarm-calendar/core';
 import type { ScheduleResult } from '@alarm-calendar/core';
 
 import { AlarmWindows } from './alarm-window';
@@ -19,12 +20,17 @@ import {
   serveAppFromDisk,
 } from './app-server';
 import { SUPABASE_ORIGIN } from './build-env';
-import { emptyCache, loadCache, persistWithRetry, saveCache } from './cache';
+import { createCachePersister, emptyCache, loadCache, persistWithRetry } from './cache';
 import type { CacheData } from './cache';
 import { CompletionFlusher } from './completion-flusher';
 import { resolveConfig, resolveUserDataDir, START_HIDDEN_ARG } from './config';
 import { buildDevSeed } from './dev-seed';
-import { parseBoolean, parseSchedulePayload, parseSessionPayload } from './desktop-payloads';
+import {
+  parseBoolean,
+  parseSchedulePayload,
+  parseSessionPayload,
+  upgradeLegacyPayload,
+} from './desktop-payloads';
 import { createLogger } from './logger';
 import { MainWindow } from './main-window';
 import { AlarmScheduler, realTimers } from './scheduler';
@@ -153,8 +159,11 @@ function startAlarmEngine(): void {
   log('app.user_data', { dir: app.getPath('userData') });
   const cachePath = join(app.getPath('userData'), 'cache.json');
   const cache = loadCache(cachePath, log);
+  // The persister rewrites the big schedule file only after a push or a refill; every ring, snooze
+  // and Done writes just the small state file.
+  const savePersisted = createCachePersister(cachePath);
   const persist = (data: CacheData): void => {
-    persistWithRetry(() => saveCache(cachePath, data), log);
+    persistWithRetry(() => savePersisted(data), log);
   };
 
   const distDir = __dirname;
@@ -218,7 +227,15 @@ function startAlarmEngine(): void {
   if (config.devSeed && cache.events.length === 0) {
     const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
     const seed = buildDevSeed(new Date(), timeZone, config.devCheatDay);
-    scheduler.setSchedule(seed.events, seed.cheatDays, seed.settings);
+    scheduler.setSchedule(
+      buildSchedulePayload({
+        events: seed.events,
+        cheatDays: seed.cheatDays,
+        settings: seed.settings,
+        completions: [],
+        now: new Date(),
+      })
+    );
     log('dev_seed.applied', {
       events: seed.events.map((event) => ({ title: event.title, startAt: event.start_at })),
       cheatDays: seed.cheatDays,
@@ -297,15 +314,24 @@ function registerDesktopIpc(
       log('desktop.schedule_rejected', { reason: parsed.reason });
       throw new Error('invalid schedule payload');
     }
-    const { events, cheatDays, settings, completions } = parsed.value;
-    scheduler.setSchedule(events, cheatDays, settings, completions);
+    // A renderer older than the precomputed schedule still sends raw events: expand them here.
+    const schedule =
+      parsed.version === 2
+        ? parsed.value
+        : upgradeLegacyPayload(parsed.value, new Date(), (eventId, error) =>
+            log('scheduler.event_failed', { eventId, error: String(error) })
+          );
+    scheduler.setSchedule(schedule);
     log('desktop.schedule_set', {
-      events: events.length,
-      cheatDays: cheatDays.length,
-      completions: completions.length,
+      payloadVersion: parsed.version,
+      occurrences: schedule.occurrences.length,
+      events: schedule.refillSource.events.length,
+      cheatDays: schedule.refillSource.cheatDays.length,
+      horizonEnd: schedule.horizonEnd,
+      truncated: schedule.truncated,
     });
     const { dropped } = parsed;
-    if (dropped.events + dropped.cheatDays + dropped.completions > 0) {
+    if (dropped.occurrences + dropped.events + dropped.cheatDays + dropped.completions > 0) {
       log('desktop.schedule_rows_dropped', { ...dropped });
     }
     return { dropped };

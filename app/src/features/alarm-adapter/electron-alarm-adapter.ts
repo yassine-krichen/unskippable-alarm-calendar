@@ -1,11 +1,10 @@
 import type {
   AlarmAdapter,
-  AlarmSettings,
   CompletionRow,
   DesktopApi,
-  EventRow,
   PermissionStatus,
   ScheduleDropped,
+  SchedulePayload,
 } from '@alarm-calendar/core';
 
 // A desktop has no runtime permissions to grant: nothing for the permissions panel to show.
@@ -27,14 +26,11 @@ export class ElectronAlarmAdapter implements AlarmAdapter {
     private readonly onRowsDropped: (dropped: ScheduleDropped) => void = () => undefined
   ) {}
 
-  async setSchedule(
-    events: EventRow[],
-    cheatDays: string[],
-    settings: AlarmSettings,
-    completions: CompletionRow[] = []
-  ): Promise<void> {
-    const { dropped } = await this.bridge.setSchedule({ events, cheatDays, settings, completions });
-    if (dropped.events + dropped.cheatDays + dropped.completions > 0) this.onRowsDropped(dropped);
+  async setSchedule(payload: SchedulePayload): Promise<void> {
+    const { dropped } = await this.bridge.setSchedule(payload);
+    if (dropped.occurrences + dropped.events + dropped.cheatDays + dropped.completions > 0) {
+      this.onRowsDropped(dropped);
+    }
   }
 
   /**
