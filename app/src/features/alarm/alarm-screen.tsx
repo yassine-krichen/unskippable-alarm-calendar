@@ -5,7 +5,7 @@ import { useSearchParams } from 'react-router';
 
 import { Button } from '@/components/ui/button';
 
-import { soundUrl } from './alarm-sounds';
+import { CUSTOM_SOUND_ID, DEFAULT_SOUND_ID, soundUrl } from './alarm-sounds';
 import { shortSnoozeLabel } from './snooze-label';
 
 type LoadState =
@@ -31,13 +31,43 @@ export function AlarmScreen() {
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  // Set while the user's own sound file is playing from a blob; released with the window.
+  const objectUrlRef = useRef<string | null>(null);
 
-  const startSound = useCallback((soundId: string | null) => {
-    const audio = new Audio(soundUrl(soundId));
+  const startSound = useCallback(async (soundId: string | null, occurrence: string | null) => {
+    let source = soundUrl(soundId);
+    if (soundId === CUSTOM_SOUND_ID && occurrence !== null) {
+      // The file belongs to the main process; this window only gets its bytes, never a path.
+      try {
+        const custom = await window.alarmApi?.readCustomSound(occurrence);
+        if (custom) {
+          objectUrlRef.current = URL.createObjectURL(new Blob([custom.data as BlobPart], { type: custom.mime }));
+          source = objectUrlRef.current;
+        }
+      } catch {
+        // Falls back to the bundled tone below: a silent prayer alarm is worse than the wrong sound.
+      }
+    }
+    const audio = new Audio(source);
     audio.loop = true;
     audio.volume = 1;
     audioRef.current = audio;
-    audio.play().catch(() => setProblem("The alarm sound couldn't start. The alarm is still active."));
+    // A chosen file that will not decode must not leave the alarm silent.
+    audio.addEventListener(
+      'error',
+      () => {
+        if (audioRef.current !== audio) return;
+        const fallback = new Audio(soundUrl(DEFAULT_SOUND_ID));
+        fallback.loop = true;
+        audioRef.current = fallback;
+        fallback.play().catch(() => setProblem("The alarm sound couldn't start. The alarm is still active."));
+      },
+      { once: true }
+    );
+    audio.play().catch(() => {
+      // The error listener handles an undecodable file; anything else is reported.
+      if (audio.error === null) setProblem("The alarm sound couldn't start. The alarm is still active.");
+    });
   }, []);
 
   useEffect(() => {
@@ -55,7 +85,7 @@ export function AlarmScreen() {
       .then((view) => {
         if (cancelled) return;
         // Sound starts whatever happens: a silent alarm is worse than an unstyled one.
-        startSound(view?.soundId ?? null);
+        void startSound(view?.soundId ?? null, occurrenceId);
         setState(
           view === null
             ? { kind: 'unavailable', message: 'This alarm is no longer active.' }
@@ -64,7 +94,7 @@ export function AlarmScreen() {
       })
       .catch(() => {
         if (cancelled) return;
-        startSound(null);
+        void startSound(null, null);
         setState({
           kind: 'unavailable',
           message: "Couldn't load this alarm. Reopen it from the tray.",
@@ -73,6 +103,7 @@ export function AlarmScreen() {
     return () => {
       cancelled = true;
       audioRef.current?.pause();
+      if (objectUrlRef.current !== null) URL.revokeObjectURL(objectUrlRef.current);
     };
   }, [occurrenceId, startSound]);
 
@@ -134,7 +165,7 @@ export function AlarmScreen() {
               className="h-14 w-full gap-3 rounded-2xl text-xl font-semibold"
             >
               <CheckIcon className="size-6" />
-              Done
+              {state.view.kind === 'prayer' ? 'Prayed' : 'Done'}
             </Button>
             {state.view.snoozeLabel !== null ? (
               <Button

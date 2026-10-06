@@ -1,4 +1,12 @@
-import { occurrencesBetween, type EventRow } from '@alarm-calendar/core';
+import {
+  eventKindOf,
+  eventOccurrencesBetween,
+  isEventPassable,
+  type EventKind,
+  type EventRow,
+  type OccurrenceSettings,
+  type PrayerName,
+} from '@alarm-calendar/core';
 
 import { contrastFor } from '@/features/events/event-colors';
 import { addDays, startOfZonedDay, zonedDate } from '@/lib/zoned-time';
@@ -20,6 +28,9 @@ export interface Occurrence {
   passable: boolean;
   /** True when a cheat day silences it: the alarm will not ring. */
   silenced: boolean;
+  /** 'prayer' for one of the five daily prayers; the calendar draws those apart. */
+  kind: EventKind;
+  prayer: PrayerName | null;
 }
 
 export interface TimeRange {
@@ -29,23 +40,39 @@ export interface TimeRange {
 
 /**
  * Expands every event into the occurrences that start inside range, using the shared
- * recurrence function so the calendar and the alarm engines agree on what fires.
+ * occurrence function (recurrence for a normal alarm, the prayer times for a prayer) so the
+ * calendar and the alarm engines agree on what fires. The pre-prayer reminders are left out: five
+ * more items a day would bury the calendar, and they are only a nudge towards the prayer shown.
  * The range is widened by a day on the left so a long event that began just before it still shows.
  */
 export function expandOccurrences(
   events: readonly EventRow[],
   range: TimeRange,
-  tz: string,
-  cheatDays: readonly string[]
+  settings: OccurrenceSettings,
+  cheatDays: readonly string[],
+  /** Called for an event whose occurrences cannot be computed (it is skipped, the rest still shows). */
+  onEventFailed?: (event: EventRow) => void
 ): Occurrence[] {
+  const tz = settings.timezone;
   const cheatDaySet = new Set(cheatDays);
   const searchFrom = new Date(range.from.getTime() - MS_PER_DAY);
   const occurrences: Occurrence[] = [];
 
   for (const event of events) {
     if (!event.active) continue;
+    const kind = eventKindOf(event);
+    if (kind === 'pre_prayer') continue;
+    const passable = isEventPassable(event);
     const durationMs = event.duration_min * MS_PER_MINUTE;
-    for (const start of occurrencesBetween(event, searchFrom, range.to, tz)) {
+    let starts: Date[];
+    try {
+      starts = eventOccurrencesBetween(event, searchFrom, range.to, settings);
+    } catch {
+      // A malformed row or unusable prayer settings must not blank the whole calendar.
+      onEventFailed?.(event);
+      continue;
+    }
+    for (const start of starts) {
       const end = new Date(start.getTime() + durationMs);
       if (end.getTime() <= range.from.getTime()) continue;
       const day = zonedDate(start, tz);
@@ -57,8 +84,10 @@ export function expandOccurrences(
         end,
         day,
         color: event.color,
-        passable: event.passable,
-        silenced: event.passable && cheatDaySet.has(day),
+        passable,
+        silenced: passable && cheatDaySet.has(day),
+        kind,
+        prayer: event.prayer ?? null,
       });
     }
   }
@@ -99,15 +128,16 @@ export interface DayImpact {
 export function dayImpact(
   events: readonly EventRow[],
   day: string,
-  tz: string,
+  settings: OccurrenceSettings,
   now: Date = new Date()
 ): DayImpact {
+  const tz = settings.timezone;
   const dayStart = startOfZonedDay(day, tz);
   const from = day === zonedDate(now, tz) && now.getTime() > dayStart.getTime() ? now : dayStart;
   const range = { from, to: startOfZonedDay(addDays(day, 1), tz) };
   let silenced = 0;
   let stillRing = 0;
-  for (const occurrence of expandOccurrences(events, range, tz, [])) {
+  for (const occurrence of expandOccurrences(events, range, settings, [])) {
     if (occurrence.day !== day || occurrence.start.getTime() < from.getTime()) continue;
     if (occurrence.passable) silenced += 1;
     else stillRing += 1;
@@ -117,6 +147,9 @@ export function dayImpact(
 
 /** The class the calendar grid puts on greyed-out (silenced) occurrences. */
 export const SILENCED_CLASS = 'occurrence-silenced';
+
+/** The class for the five daily prayers, which the stylesheet draws apart from ordinary alarms. */
+export const PRAYER_CLASS = 'occurrence-prayer';
 
 /** Shape handed to FullCalendar: plain events, no rrule plugin. */
 export interface CalendarEvent {
@@ -129,7 +162,7 @@ export interface CalendarEvent {
   contrastColor?: string;
   /** Space-separated classes; the calendar attaches them to the event element. */
   className: string;
-  extendedProps: { eventId: string; silenced: boolean; passable: boolean };
+  extendedProps: { eventId: string; silenced: boolean; passable: boolean; prayer: boolean };
 }
 
 export function toCalendarEvent(occurrence: Occurrence): CalendarEvent {
@@ -141,11 +174,14 @@ export function toCalendarEvent(occurrence: Occurrence): CalendarEvent {
     end: occurrence.end.toISOString(),
     ...(occurrence.color !== null ? { color: occurrence.color } : {}),
     ...(contrastColor !== undefined ? { contrastColor } : {}),
-    className: occurrence.silenced ? SILENCED_CLASS : '',
+    className: [occurrence.silenced ? SILENCED_CLASS : '', occurrence.kind === 'prayer' ? PRAYER_CLASS : '']
+      .filter((name) => name !== '')
+      .join(' '),
     extendedProps: {
       eventId: occurrence.eventId,
       silenced: occurrence.silenced,
       passable: occurrence.passable,
+      prayer: occurrence.kind === 'prayer',
     },
   };
 }

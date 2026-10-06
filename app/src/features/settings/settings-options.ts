@@ -2,6 +2,8 @@ import { z } from 'zod';
 
 import { weekdayName } from '@/lib/zoned-time';
 
+import { prayerFormSchema } from './prayer-settings';
+
 export interface Option {
   value: number;
   label: string;
@@ -66,6 +68,8 @@ export const settingsFormSchema = z.object({
   weekStartsOn: z.number().int().min(0).max(6),
   refireSeconds: z.number().int().min(1, 'Must be at least 1 second.'),
   graceMinutes: z.number().int().min(0, 'Can not be negative.'),
+  // The Prayer times section edits its own fields in the same form, saved with the same button.
+  ...prayerFormSchema.shape,
 });
 
 export type SettingsFormValues = z.infer<typeof settingsFormSchema>;

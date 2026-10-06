@@ -7,6 +7,7 @@ export const ALARM_CHANNELS = {
   get: 'alarm:get',
   done: 'alarm:done',
   snooze: 'alarm:snooze',
+  customSound: 'alarm:custom-sound',
 } as const;
 
 /** Channels of the main (React app) window; see desktop-ipc.ts. */
@@ -16,6 +17,10 @@ export const DESKTOP_CHANNELS = {
   setSession: 'desktop:set-session',
   getAutostart: 'desktop:get-autostart',
   setAutostart: 'desktop:set-autostart',
+  getCustomSound: 'desktop:get-custom-sound',
+  chooseCustomSound: 'desktop:choose-custom-sound',
+  clearCustomSound: 'desktop:clear-custom-sound',
+  readCustomSound: 'desktop:read-custom-sound',
 } as const;
 
 export type { ActionResult, AlarmApi, AlarmView } from '@alarm-calendar/core';

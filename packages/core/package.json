@@ -8,13 +8,15 @@
   "exports": {
     ".": "./src/index.ts",
     "./test-vectors/recurrence.json": "./test-vectors/recurrence.json",
-    "./test-vectors/habits.json": "./test-vectors/habits.json"
+    "./test-vectors/habits.json": "./test-vectors/habits.json",
+    "./test-vectors/prayer-times.json": "./test-vectors/prayer-times.json"
   },
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "adhan": "4.4.6",
     "date-fns": "^4.1.0",
     "date-fns-tz": "^3.2.0"
   },

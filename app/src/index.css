@@ -183,6 +183,23 @@
   filter: grayscale(1);
 }
 
+/*
+ * The five daily prayers: outlined instead of filled, with a heavier left edge, so they read as a
+ * different kind of item from an ordinary alarm without introducing a colour. FullCalendar paints
+ * events with its own variables and inline colours, hence the !important.
+ */
+.occurrence-prayer {
+  --fc-classic-event: var(--background);
+  --fc-classic-event-contrast: var(--foreground);
+  background-color: var(--background) !important;
+  color: var(--foreground) !important;
+  border: 1px solid var(--foreground) !important;
+  border-left-width: 4px !important;
+}
+.occurrence-prayer * {
+  color: var(--foreground) !important;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

@@ -25,11 +25,14 @@ function eventRow(overrides: Partial<EventRow> = {}): EventRow {
   };
 }
 
+const UTC = { timezone: 'UTC' };
+const AUCKLAND = { timezone: 'Pacific/Auckland' };
+
 const range = { from: new Date('2026-10-05T00:00:00Z'), to: new Date('2026-10-08T00:00:00Z') };
 
 describe('expandOccurrences', () => {
   it('expands a daily event into one occurrence per day of the range, in order', () => {
-    const result = expandOccurrences([eventRow()], range, 'UTC', []);
+    const result = expandOccurrences([eventRow()], range, UTC, []);
     expect(result.map((o) => o.start.toISOString())).toEqual([
       '2026-10-05T08:00:00.000Z',
       '2026-10-06T08:00:00.000Z',
@@ -39,54 +42,54 @@ describe('expandOccurrences', () => {
   });
 
   it('gives each occurrence the event duration as its end', () => {
-    const [first] = expandOccurrences([eventRow({ duration_min: 45 })], range, 'UTC', []);
+    const [first] = expandOccurrences([eventRow({ duration_min: 45 })], range, UTC, []);
     expect(first?.end.toISOString()).toBe('2026-10-05T08:45:00.000Z');
   });
 
   it('greys out a passable occurrence on a cheat day and leaves the other days alone', () => {
-    const result = expandOccurrences([eventRow()], range, 'UTC', ['2026-10-06']);
+    const result = expandOccurrences([eventRow()], range, UTC, ['2026-10-06']);
     expect(result.map((o) => o.silenced)).toEqual([false, true, false]);
   });
 
   it('never silences an event that is not passable', () => {
-    const result = expandOccurrences([eventRow({ passable: false })], range, 'UTC', ['2026-10-06']);
+    const result = expandOccurrences([eventRow({ passable: false })], range, UTC, ['2026-10-06']);
     expect(result.every((o) => !o.silenced)).toBe(true);
   });
 
   it('assigns the cheat day by the local date in the settings zone, not the UTC date', () => {
     // 20:00 UTC on Oct 5 is 09:00 on Oct 6 in Auckland (UTC+13 in October).
     const event = eventRow({ start_at: '2026-10-05T20:00:00.000Z', repeat_unit: 'none' });
-    const [occurrence] = expandOccurrences([event], range, 'Pacific/Auckland', ['2026-10-06']);
+    const [occurrence] = expandOccurrences([event], range, AUCKLAND, ['2026-10-06']);
     expect(occurrence?.day).toBe('2026-10-06');
     expect(occurrence?.silenced).toBe(true);
-    const [utcView] = expandOccurrences([event], range, 'UTC', ['2026-10-06']);
+    const [utcView] = expandOccurrences([event], range, UTC, ['2026-10-06']);
     expect(utcView?.silenced).toBe(false);
   });
 
   it('skips inactive events', () => {
-    expect(expandOccurrences([eventRow({ active: false })], range, 'UTC', [])).toEqual([]);
+    expect(expandOccurrences([eventRow({ active: false })], range, UTC, [])).toEqual([]);
   });
 
   it('merges several events into one chronological list', () => {
     const late = eventRow({ id: 'e2', title: 'Evening', start_at: '2026-10-05T18:00:00.000Z', repeat_unit: 'none' });
     const early = eventRow({ id: 'e3', title: 'Morning', start_at: '2026-10-05T06:00:00.000Z', repeat_unit: 'none' });
-    const result = expandOccurrences([late, early], range, 'UTC', []);
+    const result = expandOccurrences([late, early], range, UTC, []);
     expect(result.map((o) => o.title)).toEqual(['Morning', 'Evening']);
   });
 
   it('honours the end of a series', () => {
-    const result = expandOccurrences([eventRow({ ends_at: '2026-10-06T23:59:00.000Z' })], range, 'UTC', []);
+    const result = expandOccurrences([eventRow({ ends_at: '2026-10-06T23:59:00.000Z' })], range, UTC, []);
     expect(result).toHaveLength(2);
   });
 
   it('keeps an occurrence that began before the range but is still running', () => {
     const event = eventRow({ start_at: '2026-10-04T23:30:00.000Z', duration_min: 120, repeat_unit: 'none' });
-    expect(expandOccurrences([event], range, 'UTC', [])).toHaveLength(1);
+    expect(expandOccurrences([event], range, UTC, [])).toHaveLength(1);
   });
 });
 
 describe('toCalendarEvent', () => {
-  const [occurrence] = expandOccurrences([eventRow({ color: '#3b82f6' })], range, 'UTC', ['2026-10-05']);
+  const [occurrence] = expandOccurrences([eventRow({ color: '#3b82f6' })], range, UTC, ['2026-10-05']);
 
   it('hands the calendar a plain event with UTC ISO times and the event color', () => {
     const calendarEvent = toCalendarEvent(occurrence!);
@@ -102,11 +105,11 @@ describe('toCalendarEvent', () => {
 
   it('marks silenced occurrences so the grid can grey them', () => {
     expect(toCalendarEvent(occurrence!).className).toBe('occurrence-silenced');
-    expect(toCalendarEvent(occurrence!).extendedProps).toEqual({ eventId: 'e1', silenced: true, passable: true });
+    expect(toCalendarEvent(occurrence!).extendedProps).toEqual({ eventId: 'e1', silenced: true, passable: true, prayer: false });
   });
 
   it('adds no class and no color for a normal, uncolored occurrence', () => {
-    const [plain] = expandOccurrences([eventRow()], range, 'UTC', []);
+    const [plain] = expandOccurrences([eventRow()], range, UTC, []);
     const calendarEvent = toCalendarEvent(plain!);
     expect(calendarEvent.className).toBe('');
     expect(calendarEvent).not.toHaveProperty('color');
@@ -116,7 +119,7 @@ describe('toCalendarEvent', () => {
 describe('groupByDay', () => {
   it('groups consecutive occurrences by local day', () => {
     const twice = eventRow({ repeat_unit: 'hour', repeat_interval: 12 });
-    const groups = groupByDay(expandOccurrences([twice], range, 'UTC', []));
+    const groups = groupByDay(expandOccurrences([twice], range, UTC, []));
     expect(groups.map((g) => [g.day, g.occurrences.length])).toEqual([
       ['2026-10-05', 2],
       ['2026-10-06', 2],
@@ -136,17 +139,17 @@ describe('dayImpact', () => {
       eventRow({ id: 'd', active: false }),
     ];
     // a: 1, b: 2 (08:00 and 20:00), c: 1 not passable.
-    expect(dayImpact(events, '2026-10-06', 'UTC', LONG_BEFORE)).toEqual({ silenced: 3, stillRing: 1 });
+    expect(dayImpact(events, '2026-10-06', UTC, LONG_BEFORE)).toEqual({ silenced: 3, stillRing: 1 });
   });
 
   it('is zero on a day nothing is scheduled', () => {
-    expect(dayImpact([eventRow({ repeat_unit: 'none' })], '2026-10-06', 'UTC', LONG_BEFORE)).toEqual({ silenced: 0, stillRing: 0 });
+    expect(dayImpact([eventRow({ repeat_unit: 'none' })], '2026-10-06', UTC, LONG_BEFORE)).toEqual({ silenced: 0, stillRing: 0 });
   });
 
   it('counts by the local day in the settings zone', () => {
     const event = eventRow({ start_at: '2026-10-05T20:00:00.000Z', repeat_unit: 'none' });
-    expect(dayImpact([event], '2026-10-06', 'Pacific/Auckland', LONG_BEFORE).silenced).toBe(1);
-    expect(dayImpact([event], '2026-10-05', 'Pacific/Auckland', LONG_BEFORE).silenced).toBe(0);
+    expect(dayImpact([event], '2026-10-06', AUCKLAND, LONG_BEFORE).silenced).toBe(1);
+    expect(dayImpact([event], '2026-10-05', AUCKLAND, LONG_BEFORE).silenced).toBe(0);
   });
 
   it('counts only the alarms still to come when the day is today', () => {
@@ -157,8 +160,8 @@ describe('dayImpact', () => {
     ];
     // 12:00 UTC on the 6th: a (08:00), c (08:00) and b's 08:00 occurrence already rang; b's 20:00 is left.
     const noon = new Date('2026-10-06T12:00:00Z');
-    expect(dayImpact(events, '2026-10-06', 'UTC', noon)).toEqual({ silenced: 1, stillRing: 0 });
+    expect(dayImpact(events, '2026-10-06', UTC, noon)).toEqual({ silenced: 1, stillRing: 0 });
     // The same events asked about tomorrow count in full.
-    expect(dayImpact(events, '2026-10-07', 'UTC', noon)).toEqual({ silenced: 3, stillRing: 1 });
+    expect(dayImpact(events, '2026-10-07', UTC, noon)).toEqual({ silenced: 3, stillRing: 1 });
   });
 });

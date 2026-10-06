@@ -1,4 +1,5 @@
 import type { EventRow, Settings } from './types';
+import { isEventPassable } from './occurrences';
 import { localDateString } from './time-zone';
 
 const MS_PER_MINUTE = 60_000;
@@ -68,12 +69,15 @@ export function shouldRingMissedOccurrence(
   return lateMs >= 0 && lateMs <= graceMinutes * MS_PER_MINUTE;
 }
 
-/** A cheat day silences an occurrence only for passable events, by the occurrence's local date. */
+/**
+ * A cheat day silences an occurrence only for passable events, by the occurrence's local date.
+ * Prayer alarms are never passable (see isEventPassable).
+ */
 export function isSilencedByCheatDay(
-  event: Pick<EventRow, 'passable'>,
+  event: Pick<EventRow, 'passable' | 'kind'>,
   occurrenceAt: Date,
   cheatDays: readonly string[],
   tz: string
 ): boolean {
-  return event.passable && cheatDays.includes(localDateString(occurrenceAt, tz));
+  return isEventPassable(event) && cheatDays.includes(localDateString(occurrenceAt, tz));
 }

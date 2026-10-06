@@ -3,6 +3,15 @@ export type RepeatUnit = 'none' | 'hour' | 'day' | 'week' | 'month' | 'year';
 export type CompletionStatus = 'done' | 'skipped_cheat';
 
 /**
+ * What an events row is. A 'prayer' row is one of the five daily prayers, a 'pre_prayer' row is the
+ * reminder before it; both take their times from the prayer settings, not from start_at or the repeat
+ * columns (roadmap v2, phase 3b). Everything else is a 'normal' alarm.
+ */
+export type EventKind = 'normal' | 'prayer' | 'pre_prayer';
+
+export type PrayerName = 'fajr' | 'dhuhr' | 'asr' | 'maghrib' | 'isha';
+
+/**
  * Timestamps are ISO 8601 strings (as Supabase returns them and as they cross
  * the Electron IPC / Capacitor bridge). Calendar days are 'yyyy-MM-dd'.
  */
@@ -32,6 +41,10 @@ export interface EventRow {
    * fixtures, stay valid.
    */
   group_id?: string | null;
+  /** Absent means 'normal' (rows from before the column existed, and test fixtures). */
+  kind?: EventKind;
+  /** Which prayer a 'prayer' or 'pre_prayer' row is for; null or absent for a normal alarm. */
+  prayer?: PrayerName | null;
   /**
    * When the alarm was created, set by the database and never changed. Habit scoring starts no
    * earlier than this. Optional so rows from before the column existed, and test fixtures, stay valid.
@@ -50,7 +63,43 @@ export interface CompletionRow {
   done_at: string;
 }
 
-export interface Settings {
+/**
+ * The prayer-time columns of settings (migration prayer_times). Defaults are Ariana, Tunis with the
+ * Tunisian convention; see DEFAULT_PRAYER_SETTINGS in prayer-times.ts.
+ */
+export interface PrayerSettings {
+  prayers_enabled: boolean;
+  /** ISO 8601; prayers before it are not scored and not reminded about. Null until first switched on. */
+  prayers_enabled_since: string | null;
+  /** Degrees north, -65 to 65 (prayer times are not a simple calculation near the poles). */
+  latitude: number;
+  /** Degrees east, -180 to 180. */
+  longitude: number;
+  location_label: string;
+  /** Sun angle below the horizon at Fajr, degrees. */
+  fajr_angle: number;
+  /** Sun angle below the horizon at Isha, degrees. */
+  isha_angle: number;
+  /** Asr shadow factor: 1 (Shafi, Maliki, Hanbali) or 2 (Hanafi). */
+  asr_factor: 1 | 2;
+  /** Minutes added to each computed time, -60 to 60. */
+  fajr_offset_min: number;
+  dhuhr_offset_min: number;
+  asr_offset_min: number;
+  maghrib_offset_min: number;
+  isha_offset_min: number;
+  /** Minutes before each prayer for its pre-prayer alarm; 0 turns them off. */
+  pre_prayer_minutes: number;
+  /** Snooze rules of the prayer and pre-prayer alarms; 0 snoozes by default. */
+  prayer_max_snoozes: number;
+  prayer_snooze_minutes: number;
+}
+
+/**
+ * Optional prayer fields: the database always has them, but a cache or a push from before the
+ * feature, and most test fixtures, do not. Absent means "prayers off" to the occurrence rules.
+ */
+export interface Settings extends Partial<PrayerSettings> {
   user_id: string;
   /** IANA zone name. */
   timezone: string;
@@ -101,6 +150,11 @@ export interface PermissionStatus {
 export interface AlarmSettings extends Settings {
   /** Id of the bundled alarm sound; the platform falls back to its default when absent or unknown. */
   sound?: string;
+  /**
+   * Sound of the prayer alarms (a bundled id, or 'custom' for the file the user chose on this
+   * device), also per device. Absent means the prayer alarms use `sound`.
+   */
+  prayerSound?: string;
 }
 
 /**
@@ -119,6 +173,19 @@ export interface ScheduleOccurrence {
   silenced: boolean;
   /** A completion is known for it (any device). A completed occurrence never rings. */
   completed: boolean;
+  /**
+   * Text to show instead of the event's title, for an occurrence whose text depends on state when
+   * the list was built (a pre-prayer alarm: "Asr in 15 min", or "You haven't logged Dhuhr ...").
+   */
+  label?: string;
+  /**
+   * Text to show instead of `label` if, when this rings, the occurrence `id` is not completed. Present on
+   * every pre-prayer alarm whose previous prayer is not known to be completed when the list is built,
+   * past or still to come: the engine decides at ring time, so the list needs no rebuild when that
+   * prayer passes unlogged or is logged. For a prayer, "completed" matches by event and prayer-day
+   * (prayerDayKey), not by exact instant.
+   */
+  labelIfUnlogged?: { id: string; label: string };
 }
 
 /** What an engine needs to show and snooze every occurrence of one event. */
@@ -128,8 +195,11 @@ export interface ScheduleEventInfo {
   /** 0 means no snooze button at all. */
   maxSnoozes: number;
   snoozeMinutes: number;
-  /** Id of the bundled alarm sound to loop, or null for the platform default. */
+  /** Id of the bundled alarm sound to loop ('custom' for the user's own file), or null for the platform default. */
   soundId: string | null;
+  /** Set for a prayer or pre-prayer alarm; absent for a normal one. */
+  kind?: EventKind;
+  prayer?: PrayerName;
 }
 
 /**

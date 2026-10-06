@@ -280,3 +280,96 @@ mirror (step 10) and the app code must follow these.
 - **The renderer skips redundant pushes.** Expansion is memoized on the identity of its inputs (events, cheat days,
   settings, completions, sound) for an hour; a focus with unchanged inputs and a list under an hour old pushes nothing.
   A refused push clears the memo.
+
+- **Prayer times (roadmap-v2 phase 3b): the `adhan` library, run on the device.** `adhan` 4.4.6 (batoulapps/adhan-js, MIT, last
+  published 2026-08-30, ships types, no dependencies); the Kotlin twin of the same library is the Android plan. The method is
+  `CalculationMethod.Other()` with the user's Fajr and Isha angles, the Asr shadow factor (`Madhab.Shafi` for 1, `Hanafi` for 2)
+  and a per-prayer minute offset (`adjustments`); defaults are Ariana (36.8625 N, 10.1956 E), 18 and 18, factor 1 (the owner
+  follows no specific method). Times are rounded to the minute by the library. `prayerTimesOnDay` takes a calendar date and
+  builds adhan's `Date` from the date's own year, month and day, so the machine's zone never matters (tested under five
+  `TZ` values); the zone setting only decides which local dates a range covers, so a zone with DST works (checked in Madrid
+  across both changes). The library already puts every time on the right local day for any longitude (checked once over a longitude
+  and latitude grid, and by the Auckland and Los Angeles vectors). Not handled: high latitudes where Fajr or Isha do not exist use adhan's night-portion rule, and a polar
+  date with no sunrise throws and shows no times.
+- **Verification of the times.** `packages/core/test-vectors/prayer-times.json` holds 23 cases (Ariana through both solstices,
+  an equinox, today, a Hanafi Asr, Madrid across both DST changes, Jakarta, Auckland, Los Angeles) with expectations from the
+  Aladhan API (`/v1/timings`, custom method 99, fetched 2026-10-06 04:19 UTC), a separate implementation. Fajr, Dhuhr, Maghrib
+  and Isha match to the minute in all 23. Asr differs by up to 2 minutes: adhan reads the solar declination at solar noon,
+  while an independent calculation that evaluates it at the Asr instant itself (NOAA equations, stored as `asrNoaa`) agrees with
+  Aladhan within a minute. The tests allow 1 minute for the four and 2 for Asr against Aladhan, and 1 minute for Asr against the
+  independent value.
+- **Prayer rows are real events, one per prayer and kind.** Migration `20261006042009_prayer_times`: enum `event_kind`
+  (`events.kind`, default `normal`), `events.prayer` with a check that it is set exactly when the kind is not normal, a partial
+  unique index on `(user_id, kind, prayer)`, the prayer columns on `settings` (with the column grants), and the RPC
+  `set_prayers_enabled(boolean)` (security invoker, one transaction, `ON CONFLICT ... WHERE kind <> 'normal' DO UPDATE SET active
+  = true`). The check first passed a prayer row with no prayer (a null inside `IN (...)` makes it unknown, and unknown passes);
+  `prayer is not null` is now explicit. The migration, the RPC and `security_checks.sql` were run against a Postgres (PGlite) with
+  stubbed Supabase roles: shape checks, the unique index, grants (the prayer columns writable, `pass_cap` not), switching on twice,
+  off and on again, and no access for `anon`.
+- **`prayers_enabled_since`** (not in the first design). Switching prayers off deactivates the rows, and switching them on
+  again would make habit scoring count the whole stretch with prayers off as missed. Scoring of a prayer starts at
+  `max(window start, created_at, prayers_enabled_since)`, and the pre-prayer text ignores prayers from before it.
+- **Snooze rules and `passable` of prayers are not read from the row.** `prayer_max_snoozes` and `prayer_snooze_minutes` on
+  `settings` fill `eventInfo` for all ten alarms, and `isEventPassable` is false for every non-normal kind, so a row edited by hand
+  cannot be silenced by a cheat day or get its own snooze count. One setting is easier to reason about than ten rows.
+- **Every consumer goes through `eventOccurrencesBetween`** (`packages/core/src/occurrences.ts`): `expandSchedule`, the
+  calendar (`expandOccurrences`, `dayImpact`) and habit scoring. A normal alarm is exactly `occurrencesBetween` as before (the
+  recurrence and habit vectors are untouched and pass). `Settings`' prayer fields are optional in the type (a cache or push from
+  before the feature, and test fixtures), and absent means prayers off.
+- **The "not logged" text is decided at ring time, not when the list is built (a flaw in the first design).** A list built at 08:00
+  cannot know whether Dhuhr will be logged before the Asr reminder at 15:09, and re-pushing on completion changes does not help
+  when nothing is completed (nothing triggers a push as Dhuhr passes). So a pre-prayer occurrence carries `label` ("Asr in 15
+  min") and, whenever the previous prayer is not known to be completed at build time (behind us or still to come),
+  `labelIfUnlogged` with that prayer's occurrence id. The engine shows the alternative
+  text when that occurrence is not completed as the alarm rings (`AlarmScheduler.textFor`: the list's `completed` flags, the
+  completions it knows, its own pending ones). That is the one rule an engine learns for prayers; a Kotlin engine needs it too.
+  Limits: a completion made on another device while the app is closed is not seen; a reminder that rings late (device asleep)
+  still says "in 15 min"; the engine keeps the text it rang with (it is refreshed from the next list only while the occurrence is
+  still in it).
+- **"Previous prayer".** Fajr follows the previous day's Isha. The text uses the previous prayer only when its time is at or
+  after `prayers_enabled_since`, is not later than the reminder itself (a 2 hour lead can put the Isha reminder before Maghrib),
+  and its event is active. "You have until <this prayer>" is the owner's wording; for Fajr it would be wrong (its time ends at
+  sunrise, long before the Dhuhr reminder), so that one reads "You haven't logged Fajr — its time ended at sunrise".
+- **Calendar.** The five prayers show outlined with a moon icon (`.occurrence-prayer`, no new colour); the reminders are left
+  out (five more items a day would bury it). A prayer opens a short summary with "Open prayer settings", not the event form: it has
+  no time to edit and its snooze and sound are settings. "Cheat day" counts the prayers as alarms that ring anyway.
+- **Habits.** Each prayer is a habit (done means prayed, window 28 days like any daily alarm); the reminders are not
+  (`isHabit`). Prayer completions go through the same `completions` table and realtime.
+- **Custom prayer sound (desktop).** The file is chosen in a dialog opened by main, checked by size (5 MB), extension and content
+  (mp3, wav, ogg, m4a), and copied to `<userData>/custom-sound/prayer-sound.<ext>`; renderers never name a path, the alarm window
+  can only read it while it is ringing an occurrence, and main re-checks the stored file on every read. The alarm window plays it
+  from a blob (`media-src` already allows `blob:`), which works in the packaged app and under the dev server alike (a custom URL on
+  the app scheme would not be same-origin under Vite). A missing or undecodable file falls back to the bundled bell. The sound
+  choice is per device like the alarm sound (`settings.prayerSound` in the push: a bundled id, `custom`, or absent for "same as the
+  alarm sound"). The reminders keep the normal alarm sound.
+- **Location.** Latitude and longitude are typed; "Use my location" uses `navigator.geolocation` where it exists and is hidden in
+  the desktop app, whose shell denies every web permission and where Chromium's location service needs a Google key. A live
+  line of today's five times follows the form so a wrong value is visible before saving. Ariana's coordinates (36.8625 N,
+  10.1956 E) are the city centre (36 51 45 N, 10 11 44 E).
+- **Electron zod schemas list every new field.** The schemas strip unknown keys, and a prayer row that lost its `kind` would be
+  scheduled from its `start_at` as a one-off alarm; a prayer event without a prayer is dropped. Invalid prayer settings reject
+  the push as a whole (the previous schedule stays), like an invalid zone.
+- **Switching prayers off** drops them from the schedule completely (no `eventInfo`), so a ringing prayer alarm is dismissed
+  by the next push, and main's own refill does the same.
+- **Parity fixtures.** The note above says to delete `electron/test-fixtures/legacy` and `schedule-parity.test.ts` once phase 3b
+  has shipped. It is done on the branch but not released, so they stay until the owner has the 3a and 3b builds in use.
+- **A prayer completion matches by event and prayer-day, not by exact instant (review fix).** A completion is stored with
+  the instant its alarm had. Changing an offset, the angles or the location moves later alarms by minutes, so matching by
+  instant would orphan "prayed at 05:59" once the 06:01 alarm appears: it would ring again and be scored missed. Core's
+  `prayerDayKey(event, instant, settings)` (`occurrences.ts`; `prayerDayOf` in `prayer-times.ts`) names `<event id>|<day>`, where
+  the day is the one of the three nearest local dates (in `settings.timezone`) whose own time for that prayer is closest to the
+  instant. That is the day the time was computed for, so a late Isha pushed past midnight by an offset keeps its day instead of
+  drifting to the next date (tested in a +5:30 zone). A pre-prayer alarm uses its lead. One helper serves all three places:
+  `expandSchedule` (the `completed` flag and the "previous prayer" check), habit scoring (`computeHabitStats`) and the Electron
+  scheduler (`isKnownCompleted`, which also looks at pending completions and the known ones). Normal alarms still match by exact
+  instant. `prayers_enabled_since` is not touched by settings edits. Limit: a settings change that moves a prayer by half a day
+  or more (a location on the other side of the world) can map a completion to the wrong day.
+- **The engine always decides the "not logged" text (review fix).** `labelIfUnlogged` is emitted whenever the previous prayer is
+  not known to be completed when the list is built, including when it is already past, because a Done made afterwards (here,
+  pending, or on another device) must still win. `label` is then always the plain text. Main's refill now passes its pending
+  completions as well as the known ones, and `textFor` already asked `isKnownCompleted`, which covers pending ones.
+- **Prayer latitude is limited to 65 degrees north or south (review fix).** Beyond it the sun can stay up or down all day and there
+  is no prayer time to calculate. The limit is in the migration check (`latitude between -65 and 65`), the form, core's
+  `PRAYER_LIMITS` and the Electron schema. If a corrupt row still produces no times, nothing crashes: the calendar and the cheat
+  day dialog skip that event (`expandOccurrences` takes an `onEventFailed` callback, and the page shows one line), the Stats report
+  lists it in `failed` (one line there too), and the schedule reports it through `onEventFailed` as before.

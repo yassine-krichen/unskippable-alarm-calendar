@@ -65,10 +65,14 @@ export function CalendarPage() {
 
   const cheatDaySet = useMemo(() => new Set(cheatDays), [cheatDays]);
   const range = useMemo(() => visibleDayRange(view, anchor, weekStartsOn), [view, anchor, weekStartsOn]);
-  const occurrences = useMemo(
-    () => expandOccurrences(events, rangeToInstants(range, tz), tz, cheatDays),
-    [events, range, tz, cheatDays]
-  );
+  const { occurrences, skipped } = useMemo(() => {
+    if (!settings) return { occurrences: [], skipped: null };
+    const failed: string[] = [];
+    const expanded = expandOccurrences(events, rangeToInstants(range, tz), settings, cheatDays, (event) =>
+      failed.push(event.kind ?? 'normal')
+    );
+    return { occurrences: expanded, skipped: skippedNotice(failed) };
+  }, [events, range, tz, cheatDays, settings]);
   const calendarEvents = useMemo(() => occurrences.map(toCalendarEvent), [occurrences]);
 
   if (!settings) return null;
@@ -157,6 +161,12 @@ export function CalendarPage() {
         </TabsList>
       </div>
 
+      {skipped !== null ? (
+        <p role="status" className="shrink-0 px-4 pb-2 text-sm text-destructive sm:px-6">
+          {skipped}
+        </p>
+      ) : null}
+
       {eventsStatus === 'error' ? (
         <div className="px-4 sm:px-6">
           <Alert variant="destructive">
@@ -226,6 +236,15 @@ export function CalendarPage() {
       <PassDialog open={passDialogOpen} onOpenChange={setPassDialogOpen} />
     </Tabs>
   );
+}
+
+/** One line for alarms the calendar had to leave out, or null when it showed everything. */
+function skippedNotice(failedKinds: readonly string[]): string | null {
+  if (failedKinds.length === 0) return null;
+  if (failedKinds.some((kind) => kind !== 'normal')) {
+    return "Prayer times couldn't be calculated, so the prayer alarms are not shown. Check your location in Settings.";
+  }
+  return "Some alarms couldn't be shown because their settings are not valid.";
 }
 
 /** Mirrors the week grid so nothing jumps when the real calendar replaces it. */

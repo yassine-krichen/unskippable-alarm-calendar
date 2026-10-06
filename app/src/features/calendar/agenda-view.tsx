@@ -1,5 +1,5 @@
 import type { EventRow } from '@alarm-calendar/core';
-import { BellOffIcon, CalendarPlusIcon } from 'lucide-react';
+import { BellOffIcon, CalendarPlusIcon, MoonStarIcon } from 'lucide-react';
 import { useMemo } from 'react';
 
 import { Badge } from '@/components/ui/badge';
@@ -89,15 +89,19 @@ export function AgendaView({
                         <span className="w-12 shrink-0 text-sm tabular-nums">
                           {formatTimeInZone(occurrence.start, tz)}
                         </span>
-                        <span
-                          aria-hidden="true"
-                          className="size-2.5 shrink-0 rounded-full bg-primary"
-                          style={occurrence.color ? { backgroundColor: occurrence.color } : undefined}
-                        />
+                        {occurrence.kind === 'prayer' ? (
+                          <MoonStarIcon aria-label="Prayer" className="size-3.5 shrink-0" />
+                        ) : (
+                          <span
+                            aria-hidden="true"
+                            className="size-2.5 shrink-0 rounded-full bg-primary"
+                            style={occurrence.color ? { backgroundColor: occurrence.color } : undefined}
+                          />
+                        )}
                         <span className={`min-w-0 flex-1 truncate ${occurrence.silenced ? 'text-muted-foreground' : ''}`}>
                           {occurrence.title}
                         </span>
-                        {event && event.repeat_unit !== 'none' ? (
+                        {event && occurrence.kind === 'normal' && event.repeat_unit !== 'none' ? (
                           <span className="hidden shrink-0 text-xs text-muted-foreground sm:inline">
                             {describeRepeat({ unit: event.repeat_unit, interval: event.repeat_interval })}
                           </span>

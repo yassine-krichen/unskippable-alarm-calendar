@@ -2,10 +2,10 @@ import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { app, ipcMain, Menu, nativeImage, powerMonitor, session, Tray } from 'electron';
+import { app, dialog, ipcMain, Menu, nativeImage, powerMonitor, session, Tray } from 'electron';
 import type { BrowserWindow, IpcMainInvokeEvent } from 'electron';
 import { buildSchedulePayload } from '@alarm-calendar/core';
-import type { ScheduleResult } from '@alarm-calendar/core';
+import type { ChooseCustomSoundResult, CustomSoundData, CustomSoundInfo, ScheduleResult } from '@alarm-calendar/core';
 
 import { AlarmWindows } from './alarm-window';
 import { ALARM_CHANNELS, DESKTOP_CHANNELS, parseOccurrenceId } from './alarm-ipc';
@@ -23,6 +23,7 @@ import { SUPABASE_ORIGIN } from './build-env';
 import { createCachePersister, emptyCache, loadCache, persistWithRetry } from './cache';
 import type { CacheData } from './cache';
 import { CompletionFlusher } from './completion-flusher';
+import { CUSTOM_SOUND_EXTENSIONS, CustomSoundStore } from './custom-sound';
 import { resolveConfig, resolveUserDataDir, START_HIDDEN_ARG } from './config';
 import { buildDevSeed } from './dev-seed';
 import {
@@ -207,8 +208,11 @@ function startAlarmEngine(): void {
     log,
   });
 
-  registerAlarmIpc(scheduler, alarmWindows, flusher);
-  registerDesktopIpc(scheduler, flusher, mainWindow);
+  // The user's own prayer sound lives in main's data folder; renderers only ever ask main for its bytes.
+  const customSound = new CustomSoundStore(join(app.getPath('userData'), 'custom-sound'));
+
+  registerAlarmIpc(scheduler, alarmWindows, flusher, customSound);
+  registerDesktopIpc(scheduler, flusher, mainWindow, customSound);
   app.on('second-instance', () => mainWindow.open());
   setInterval(() => {
     if (flusher.hasPending()) void flusher.flush();
@@ -253,7 +257,8 @@ function startAlarmEngine(): void {
 function registerAlarmIpc(
   scheduler: AlarmScheduler,
   alarmWindows: AlarmWindows,
-  flusher: CompletionFlusher
+  flusher: CompletionFlusher,
+  customSound: CustomSoundStore
 ): void {
   /**
    * A renderer may only act on the occurrence its own window was opened for,
@@ -295,13 +300,22 @@ function registerAlarmIpc(
     if (ok) alarmWindows.close(occurrenceId);
     return { ok };
   });
+
+  // Only a window that is ringing an occurrence may ask, and it gets the sound file's bytes, nothing else.
+  ipcMain.handle(ALARM_CHANNELS.customSound, (event, payload: unknown): CustomSoundData | null => {
+    if (authorize(event, payload) === null) return null;
+    const sound = customSound.read();
+    log('alarm.custom_sound_requested', { served: sound !== null, bytes: sound?.data.length ?? 0 });
+    return sound;
+  });
 }
 
 /** Handlers for the React app window: schedule, session, autostart. Every payload is validated. */
 function registerDesktopIpc(
   scheduler: AlarmScheduler,
   flusher: CompletionFlusher,
-  mainWindow: MainWindow
+  mainWindow: MainWindow,
+  customSound: CustomSoundStore
 ): void {
   const requireTrusted = (event: IpcMainInvokeEvent): void => {
     if (!mainWindow.isTrustedSender(event)) throw new Error('forbidden');
@@ -365,6 +379,39 @@ function registerDesktopIpc(
     if (!parsed.ok) throw new Error('invalid autostart payload');
     writeAutostart(parsed.value);
     return readAutostart();
+  });
+
+  ipcMain.handle(DESKTOP_CHANNELS.getCustomSound, (event): CustomSoundInfo | null => {
+    requireTrusted(event);
+    return customSound.info();
+  });
+
+  // The dialog is opened here, in main: the renderer cannot pick a path, only trigger the dialog.
+  ipcMain.handle(DESKTOP_CHANNELS.chooseCustomSound, async (event): Promise<ChooseCustomSoundResult> => {
+    requireTrusted(event);
+    const options = {
+      title: 'Choose a sound for the prayer alarms',
+      properties: ['openFile' as const],
+      filters: [{ name: 'Audio', extensions: [...CUSTOM_SOUND_EXTENSIONS] }],
+    };
+    const parent = mainWindow.window();
+    const picked = parent === null ? await dialog.showOpenDialog(options) : await dialog.showOpenDialog(parent, options);
+    const path = picked.filePaths[0];
+    if (picked.canceled || path === undefined) return { status: 'cancelled' };
+    const result = customSound.save(path);
+    log('custom_sound.chosen', { status: result.status });
+    return result;
+  });
+
+  ipcMain.handle(DESKTOP_CHANNELS.clearCustomSound, (event): void => {
+    requireTrusted(event);
+    customSound.clear();
+    log('custom_sound.cleared');
+  });
+
+  ipcMain.handle(DESKTOP_CHANNELS.readCustomSound, (event): CustomSoundData | null => {
+    requireTrusted(event);
+    return customSound.read();
   });
 }
 

@@ -11,7 +11,7 @@ import { useCompletionsStore } from '@/features/completions/completions-store';
 import { useEventsStore } from '@/features/events/events-store';
 import { usePassesStore } from '@/features/passes/passes-store';
 import { reportScheduleProblem } from './schedule-problem';
-import { getSoundId, subscribeSoundId } from '@/features/settings/sound-preference';
+import { getPrayerSoundId, getSoundId, subscribeSoundId } from '@/features/settings/sound-preference';
 import { useSettingsStore } from '@/features/settings/settings-store';
 
 const PUSH_DEBOUNCE_MS = 300;
@@ -28,6 +28,8 @@ interface ScheduleInputs {
   settings: Settings;
   completions: CompletionRow[];
   sound: string;
+  /** The prayer alarms' own sound on this device, or null when they use `sound`. */
+  prayerSound: string | null;
 }
 
 function sameInputs(a: ScheduleInputs, b: ScheduleInputs): boolean {
@@ -36,7 +38,8 @@ function sameInputs(a: ScheduleInputs, b: ScheduleInputs): boolean {
     a.cheatDays === b.cheatDays &&
     a.settings === b.settings &&
     a.completions === b.completions &&
-    a.sound === b.sound
+    a.sound === b.sound &&
+    a.prayerSound === b.prayerSound
   );
 }
 
@@ -86,6 +89,7 @@ export function startScheduleSync({
       settings,
       completions: useCompletionsStore.getState().completions,
       sound: getSoundId(),
+      prayerSound: getPrayerSoundId(),
     };
   };
 
@@ -115,7 +119,11 @@ export function startScheduleSync({
       payload = buildSchedulePayload({
         events: inputs.events,
         cheatDays: inputs.cheatDays,
-        settings: { ...inputs.settings, sound: inputs.sound },
+        settings: {
+          ...inputs.settings,
+          sound: inputs.sound,
+          ...(inputs.prayerSound === null ? {} : { prayerSound: inputs.prayerSound }),
+        },
         completions: inputs.completions,
         now: at,
         onEventFailed: (eventId) => failedEventIds.push(eventId),

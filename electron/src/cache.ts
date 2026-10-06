@@ -12,6 +12,7 @@ import { dirname, join } from 'node:path';
 import type {
   AlarmSettings,
   CompletionRow,
+  EventKind,
   EventRow,
   ScheduleEventInfo,
   ScheduleOccurrence,
@@ -44,6 +45,13 @@ export interface OccurrenceState {
   maxSnoozes: number;
   snoozeMinutes: number;
   soundId: string | null;
+  /** Set for a prayer or pre-prayer alarm; absent for a normal one (and for states saved before prayers). */
+  kind?: EventKind;
+  /**
+   * True when `title` is the occurrence's own text (a pre-prayer label), not the event's title, so a
+   * refresh from the event info must not overwrite it with the generic title.
+   */
+  labelled?: boolean;
 }
 
 /** The last precomputed schedule main holds (see SchedulePayload in core). */

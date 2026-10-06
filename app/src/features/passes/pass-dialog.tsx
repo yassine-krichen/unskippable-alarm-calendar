@@ -43,7 +43,7 @@ export function PassDialog({ open, onOpenChange }: PassDialogProps) {
   const cheatDayDates = useMemo(() => cheatDays.map(dateFromString), [cheatDays]);
   const upcoming = useMemo(() => (today === null ? [] : cheatDays.filter((day) => day >= today)), [cheatDays, today]);
   const impact = useMemo(
-    () => (selected !== null && settings ? dayImpact(events, selected, settings.timezone) : null),
+    () => (selected !== null && settings ? dayImpact(events, selected, settings) : null),
     [events, selected, settings]
   );
 

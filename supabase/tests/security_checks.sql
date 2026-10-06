@@ -50,6 +50,21 @@ from (values
   ('pass_cap', 'SELECT', true)
 ) as c(col, priv, expected)
 union all
+-- Prayer settings (prayer_times migration): every new column is client-writable by authenticated, on insert
+-- and on update, and anon holds no privilege on any of them.
+select format('%s can %s settings.%s', role, priv, col), expected::text,
+  has_column_privilege(role, 'public.settings', col, priv)::text,
+  case when has_column_privilege(role, 'public.settings', col, priv) = expected then 'PASS' else 'FAIL' end
+from unnest(array[
+  'prayers_enabled', 'prayers_enabled_since', 'latitude', 'longitude', 'location_label', 'fajr_angle', 'isha_angle',
+  'asr_factor', 'fajr_offset_min', 'dhuhr_offset_min', 'asr_offset_min', 'maghrib_offset_min', 'isha_offset_min',
+  'pre_prayer_minutes', 'prayer_max_snoozes', 'prayer_snooze_minutes'
+]) as col
+cross join (values
+  ('authenticated', 'INSERT', true), ('authenticated', 'UPDATE', true), ('authenticated', 'SELECT', true),
+  ('anon', 'INSERT', false), ('anon', 'UPDATE', false), ('anon', 'SELECT', false)
+) as g(role, priv, expected)
+union all
 select 'authenticated can ' || priv || ' settings (table level)', 'false',
   has_table_privilege('authenticated', 'public.settings', priv)::text,
   case when has_table_privilege('authenticated', 'public.settings', priv) then 'FAIL' else 'PASS' end
@@ -73,6 +88,7 @@ select format('%s can execute %s', role, fn), expected::text,
 from (values
   ('anon', 'public.sync_wallet()', false), ('anon', 'public.use_pass(date)', false), ('anon', 'public.refund_pass(date)', false),
   ('authenticated', 'public.sync_wallet()', true), ('authenticated', 'public.use_pass(date)', true), ('authenticated', 'public.refund_pass(date)', true),
+  ('anon', 'public.set_prayers_enabled(boolean)', false), ('authenticated', 'public.set_prayers_enabled(boolean)', true),
   ('anon', 'private.use_pass(uuid,date,timestamptz)', false), ('authenticated', 'private.use_pass(uuid,date,timestamptz)', false),
   ('authenticated', 'private.pass_today(timestamptz,text,text,text)', false), ('anon', 'private.pass_today(timestamptz,text,text,text)', false),
   ('authenticated', 'private.sync_wallet(uuid,timestamptz)', false), ('authenticated', 'private.refund_pass(uuid,date,timestamptz)', false)
@@ -92,4 +108,12 @@ union all
 select 'events.created_at is not null', 'true',
   coalesce((select a.attnotnull from pg_attribute a where a.attrelid = 'public.events'::regclass and a.attname = 'created_at' and not a.attisdropped), false)::text,
   case when coalesce((select a.attnotnull from pg_attribute a where a.attrelid = 'public.events'::regclass and a.attname = 'created_at' and not a.attisdropped), false) then 'PASS' else 'FAIL' end
+union all
+-- Prayer rows (prayer_times migration): a prayer row names its prayer, and a user has at most one
+-- row per (kind, prayer). Both are enforced by the database, not the app.
+select 'events has the prayer shape check and the unique index', 'true',
+  (exists (select 1 from pg_constraint where conrelid = 'public.events'::regclass and conname = 'events_prayer_shape')
+   and exists (select 1 from pg_indexes where schemaname = 'public' and indexname = 'events_prayer_unique'))::text,
+  case when exists (select 1 from pg_constraint where conrelid = 'public.events'::regclass and conname = 'events_prayer_shape')
+        and exists (select 1 from pg_indexes where schemaname = 'public' and indexname = 'events_prayer_unique') then 'PASS' else 'FAIL' end
 order by 1;

@@ -1,4 +1,10 @@
-import { occurrencesBetween } from './recurrence';
+import {
+  eventKindOf,
+  eventOccurrencesBetween,
+  isEventPassable,
+  prayerDayKey,
+  type OccurrenceSettings,
+} from './occurrences';
 import { localDateString } from './time-zone';
 import type { CompletionRow, EventRow, Settings } from './types';
 
@@ -38,11 +44,14 @@ export type HabitEvent = Pick<
   | 'passable'
   | 'color'
   | 'created_at'
+  | 'kind'
+  | 'prayer'
 >;
 
 export type HabitCompletion = Pick<CompletionRow, 'event_id' | 'occurrence_at' | 'status' | 'snoozes_used'>;
 
-export type HabitSettings = Pick<Settings, 'timezone' | 'grace_minutes'>;
+/** The zone and grace window, plus the prayer fields (a prayer is scored from its times in them). */
+export type HabitSettings = Pick<Settings, 'timezone' | 'grace_minutes'> & OccurrenceSettings;
 
 export interface HabitOccurrence {
   /** Scheduled instant of the occurrence. */
@@ -84,6 +93,11 @@ export interface HabitsReport {
   /** Pooled over ranked habits: 100 * sum(earned) / sum(possible); null when none is ranked. */
   overallScore: number | null;
   overallTier: HabitTier;
+  /**
+   * Habits left out because their occurrences could not be computed (malformed prayer settings, such as a
+   * location with no prayer times). The rest of the report is unaffected.
+   */
+  failed: HabitEvent[];
 }
 
 /**
@@ -163,9 +177,15 @@ export function displayScore(score: number): number {
   return Math.floor(score);
 }
 
-/** A habit is a recurring event; one-off events are not scored. */
-export function isHabit(event: Pick<EventRow, 'repeat_unit' | 'active'>): boolean {
-  return event.active && event.repeat_unit !== 'none';
+/**
+ * A habit is a recurring event; one-off events are not scored. Each of the five prayers is a habit
+ * (Done means prayed); the pre-prayer reminders are not, they are only a nudge towards it.
+ */
+export function isHabit(event: Pick<EventRow, 'repeat_unit' | 'active' | 'kind'>): boolean {
+  if (!event.active) return false;
+  const kind = eventKindOf(event);
+  if (kind === 'prayer') return true;
+  return kind === 'normal' && event.repeat_unit !== 'none';
 }
 
 export function completionKey(eventId: string, occurrenceMs: number): string {
@@ -193,6 +213,7 @@ export function indexCompletions(
 }
 
 export interface ClassifyInput {
+  /** Whether a cheat day can excuse it; use isEventPassable, which is false for every prayer. */
   passable: boolean;
   at: Date;
   now: Date;
@@ -234,6 +255,25 @@ function streaks(outcomes: readonly OccurrenceOutcome[]): { current: number; bes
   return { current: run, best };
 }
 
+/** The event's completions keyed by prayer-day; a done row beats a skipped one on the same day. */
+function completionsByPrayerDay(
+  event: HabitEvent,
+  completions: ReadonlyMap<string, HabitCompletion>,
+  settings: HabitSettings
+): Map<string, HabitCompletion> {
+  const byDay = new Map<string, HabitCompletion>();
+  for (const completion of completions.values()) {
+    if (completion.event_id !== event.id) continue;
+    const ms = instantMs(completion.occurrence_at);
+    if (Number.isNaN(ms)) continue;
+    const key = prayerDayKey(event, new Date(ms), settings);
+    if (key === null) continue;
+    const existing = byDay.get(key);
+    if (existing === undefined || (existing.status !== 'done' && completion.status === 'done')) byDay.set(key, completion);
+  }
+  return byDay;
+}
+
 /**
  * Stats of one recurring event over its window (28 days or more, see habitWindowDays) up to `now`,
  * but never before the event was created: occurrences earlier than created_at are not scored.
@@ -249,24 +289,32 @@ export function computeHabitStats(
   const windowDays = habitWindowDays(event);
   const windowStartMs = now.getTime() - windowDays * MS_PER_DAY;
   const createdMs = event.created_at === undefined ? Number.NaN : instantMs(event.created_at);
-  const from = new Date(Number.isNaN(createdMs) ? windowStartMs : Math.max(windowStartMs, createdMs));
-  // occurrencesBetween is half-open; +1 ms makes an occurrence exactly at `now` count.
-  const instants = occurrencesBetween(
-    event,
-    from,
-    new Date(now.getTime() + 1),
-    settings.timezone
-  );
+  // Prayers also start no earlier than the moment the user switched them on, so a stretch with
+  // prayers off is not scored as missed when they come back.
+  const enabledMs =
+    eventKindOf(event) === 'normal' || !settings.prayers_enabled_since
+      ? Number.NaN
+      : instantMs(settings.prayers_enabled_since);
+  const floorMs = Math.max(windowStartMs, Number.isNaN(createdMs) ? -Infinity : createdMs, Number.isNaN(enabledMs) ? -Infinity : enabledMs);
+  const from = new Date(floorMs);
+  // The range is half-open; +1 ms makes an occurrence exactly at `now` count.
+  const instants = eventOccurrencesBetween(event, from, new Date(now.getTime() + 1), settings);
 
+  // A prayer's completion is matched by prayer-day, not exact instant: an offset or location change after
+  // "prayed" moves the alarm by minutes and must not turn that prayer into a miss.
+  const prayerCompletions = eventKindOf(event) === 'normal' ? null : completionsByPrayerDay(event, completions, settings);
   const counts = { done: 0, missed: 0, excused: 0, pending: 0 };
   const occurrences: HabitOccurrence[] = [];
   let earned = 0;
   let possible = 0;
 
   for (const at of instants) {
-    const completion = completions.get(completionKey(event.id, at.getTime()));
+    const completion =
+      prayerCompletions === null
+        ? completions.get(completionKey(event.id, at.getTime()))
+        : prayerCompletions.get(prayerDayKey(event, at, settings) ?? '');
     const outcome = classifyOccurrence({
-      passable: event.passable,
+      passable: isEventPassable(event),
       at,
       now,
       completion,
@@ -322,9 +370,16 @@ export function computeHabitsReport(
 ): HabitsReport {
   const index = indexCompletions(completions);
   const cheatDaySet = new Set(cheatDays);
-  const habits = events
-    .filter(isHabit)
-    .map((event) => computeHabitStats(event, index, cheatDaySet, settings, now));
+  const habits: HabitStats[] = [];
+  const failed: HabitEvent[] = [];
+  for (const event of events.filter(isHabit)) {
+    try {
+      habits.push(computeHabitStats(event, index, cheatDaySet, settings, now));
+    } catch {
+      // One unusable event must not take the whole Stats screen down.
+      failed.push(event);
+    }
+  }
 
   let earned = 0;
   let possible = 0;
@@ -334,5 +389,5 @@ export function computeHabitsReport(
     possible += habit.weightedPossible;
   }
   const overallScore = possible > 0 ? (100 * earned) / possible : null;
-  return { habits, overallScore, overallTier: tierForScore(overallScore) };
+  return { habits, overallScore, overallTier: tierForScore(overallScore), failed };
 }

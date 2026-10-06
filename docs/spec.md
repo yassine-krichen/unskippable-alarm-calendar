@@ -56,12 +56,15 @@ interface ScheduleOccurrence {   // thin on purpose: what differs per ring
   at: string                // ISO UTC with milliseconds
   silenced: boolean         // a cheat day covers it (passable only): never rings
   completed: boolean        // a completion is known for it, on any device: never rings
+  label?: string            // text instead of the event title (a pre-prayer alarm), decided when the list was built
+  labelIfUnlogged?: { id: string; label: string }   // shown instead of `label` when occurrence `id` is not completed as this rings
 }
 
 interface ScheduleEventInfo {   // what is the same for every ring of an event, stored once
   title: string; notes: string | null
   maxSnoozes: number; snoozeMinutes: number
-  soundId: string | null
+  soundId: string | null    // a bundled sound id, or 'custom' for the user's own prayer sound file
+  kind?: 'prayer' | 'pre_prayer'; prayer?: string   // absent for a normal alarm
 }
 ```
 
@@ -73,6 +76,19 @@ cheat days (by local date in the settings time zone) and completions already app
 the list, applies the grace window, the snooze and re-fire rules (sections 6, 9, 10) and tracks its own ringing state,
 and needs no recurrence, cheat day, mode or prayer logic. Later phases add their occurrences (prayer times, exam
 revision sessions) as further sources of the same record, and modes as transforms of it, inside core.
+
+**Prayer alarms (phase 3b).** `eventOccurrencesBetween` (`packages/core/src/occurrences.ts`) is the one place that
+turns an event into instants: a normal alarm follows the recurrence rule, a `prayer` / `pre_prayer` event follows the
+prayer times in the settings (and nothing for either while `prayers_enabled` is off, which also leaves them out of
+`eventInfo`, so an engine dismisses a ringing prayer). The schedule, the calendar and habit scoring all call it. Prayer
+events are never passable (a cheat day does not silence them) and take their snooze rules from settings
+(`prayer_max_snoozes`, `prayer_snooze_minutes`), not from the row. The prayer uses the device's prayer sound
+(`settings.prayerSound`, a bundled id or `'custom'`), falling back to `settings.sound`; its reminder uses `sound`.
+An engine that gets `labelIfUnlogged` on an occurrence shows that text when the occurrence it names is not completed
+at ring time (completed flags in the list, completions it knows, or its own pending ones), else `label`, else the title.
+For a prayer or pre-prayer event, a completion matches an occurrence by event and prayer-day (`prayerDayKey` in core), not by
+exact instant, so editing an offset or the location after "prayed" does not ring or score the moved alarm again; normal alarms
+keep matching by exact instant.
 
 Bounds: at most 1500 occurrences per event and 5000 in all. When a cap cuts occurrences off, `horizonEnd` moves back to
 just before the first one cut and `truncated` is true, so an engine never reads silence as "nothing scheduled". A cap
@@ -133,6 +149,8 @@ All tables have RLS: `user_id = auth.uid()` for select/insert/update/delete.
 | passable | bool | default true, whether a cheat day silences it |
 | color | text | optional tag color |
 | active | bool | default true, delete = set false |
+| kind | enum `normal, prayer, pre_prayer` | default `normal` (roadmap-v2 phase 3b). A prayer row is one of the five daily prayers, a pre-prayer row its reminder; their times come from the prayer settings, and `start_at`, repeat and `ends_at` are ignored |
+| prayer | text | `fajr, dhuhr, asr, maghrib, isha`; required exactly when `kind <> 'normal'`. Unique per `(user_id, kind, prayer)` for non-normal rows, so at most 10 per user |
 | group_id | uuid | nullable, links the alarms a template created together (roadmap-v2 phase 2) |
 | updated_at | timestamptz | trigger-updated |
 
@@ -150,6 +168,8 @@ All tables have RLS: `user_id = auth.uid()` for select/insert/update/delete.
 Unique `(event_id, occurrence_at)`. Writes are upserts so offline flushes are idempotent.
 
 **settings** (one row per user): `timezone` (IANA, default from device), `week_starts_on` (0 = Monday default), `refire_seconds` (default 120), `pass_cap` (default 2), `grace_minutes` (default 30).
+
+Prayer columns (roadmap-v2 phase 3b), all with defaults for Ariana, Tunis: `prayers_enabled` (false), `prayers_enabled_since`, `latitude` (36.8625, range -65 to 65) / `longitude` (10.1956), `location_label`, `fajr_angle` / `isha_angle` (18, range 10 to 22), `asr_factor` (1 or 2), `fajr_offset_min` ... `isha_offset_min` (-60 to 60), `pre_prayer_minutes` (15, 0 to 120, 0 = no reminders), `prayer_max_snoozes` (0, 0 to 10), `prayer_snooze_minutes` (5, 1 to 120). The RPC `set_prayers_enabled(boolean)` switches them on (creating or re-activating the 10 rows) or off (deactivating them) in one transaction.
 
 **pass_wallet** (one row per user): `balance` int, `last_granted_week_start` date.
 

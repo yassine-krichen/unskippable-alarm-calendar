@@ -6,6 +6,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 import { EventFormView, type EventFormTarget } from './event-form-view';
 import { useGroupIdSupport } from './events-api';
+import { PrayerAlarmInfo } from './prayer-alarm-info';
 import { RelationshipFormView } from './relationship-form-view';
 
 type NewEventMode = 'alarm' | 'relationship';
@@ -45,9 +46,15 @@ export function EventSheet({ target, settings, onClose }: EventSheetProps) {
   const mode: NewEventMode =
     group ? 'relationship' : picked?.key === key && !groupsUnavailable ? picked.mode : 'alarm';
 
+  // A prayer or its reminder has no time of its own to edit: it opens a short summary instead.
+  const prayerEvent = editing !== null && editing.kind !== undefined && editing.kind !== 'normal' ? editing : null;
+
   let title = 'New alarm';
   let description = 'It will ring on a centered panel and can only be stopped with Done or Snooze.';
-  if (group) {
+  if (prayerEvent) {
+    title = prayerEvent.kind === 'prayer' ? `${prayerEvent.title} prayer` : 'Prayer reminder';
+    description = 'Prayer alarms follow the prayer times in Settings.';
+  } else if (group) {
     title = 'Edit birthday or anniversary';
     description = 'Change the person, date or time of both alarms.';
   } else if (editing) {
@@ -67,7 +74,9 @@ export function EventSheet({ target, settings, onClose }: EventSheetProps) {
       title={title}
       description={description}
     >
-      {target && key ? (
+      {target && key && prayerEvent ? (
+        <PrayerAlarmInfo key={key} event={prayerEvent} onDone={close} />
+      ) : target && key ? (
         <>
           {creating ? (
             <div className="shrink-0 border-b px-4 py-3">

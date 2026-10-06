@@ -39,6 +39,11 @@ export class MainWindow {
     win.focus();
   }
 
+  /** The window while it exists (a file dialog attaches to it), else null. */
+  window(): BrowserWindow | null {
+    return this.win !== null && !this.win.isDestroyed() ? this.win : null;
+  }
+
   /** IPC from the app is accepted only from this window's own top frame, on the app origin. */
   isTrustedSender(event: IpcMainInvokeEvent): boolean {
     const win = this.win;

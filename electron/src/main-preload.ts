@@ -1,5 +1,12 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { CompletionRow, DesktopApi, ScheduleResult } from '@alarm-calendar/core';
+import type {
+  ChooseCustomSoundResult,
+  CompletionRow,
+  CustomSoundData,
+  CustomSoundInfo,
+  DesktopApi,
+  ScheduleResult,
+} from '@alarm-calendar/core';
 
 import { DESKTOP_CHANNELS } from './alarm-ipc';
 
@@ -14,6 +21,11 @@ const desktopApi: DesktopApi = {
   getAutostart: () => ipcRenderer.invoke(DESKTOP_CHANNELS.getAutostart) as Promise<boolean>,
   setAutostart: (enabled) =>
     ipcRenderer.invoke(DESKTOP_CHANNELS.setAutostart, enabled) as Promise<boolean>,
+  getCustomSound: () => ipcRenderer.invoke(DESKTOP_CHANNELS.getCustomSound) as Promise<CustomSoundInfo | null>,
+  chooseCustomSound: () =>
+    ipcRenderer.invoke(DESKTOP_CHANNELS.chooseCustomSound) as Promise<ChooseCustomSoundResult>,
+  clearCustomSound: () => ipcRenderer.invoke(DESKTOP_CHANNELS.clearCustomSound) as Promise<void>,
+  readCustomSound: () => ipcRenderer.invoke(DESKTOP_CHANNELS.readCustomSound) as Promise<CustomSoundData | null>,
 };
 
 contextBridge.exposeInMainWorld('desktopApi', desktopApi);

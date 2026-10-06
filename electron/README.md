@@ -125,6 +125,21 @@ loader for the shared React app (`app/`). See `docs/spec.md` sections 6 and 9.
 - Always-on-top does not draw over exclusive-fullscreen games; use borderless
   windowed. Sound and the taskbar flash still happen.
 
+## Prayer alarms and the custom prayer sound
+
+Prayer alarms are ordinary occurrences in the schedule list (core builds them from the prayer times,
+see `docs/decisions.md`), so the scheduler needs no prayer logic except one thing: a pre-prayer alarm
+may carry `labelIfUnlogged`, a text to show instead of its label when the previous prayer's occurrence
+is not completed at the moment it rings (`AlarmScheduler.textFor`).
+
+The prayer sound can be a file the user chose. Main owns it (`custom-sound.ts`): the file dialog is
+opened in main, the file is checked by size (5 MB), extension and content (mp3, wav, ogg, m4a) and copied
+to `<userData>/custom-sound/prayer-sound.<ext>` with a small metadata file. Renderers never name a path.
+The main window can ask for the file's info, choose, clear and read it (`desktop:*-custom-sound`
+channels, trusted sender only); an alarm window can read it only while it is ringing an occurrence
+(`alarm:custom-sound`) and plays it from a blob. A missing or undecodable file falls back to the bundled
+bell. Removing it in Settings deletes the copy.
+
 ## Sounds and icons
 
 `pnpm --filter @alarm-calendar/electron generate-assets` writes the three alarm sounds

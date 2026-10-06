@@ -1,4 +1,4 @@
-import type { CompletionRow, SchedulePayload } from './types';
+import type { CompletionRow, EventKind, SchedulePayload } from './types';
 
 /**
  * Types shared by the Electron main process, its preload scripts and the React
@@ -18,7 +18,29 @@ export interface AlarmView {
   snoozeNotice: string | null;
   /** Id of the alarm sound to loop (settings payload `sound`), or null for the default. */
   soundId: string | null;
+  /** Absent for a normal alarm; the alarm screen says "Prayed" instead of "Done" for a prayer. */
+  kind?: EventKind;
 }
+
+/** The audio file the user chose for the prayer alarms, as main holds it. */
+export interface CustomSoundData {
+  /** A media type main checked against the file's bytes: audio/mpeg, audio/wav, audio/ogg or audio/mp4. */
+  mime: string;
+  data: Uint8Array;
+}
+
+/** What the settings screen shows about the chosen file. */
+export interface CustomSoundInfo {
+  /** The file's original name, for display only. */
+  name: string;
+  bytes: number;
+}
+
+export type ChooseCustomSoundResult =
+  | { status: 'chosen'; info: CustomSoundInfo }
+  | { status: 'cancelled' }
+  /** The file was refused (wrong type, too large, unreadable); `reason` is fit to show the user. */
+  | { status: 'rejected'; reason: string };
 
 export interface ActionResult {
   ok: boolean;
@@ -29,6 +51,11 @@ export interface AlarmApi {
   getAlarm(occurrenceId: string): Promise<AlarmView | null>;
   done(occurrenceId: string): Promise<ActionResult>;
   snooze(occurrenceId: string): Promise<ActionResult>;
+  /**
+   * The user's own prayer sound, for the window of a ringing occurrence only. The renderer never
+   * names a file: main reads the one it copied into its own data folder.
+   */
+  readCustomSound(occurrenceId: string): Promise<CustomSoundData | null>;
 }
 
 /** How many rows main refused from one schedule push; all zero when everything was accepted. */
@@ -69,4 +96,11 @@ export interface DesktopApi {
   setSession(session: DesktopSession | null): Promise<void>;
   getAutostart(): Promise<boolean>;
   setAutostart(enabled: boolean): Promise<boolean>;
+  /** The chosen custom prayer sound, or null when there is none. */
+  getCustomSound(): Promise<CustomSoundInfo | null>;
+  /** Opens the system file dialog in main; the file is checked and copied into main's data folder. */
+  chooseCustomSound(): Promise<ChooseCustomSoundResult>;
+  clearCustomSound(): Promise<void>;
+  /** The chosen file's bytes, for the preview button in Settings. */
+  readCustomSound(): Promise<CustomSoundData | null>;
 }

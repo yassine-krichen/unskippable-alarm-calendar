@@ -59,7 +59,8 @@ export function useHabitsReport(): HabitsView | null {
       covered,
       completions,
       cheatDays,
-      { timezone: settings.timezone, grace_minutes: settings.grace_minutes },
+      // The whole row: prayers are scored from the prayer times in it.
+      settings,
       now
     );
     return { report, pending, loading };

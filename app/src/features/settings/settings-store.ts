@@ -1,10 +1,11 @@
 import type { Settings } from '@alarm-calendar/core';
 import { create } from 'zustand';
 
+import { loadEvents } from '@/features/events/events-store';
 import { createLatestRequestGuard } from '@/lib/latest-request';
-import type { Result } from '@/lib/result';
+import { fail, ok, type Result } from '@/lib/result';
 
-import { createSettings, fetchSettings, updateSettings, type SettingsPatch } from './settings-api';
+import { createSettings, fetchSettings, setPrayersEnabled, updateSettings, type SettingsPatch } from './settings-api';
 
 interface SettingsState {
   settings: Settings | null;
@@ -33,6 +34,23 @@ export async function saveSettings(userId: string, patch: SettingsPatch): Promis
   if (result.data) loadGuard.invalidate();
   if (result.data) useSettingsStore.getState().setSettings(result.data);
   return result;
+}
+
+/**
+ * Switches the prayer alarms on or off (one database call, see setPrayersEnabled), then reloads the
+ * settings and the events so the app, and through it the alarm engine, sees the 10 prayer alarms
+ * appear or go. The switch itself having worked while the reload failed is reported as an error that
+ * says so: the toggle would otherwise look unchanged.
+ */
+export async function switchPrayers(enabled: boolean): Promise<Result<null>> {
+  const switched = await setPrayersEnabled(enabled);
+  if (switched.error !== null) return switched;
+  loadGuard.invalidate();
+  const [settings, events] = await Promise.all([loadSettings(), loadEvents()]);
+  if (settings.error !== null || events.error !== null) {
+    return fail('Prayer alarms were switched, but the app could not refresh. Reload to see them.');
+  }
+  return ok(null);
 }
 
 export async function createMissingSettings(userId: string, timezone: string): Promise<Result<Settings>> {

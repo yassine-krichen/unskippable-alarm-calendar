@@ -64,10 +64,17 @@ export function StatsPage() {
           </Alert>
         ) : loading ? (
           <StatsSkeleton />
-        ) : view.report.habits.length + view.pending.length === 0 ? (
+        ) : view.report.habits.length + view.pending.length + view.report.failed.length === 0 ? (
           <NoHabits onBack={() => navigate('/')} />
         ) : (
           <>
+            {view.report.failed.length > 0 ? (
+              <p role="status" className="text-sm text-destructive">
+                {view.report.failed.some((habit) => habit.kind === 'prayer')
+                  ? "Prayer times couldn't be calculated, so the prayers are left out. Check your location in Settings."
+                  : "Some habits couldn't be scored because their settings are not valid."}
+              </p>
+            ) : null}
             {view.report.habits.length > 0 ? <OverallCard report={view.report} /> : null}
             <HabitList habits={sortHabits(view.report.habits)} pending={view.pending} loading={view.loading} />
             <HowRanksWork />

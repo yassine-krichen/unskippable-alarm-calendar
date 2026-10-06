@@ -2,6 +2,7 @@ import {
   applySnooze,
   expandSchedule,
   MAX_LOOKBACK_MINUTES,
+  prayerDayKey,
   refireAfterDismissal,
   shouldRingMissedOccurrence,
   snoozeUi,
@@ -167,7 +168,7 @@ export class AlarmScheduler {
     for (const state of gone) {
       this.deps.onDismiss(makeOccurrenceId(state.eventId, new Date(state.occurrenceAt)));
     }
-    this.refreshStatesFromEventInfo(payload.eventInfo);
+    this.refreshStatesFromSchedule(payload.eventInfo, cache.schedule.occurrences);
     // Forget watermarks of events that left the schedule so the cache cannot grow forever.
     const knownIds = new Set(cache.events.map((event) => event.id));
     for (const eventId of Object.keys(cache.handledThrough)) {
@@ -184,17 +185,49 @@ export class AlarmScheduler {
     ]);
   }
 
-  /** An edit that lands while an alarm is ringing or snoozed (new title, snooze rules) applies to it. */
-  private refreshStatesFromEventInfo(eventInfo: Record<string, ScheduleEventInfo>): void {
+  /**
+   * An edit that lands while an alarm is ringing or snoozed (new title, snooze rules) applies to it.
+   * A state with its own text (a pre-prayer label) takes the text of its occurrence in the new list
+   * when that is still there, and keeps what it has when the occurrence has aged out.
+   */
+  private refreshStatesFromSchedule(
+    eventInfo: Record<string, ScheduleEventInfo>,
+    occurrences: readonly ScheduleOccurrence[]
+  ): void {
+    const byId = new Map<string, ScheduleOccurrence>();
     for (const state of this.deps.cache.occurrences) {
       const info = eventInfo[state.eventId];
       if (info === undefined) continue;
-      state.title = info.title;
+      if (state.labelled === true) {
+        if (byId.size === 0) for (const occurrence of occurrences) byId.set(occurrence.id, occurrence);
+        const occurrence = byId.get(makeOccurrenceId(state.eventId, new Date(state.occurrenceAt)));
+        if (occurrence !== undefined) state.title = this.textFor(occurrence, info).title;
+      } else {
+        state.title = info.title;
+      }
       state.notes = info.notes;
       state.maxSnoozes = info.maxSnoozes;
       state.snoozeMinutes = info.snoozeMinutes;
       state.soundId = info.soundId;
+      state.kind = info.kind;
     }
+  }
+
+  /**
+   * What an occurrence says when it rings. Its own label if it has one; if it says "unless this other
+   * occurrence is completed" (a pre-prayer alarm whose previous prayer was still to come when the list
+   * was built), the alternative text applies when that one is not known to be completed now.
+   */
+  private textFor(occurrence: ScheduleOccurrence, info: ScheduleEventInfo): { title: string; labelled: boolean } {
+    const unlogged = occurrence.labelIfUnlogged;
+    if (unlogged !== undefined) {
+      const previous = parseOccurrenceId(unlogged.id);
+      if (previous !== null && !this.isKnownCompleted(previous.eventId, new Date(previous.occurrenceAt))) {
+        return { title: unlogged.label, labelled: true };
+      }
+    }
+    if (occurrence.label !== undefined) return { title: occurrence.label, labelled: true };
+    return { title: info.title, labelled: false };
   }
 
   private mergeKnownCompletions(occurrenceIds: readonly string[]): void {
@@ -207,17 +240,49 @@ export class AlarmScheduler {
     });
   }
 
-  /** Done on this device (not yet flushed) or already synced from any device. */
+  /**
+   * Done on this device (not yet flushed) or already synced from any device. A normal alarm matches by
+   * exact instant. A prayer matches by event and prayer-day (core's prayerDayKey): its alarm moves by
+   * minutes when the user edits an offset or the location, and "prayed at 05:59" must still cover the
+   * 06:01 alarm that replaces it.
+   */
   private isKnownCompleted(eventId: string, occurrenceAt: Date): boolean {
     const cache = this.deps.cache;
     const iso = occurrenceAt.toISOString();
-    return (
+    if (
       cache.knownCompletions.includes(makeOccurrenceId(eventId, occurrenceAt)) ||
       cache.pendingCompletions.some(
         (pending) =>
           pending.event_id === eventId && new Date(pending.occurrence_at).toISOString() === iso
       )
-    );
+    ) {
+      return true;
+    }
+    return this.isCompletedByPrayerDay(eventId, occurrenceAt);
+  }
+
+  private isCompletedByPrayerDay(eventId: string, occurrenceAt: Date): boolean {
+    const { events, settings, knownCompletions, pendingCompletions } = this.deps.cache;
+    const event = events.find((candidate) => candidate.id === eventId);
+    if (event === undefined || settings === null || (event.kind ?? 'normal') === 'normal') return false;
+    try {
+      const key = prayerDayKey(event, occurrenceAt, settings);
+      if (key === null) return false;
+      const instants: Date[] = [];
+      for (const id of knownCompletions) {
+        const parsed = parseOccurrenceId(id);
+        if (parsed !== null && parsed.eventId === eventId) instants.push(new Date(parsed.occurrenceAt));
+      }
+      for (const pending of pendingCompletions) {
+        if (pending.event_id === eventId) instants.push(new Date(pending.occurrence_at));
+      }
+      return instants.some(
+        (instant) => !Number.isNaN(instant.getTime()) && prayerDayKey(event, instant, settings) === key
+      );
+    } catch {
+      // Unusable prayer settings: the schedule refuses those events too, so there is nothing to match.
+      return false;
+    }
   }
 
   /**
@@ -247,12 +312,19 @@ export class AlarmScheduler {
         events: cache.events,
         cheatDays: cache.cheatDays,
         settings,
-        completions: cache.knownCompletions.flatMap((id) => {
-          const parsed = parseOccurrenceId(id);
-          return parsed === null
-            ? []
-            : [{ event_id: parsed.eventId, occurrence_at: parsed.occurrenceAt }];
-        }),
+        // What is known to be done, including what was done here and is still waiting to be flushed.
+        completions: [
+          ...cache.knownCompletions.flatMap((id) => {
+            const parsed = parseOccurrenceId(id);
+            return parsed === null
+              ? []
+              : [{ event_id: parsed.eventId, occurrence_at: parsed.occurrenceAt }];
+          }),
+          ...cache.pendingCompletions.map((pending) => ({
+            event_id: pending.event_id,
+            occurrence_at: pending.occurrence_at,
+          })),
+        ],
         now,
         onEventFailed: (eventId, error) =>
           this.deps.log('scheduler.event_failed', { eventId, error: String(error) }),
@@ -441,6 +513,7 @@ export class AlarmScheduler {
       this.deps.log('scheduler.event_info_missing', { eventId: occurrence.eventId });
       return true;
     }
+    const text = this.textFor(occurrence, info);
     const state: OccurrenceState = {
       eventId: occurrence.eventId,
       occurrenceAt: occurrence.at,
@@ -448,11 +521,13 @@ export class AlarmScheduler {
       phase: 'ringing',
       wakeAt: null,
       userId: settings.user_id,
-      title: info.title,
+      title: text.title,
       notes: info.notes,
       maxSnoozes: info.maxSnoozes,
       snoozeMinutes: info.snoozeMinutes,
       soundId: info.soundId,
+      ...(info.kind === undefined ? {} : { kind: info.kind }),
+      ...(text.labelled ? { labelled: true } : {}),
     };
     cache.occurrences.push(state);
     this.deps.log('alarm.ringing', { eventId: state.eventId, occurrenceAt: state.occurrenceAt });
@@ -543,6 +618,7 @@ export class AlarmScheduler {
       snoozeLabel: ui.label,
       snoozeNotice: ui.notice,
       soundId: state.soundId,
+      ...(state.kind === undefined ? {} : { kind: state.kind }),
     };
   }
 }

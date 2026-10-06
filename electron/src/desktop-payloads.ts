@@ -29,6 +29,8 @@ const uuid = z.string().regex(/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i);
 const timestamp = z.iso.datetime({ offset: true });
 const smallInt = (min: number, max: number) => z.number().int().min(min).max(max);
 
+const prayerName = z.enum(['fajr', 'dhuhr', 'asr', 'maghrib', 'isha']);
+
 const eventSchema = z.object({
   id: uuid,
   user_id: uuid,
@@ -51,6 +53,12 @@ const eventSchema = z.object({
   color: z.string().max(100).nullable(),
   active: z.boolean(),
   updated_at: timestamp,
+  // Absent in a push from before prayer times: a normal alarm. These must be listed: the schema
+  // strips unknown keys, and a prayer row that lost its kind would be scheduled from its start_at.
+  kind: z.enum(['normal', 'prayer', 'pre_prayer']).optional(),
+  prayer: prayerName.nullable().optional(),
+}).refine((value) => (value.kind ?? 'normal') === 'normal' || (value.prayer ?? null) !== null, {
+  message: 'a prayer event needs a prayer',
 });
 
 const timeZone = z.string().max(100).refine(
@@ -77,6 +85,28 @@ const settingsSchema = z.object({
     .string()
     .regex(/^[a-z0-9-]{1,32}$/)
     .optional(),
+  // Prayer times (all optional: a push from before the feature has none). The bounds are the
+  // database's, so a value outside them is a corrupt push, not a user's choice.
+  prayerSound: z
+    .string()
+    .regex(/^[a-z0-9-]{1,32}$/)
+    .optional(),
+  prayers_enabled: z.boolean().optional(),
+  prayers_enabled_since: timestamp.nullable().optional(),
+  latitude: z.number().min(-65).max(65).optional(),
+  longitude: z.number().min(-180).max(180).optional(),
+  location_label: z.string().max(100).optional(),
+  fajr_angle: z.number().min(10).max(22).optional(),
+  isha_angle: z.number().min(10).max(22).optional(),
+  asr_factor: z.union([z.literal(1), z.literal(2)]).optional(),
+  fajr_offset_min: smallInt(-60, 60).optional(),
+  dhuhr_offset_min: smallInt(-60, 60).optional(),
+  asr_offset_min: smallInt(-60, 60).optional(),
+  maghrib_offset_min: smallInt(-60, 60).optional(),
+  isha_offset_min: smallInt(-60, 60).optional(),
+  pre_prayer_minutes: smallInt(0, 120).optional(),
+  prayer_max_snoozes: smallInt(0, 10).optional(),
+  prayer_snooze_minutes: smallInt(1, 120).optional(),
 });
 
 const completionSchema = z.object({
@@ -123,6 +153,8 @@ const eventInfoSchema = z.object({
     .string()
     .regex(/^[a-z0-9-]{1,32}$/)
     .nullable(),
+  kind: z.enum(['normal', 'prayer', 'pre_prayer']).optional(),
+  prayer: prayerName.optional(),
 });
 
 const occurrenceSchema = z
@@ -132,6 +164,13 @@ const occurrenceSchema = z
     at: timestamp,
     silenced: z.boolean(),
     completed: z.boolean(),
+    label: z.string().min(1).max(200).optional(),
+    labelIfUnlogged: z
+      .object({
+        id: z.string().max(100).refine((value) => parseOccurrenceId(value) !== null, { message: 'not an occurrence id' }),
+        label: z.string().min(1).max(200),
+      })
+      .optional(),
   })
   .refine(
     // The id and the instant are what the alarm screen and the completion upsert are keyed by; a

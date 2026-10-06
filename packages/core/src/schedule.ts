@@ -1,10 +1,19 @@
-import { occurrencesBetween } from './recurrence';
+import { eventKindOf, eventOccurrencesBetween, prayerDayKey } from './occurrences';
+import {
+  prePrayerLabel,
+  previousPrayer,
+  resolvePrayerConfig,
+  unloggedPrayerLabel,
+  type PrayerConfig,
+} from './prayer-times';
 import { isSilencedByCheatDay } from './snooze';
 import { assertValidTimeZone } from './time-zone';
 import type {
   AlarmSettings,
   CompletionRow,
   EventRow,
+  PrayerName,
+  PrayerSettings,
   ScheduleEventInfo,
   ScheduleOccurrence,
   SchedulePayload,
@@ -15,10 +24,12 @@ import type {
  * list of concrete occurrences; the platform engines only ring what is in the list, so the Kotlin
  * AlarmEngine needs no recurrence, cheat day, completion or (later) prayer and mode logic.
  *
- * Pipeline: sources (today the event series; prayer times and exam revision sessions join here as
- * further candidate lists) -> annotations (cheat days, completions; modes join here as transforms)
- * -> sort, dedupe and bound. Everything after the sources works on ScheduleOccurrence records, not
- * on events, which is what lets a prayer occurrence flow through unchanged.
+ * Pipeline: sources (the event series, which for a prayer event means the prayer times; exam
+ * revision sessions join here later) -> annotations (cheat days, completions; modes join here as
+ * transforms) -> sort, dedupe and bound. Everything after the sources works on ScheduleOccurrence
+ * records, not on events, which is what lets a prayer occurrence flow through unchanged. Where an
+ * occurrence comes from (a recurrence rule or the prayer times) is decided in one place,
+ * eventOccurrencesBetween.
  */
 
 export const DEFAULT_HORIZON_DAYS = 60;
@@ -51,7 +62,7 @@ export interface ExpandScheduleInput {
   events: readonly EventRow[];
   /** 'yyyy-MM-dd' in the user's timezone. */
   cheatDays: readonly string[];
-  settings: Pick<AlarmSettings, 'timezone' | 'grace_minutes' | 'sound'>;
+  settings: Pick<AlarmSettings, 'timezone' | 'grace_minutes' | 'sound' | 'prayerSound'> & Partial<PrayerSettings>;
   /** Any completion marks its occurrence completed, whatever its status. */
   completions: ReadonlyArray<Pick<CompletionRow, 'event_id' | 'occurrence_at'>>;
   now: Date;
@@ -99,6 +110,28 @@ export function expandSchedule(input: ExpandScheduleInput): ExpandedSchedule {
   const soundId = settings.sound ?? null;
   const completedIds = completedOccurrenceIds(completions);
 
+  // Prayer settings that cannot be used fail every prayer event, and only those. Prayers switched
+  // off (no config) leave their events out of the schedule altogether, so a ringing prayer alarm is
+  // dismissed when the user turns prayers off.
+  let prayerConfig: PrayerConfig | null = null;
+  let prayerConfigError: { error: unknown } | null = null;
+  try {
+    prayerConfig = resolvePrayerConfig(settings);
+  } catch (error) {
+    prayerConfigError = { error };
+  }
+  const prayerEvents = prayerEventsByPrayer(events);
+  // A prayer completion is matched by event and prayer-day, not by exact instant (see prayerDayKey):
+  // changing an offset or the location moves the alarm, and a done prayer must stay done.
+  const completedPrayerDays =
+    prayerConfig === null ? new Set<string>() : completedPrayerDayKeys(events, completions, settings);
+  const isCompleted = (event: EventRow, at: Date): boolean => {
+    if (completedIds.has(makeOccurrenceId(event.id, at))) return true;
+    if (eventKindOf(event) === 'normal' || prayerConfig === null) return false;
+    const key = prayerDayKey(event, at, settings);
+    return key !== null && completedPrayerDays.has(key);
+  };
+
   // First instant that must NOT be in the list because a cap cut occurrences from there on.
   let cutAtMs = Infinity;
   const candidates: ScheduleOccurrence[] = [];
@@ -106,18 +139,20 @@ export function expandSchedule(input: ExpandScheduleInput): ExpandedSchedule {
 
   for (const event of events) {
     if (!event.active) continue;
-    eventInfo[event.id] = {
-      title: event.title,
-      notes: event.notes,
-      maxSnoozes: event.max_snoozes,
-      snoozeMinutes: event.snooze_minutes,
-      soundId,
-    };
+    const kind = eventKindOf(event);
+    if (kind !== 'normal') {
+      if (prayerConfigError !== null) {
+        input.onEventFailed?.(event.id, prayerConfigError.error);
+        continue;
+      }
+      if (prayerConfig === null) continue;
+    }
+    eventInfo[event.id] = eventInfoOf(event, soundId, settings.prayerSound ?? soundId, prayerConfig);
 
     let instants: Date[];
     try {
-      // occurrencesBetween is half-open; +1 ms makes the horizon inclusive.
-      instants = occurrencesBetween(event, windowStart, new Date(requestedEndMs + 1), settings.timezone);
+      // The range is half-open; +1 ms makes the horizon inclusive.
+      instants = eventOccurrencesBetween(event, windowStart, new Date(requestedEndMs + 1), settings);
     } catch (error) {
       input.onEventFailed?.(event.id, error);
       continue;
@@ -134,13 +169,20 @@ export function expandSchedule(input: ExpandScheduleInput): ExpandedSchedule {
     }
     for (const at of [...latestPast, ...future]) {
       const id = makeOccurrenceId(event.id, at);
-      candidates.push({
+      const occurrence: ScheduleOccurrence = {
         id,
         eventId: event.id,
         at: at.toISOString(),
         silenced: isSilencedByCheatDay(event, at, cheatDays, settings.timezone),
-        completed: completedIds.has(id),
-      });
+        completed: isCompleted(event, at),
+      };
+      if (kind === 'pre_prayer' && prayerConfig !== null && event.prayer != null) {
+        Object.assign(
+          occurrence,
+          prePrayerText(event.prayer, at, prayerConfig, prayerEvents, isCompleted, settings.timezone)
+        );
+      }
+      candidates.push(occurrence);
     }
   }
 
@@ -182,6 +224,98 @@ export function buildSchedulePayload(
     occurrences: expanded.occurrences,
     eventInfo: expanded.eventInfo,
     refillSource: { events: [...input.events], cheatDays: [...input.cheatDays] },
+  };
+}
+
+function eventInfoOf(
+  event: EventRow,
+  soundId: string | null,
+  prayerSoundId: string | null,
+  prayerConfig: PrayerConfig | null
+): ScheduleEventInfo {
+  const kind = eventKindOf(event);
+  if (kind === 'normal' || prayerConfig === null) {
+    return {
+      title: event.title,
+      notes: event.notes,
+      maxSnoozes: event.max_snoozes,
+      snoozeMinutes: event.snooze_minutes,
+      soundId,
+    };
+  }
+  return {
+    title: event.title,
+    notes: event.notes,
+    // The snooze rules of the prayer alarms are one setting, not a per-row choice.
+    maxSnoozes: prayerConfig.maxSnoozes,
+    snoozeMinutes: prayerConfig.snoozeMinutes,
+    // The prayer itself may use another sound (a takbir recording); its reminder is a plain alarm.
+    soundId: kind === 'prayer' ? prayerSoundId : soundId,
+    kind,
+    ...(event.prayer ? { prayer: event.prayer } : {}),
+  };
+}
+
+function prayerEventsByPrayer(events: readonly EventRow[]): Partial<Record<PrayerName, EventRow>> {
+  const byPrayer: Partial<Record<PrayerName, EventRow>> = {};
+  for (const event of events) {
+    if (event.active && eventKindOf(event) === 'prayer' && event.prayer) byPrayer[event.prayer] = event;
+  }
+  return byPrayer;
+}
+
+/** The prayer-day keys of the completions that belong to a prayer or pre-prayer event. */
+function completedPrayerDayKeys(
+  events: readonly EventRow[],
+  completions: ReadonlyArray<Pick<CompletionRow, 'event_id' | 'occurrence_at'>>,
+  settings: ExpandScheduleInput['settings']
+): Set<string> {
+  const prayerEventsById = new Map<string, EventRow>();
+  for (const event of events) {
+    if (event.active && eventKindOf(event) !== 'normal') prayerEventsById.set(event.id, event);
+  }
+  const keys = new Set<string>();
+  for (const completion of completions) {
+    const event = prayerEventsById.get(completion.event_id);
+    const at = new Date(completion.occurrence_at);
+    if (event === undefined || Number.isNaN(at.getTime())) continue;
+    const key = prayerDayKey(event, at, settings);
+    if (key !== null) keys.add(key);
+  }
+  return keys;
+}
+
+/**
+ * The text of one pre-prayer alarm: "Asr in 15 min", unless the prayer before it is not known to be
+ * completed, in which case the alternative ("You haven't logged Dhuhr ...") goes along as
+ * `labelIfUnlogged` and the engine picks when the alarm rings, whether that prayer is behind us or
+ * still to come. The list cannot decide: it is built before the day happens, and a completion made
+ * later (or on another device) must still win. Prayers from before the user switched prayers on do not
+ * count, and neither does one that is not over when the reminder rings.
+ */
+function prePrayerText(
+  prayer: PrayerName,
+  at: Date,
+  config: PrayerConfig,
+  prayerEvents: Partial<Record<PrayerName, EventRow>>,
+  isCompleted: (event: EventRow, at: Date) => boolean,
+  tz: string
+): Pick<ScheduleOccurrence, 'label' | 'labelIfUnlogged'> {
+  const plain = prePrayerLabel(prayer, config.prePrayerMinutes);
+  const prayerAt = new Date(at.getTime() + config.prePrayerMinutes * MS_PER_MINUTE);
+  const previous = previousPrayer(config, prayer, prayerAt, tz);
+  const previousEvent = previous === null ? undefined : prayerEvents[previous.prayer];
+  if (previous === null || previousEvent === undefined) return { label: plain };
+  const previousMs = previous.at.getTime();
+  if (previousMs > at.getTime()) return { label: plain };
+  if (config.enabledSinceMs !== null && previousMs < config.enabledSinceMs) return { label: plain };
+  if (isCompleted(previousEvent, previous.at)) return { label: plain };
+  return {
+    label: plain,
+    labelIfUnlogged: {
+      id: makeOccurrenceId(previousEvent.id, previous.at),
+      label: unloggedPrayerLabel(previous.prayer, prayer),
+    },
   };
 }
 

@@ -25,6 +25,8 @@ import { signOut } from '@/features/auth/auth-api';
 import { useAuthStore } from '@/features/auth/auth-store';
 import { detectPlatform } from '@/lib/platform';
 
+import { prayerFormToPatch, prayerFormValues } from './prayer-settings';
+import { PrayerSettingsSection } from './prayer-settings-section';
 import {
   GRACE_OPTIONS,
   REFIRE_OPTIONS,
@@ -83,6 +85,7 @@ export function SettingsPage() {
           weekStartsOn: settings.week_starts_on,
           refireSeconds: settings.refire_seconds,
           graceMinutes: settings.grace_minutes,
+          ...prayerFormValues(settings),
         }
       : undefined,
     mode: 'onTouched',
@@ -108,6 +111,7 @@ export function SettingsPage() {
       week_starts_on: values.weekStartsOn,
       refire_seconds: values.refireSeconds,
       grace_minutes: values.graceMinutes,
+      ...prayerFormToPatch(values),
     });
     if (result.error !== null) {
       toast.error("Couldn't save your settings. Your changes are still here, try again.");
@@ -324,6 +328,10 @@ export function SettingsPage() {
             </Field>
           </FieldGroup>
         </FieldSet>
+
+        <Separator />
+
+        <PrayerSettingsSection form={form} settings={settings} />
 
         <Separator />
 

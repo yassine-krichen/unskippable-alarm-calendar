@@ -1,5 +1,7 @@
 export * from './types';
 export * from './recurrence';
+export * from './prayer-times';
+export * from './occurrences';
 export * from './snooze';
 export * from './wallet';
 export * from './habits';

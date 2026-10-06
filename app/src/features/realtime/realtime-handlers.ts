@@ -1,4 +1,4 @@
-import type { CompletionRow, EventRow, Settings } from '@alarm-calendar/core';
+import type { CompletionRow, EventRow, PrayerSettings, Settings } from '@alarm-calendar/core';
 
 import { removeCompletion, upsertCompletion } from '@/features/completions/completions-store';
 import { recordRealtimeEventChange, useEventsStore } from '@/features/events/events-store';
@@ -47,6 +47,36 @@ export function handleEventChange(payload: ChangePayload): void {
   });
 }
 
+const PRAYER_NUMBER_KEYS = [
+  'latitude',
+  'longitude',
+  'fajr_angle',
+  'isha_angle',
+  'asr_factor',
+  'fajr_offset_min',
+  'dhuhr_offset_min',
+  'asr_offset_min',
+  'maghrib_offset_min',
+  'isha_offset_min',
+  'pre_prayer_minutes',
+  'prayer_max_snoozes',
+  'prayer_snooze_minutes',
+] as const;
+
+/** The prayer columns a payload carries, with the right types; a column that is absent is left out. */
+function prayerFieldsOf(row: Record<string, unknown>): Partial<PrayerSettings> {
+  const fields: Record<string, unknown> = {};
+  if (typeof row.prayers_enabled === 'boolean') fields.prayers_enabled = row.prayers_enabled;
+  if (row.prayers_enabled_since === null || typeof row.prayers_enabled_since === 'string') {
+    if ('prayers_enabled_since' in row) fields.prayers_enabled_since = row.prayers_enabled_since;
+  }
+  if (typeof row.location_label === 'string') fields.location_label = row.location_label;
+  for (const key of PRAYER_NUMBER_KEYS) {
+    if (key in row && row[key] !== null) fields[key] = Number(row[key]);
+  }
+  return fields as Partial<PrayerSettings>;
+}
+
 /** settings: one row per user, so any insert or update is the new truth. */
 export function handleSettingsChange(payload: ChangePayload): void {
   if (payload.eventType === 'DELETE') return;
@@ -59,6 +89,7 @@ export function handleSettingsChange(payload: ChangePayload): void {
     refire_seconds: Number(row.refire_seconds),
     pass_cap: Number(row.pass_cap),
     grace_minutes: Number(row.grace_minutes),
+    ...prayerFieldsOf(row),
   };
   useSettingsStore.getState().setSettings(next);
 }

@@ -63,9 +63,19 @@ Built on branch `v2-overnight`, not yet pushed or released. Needs the two migrat
 - The list is re-pushed on every change, on launch and focus, and once a day while running. Electron main also keeps the events, cheat days and settings it was last given and re-expands the list itself when under 7 days of horizon remain and at least daily, so a closed or crashed window does not run the alarms dry.
 - Caps: 1500 occurrences per event, 5000 in all; a cap shortens `horizonEnd` instead of silently dropping the tail. Details in `docs/decisions.md`.
 - Electron cache is `version: 2` (migrated from 1 on load); a version 1 push from an older renderer is still accepted.
-- For salat (3b): prayer times become another occurrence source inside `expandSchedule`, with `passable: false` (so a cheat day never silences them), a sound id for the user-chosen file, and snooze rules from settings (default off). The engines need no change. Text that depends on state, such as "You haven't logged Dhuhr", is fixed when the list is built, so the list must be rebuilt when a prayer is logged; the app already re-pushes on every completion change.
+- For salat (3b): prayer times become another occurrence source inside `expandSchedule`, with `passable: false` (so a cheat day never silences them), a sound id for the user-chosen file, and snooze rules from settings (default off). The engines need only one small addition (the pre-prayer text, see 3b).
 
-### 3b: salat
+### 3b: salat (done on branch `v2-overnight`, not yet pushed or released)
+
+Needs migration `20261006042009_prayer_times` pushed (`supabase db push`) before the app can load: it selects the new `events.kind`, `events.prayer` and settings columns. Built as specified below, with these changes made while building (details in `docs/decisions.md`):
+
+- The "You haven't logged ..." text cannot be fixed when the list is built: the list would be stale by the time the reminder rings. An occurrence can carry `labelIfUnlogged` (a text plus the id of the previous prayer's occurrence) and the engine picks at ring time.
+- A prayer completion matches by event and prayer-day, not by exact instant, so changing an offset or the location does not orphan "prayed". Latitude is limited to 65 degrees. This is the one new thing an engine must do for prayers.
+- For the Fajr reminder's missed-previous text, the wording is "its time ended at sunrise" instead of "you have until Dhuhr", because Fajr is over long before Dhuhr.
+- Prayer settings are on `settings` (location, angles, Asr factor, five offsets, reminder lead, snooze count and length, `prayers_enabled`, `prayers_enabled_since`); the 10 rows in `events` are created and switched by the `set_prayers_enabled` RPC.
+- Calendar shows the five prayers, outlined with a moon icon, and hides the reminders. Prayer rows open a short summary with a link to Settings, not the event form.
+
+Original plan:
 
 - Prayer times use the `adhan` library (offline). Its Kotlin twin exists for Android.
   - Defaults for Tunis/Ariana: Fajr 18°, Isha 18° (the Tunisian ministry convention), Asr shadow factor 1 (Maliki), location Ariana (about 36.86 N, 10.19 E).

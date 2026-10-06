@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { shouldAdoptDeviceTimeZone } from './device-timezone';
+import { prayerFormValues } from './prayer-settings';
 import {
   GRACE_OPTIONS,
   REFIRE_OPTIONS,
@@ -56,7 +57,13 @@ describe('listTimeZones', () => {
 });
 
 describe('settingsFormSchema', () => {
-  const valid = { timezone: 'Africa/Tunis', weekStartsOn: 0, refireSeconds: 120, graceMinutes: 30 };
+  const valid = {
+    timezone: 'Africa/Tunis',
+    weekStartsOn: 0,
+    refireSeconds: 120,
+    graceMinutes: 30,
+    ...prayerFormValues({ user_id: 'u1', timezone: 'Africa/Tunis', week_starts_on: 0, refire_seconds: 120, pass_cap: 2, grace_minutes: 30 }),
+  };
 
   it('mirrors the database checks', () => {
     expect(settingsFormSchema.safeParse(valid).success).toBe(true);
