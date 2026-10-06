@@ -82,4 +82,14 @@ select 'realtime publication has ' || t, 'true',
   exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = t)::text,
   case when exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = t) then 'PASS' else 'FAIL' end
 from unnest(array['events', 'completions', 'cheat_days', 'settings']) as t
+union all
+-- events.created_at is table-writable by the client roles, so a trigger must pin it
+-- (set on insert, unchanged on update). Needs the events_created_at migration.
+select 'events has the created_at pin trigger', 'true',
+  exists (select 1 from pg_trigger where tgrelid = 'public.events'::regclass and tgname = 'events_pin_created_at' and not tgisinternal)::text,
+  case when exists (select 1 from pg_trigger where tgrelid = 'public.events'::regclass and tgname = 'events_pin_created_at' and not tgisinternal) then 'PASS' else 'FAIL' end
+union all
+select 'events.created_at is not null', 'true',
+  coalesce((select a.attnotnull from pg_attribute a where a.attrelid = 'public.events'::regclass and a.attname = 'created_at' and not a.attisdropped), false)::text,
+  case when coalesce((select a.attnotnull from pg_attribute a where a.attrelid = 'public.events'::regclass and a.attname = 'created_at' and not a.attisdropped), false) then 'PASS' else 'FAIL' end
 order by 1;

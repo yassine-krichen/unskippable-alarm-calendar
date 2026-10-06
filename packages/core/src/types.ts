@@ -26,6 +26,11 @@ export interface EventRow {
   color: string | null;
   active: boolean;
   updated_at: string;
+  /**
+   * When the alarm was created, set by the database and never changed. Habit scoring starts no
+   * earlier than this. Optional so rows from before the column existed, and test fixtures, stay valid.
+   */
+  created_at?: string;
 }
 
 export interface CompletionRow {

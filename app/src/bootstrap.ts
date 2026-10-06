@@ -1,5 +1,6 @@
 import { loadRecentCompletions } from '@/features/completions/completions-store';
 import { loadEvents } from '@/features/events/events-store';
+import { loadHabitCompletions } from '@/features/habits/habits-store';
 import { fetchWalletAnchored } from '@/features/passes/passes-api';
 import { loadCheatDays, syncPassWallet } from '@/features/passes/passes-store';
 import { shouldAdoptDeviceTimeZone } from '@/features/settings/device-timezone';
@@ -13,7 +14,9 @@ import { detectDeviceTimeZone } from '@/lib/zoned-time';
  *    the 'UTC' default, write the device zone with UPDATE (never upsert: it would touch pass_cap).
  * 3. sync_wallet, which anchors the wallet in that zone.
  * 4. Load cheat days and events, plus recent completions (best effort: they only stop an already
- *    done occurrence from ringing again, so a failure must not block the app).
+ *    done occurrence from ringing again, so a failure must not block the app). The habit history
+ *    for the Stats screen is not part of this: it loads after the app is ready (see
+ *    startHabitHistorySync), so it can never delay startup or the alarm schedule push.
  */
 export async function bootstrap(userId: string): Promise<string | null> {
   const deviceTimeZone = detectDeviceTimeZone();
@@ -42,7 +45,7 @@ export async function bootstrap(userId: string): Promise<string | null> {
 }
 
 /**
- * Window-focus refresh. The five loads are independent, so they run in parallel; the wallet sync
+ * Window-focus refresh. The six loads are independent, so they run in parallel; the wallet sync
  * is included so a weekly grant that landed while away shows up. Returns the failure messages.
  */
 export async function refreshAll(): Promise<string[]> {
@@ -52,6 +55,7 @@ export async function refreshAll(): Promise<string[]> {
     loadCheatDays(),
     loadEvents(),
     loadRecentCompletions(),
+    loadHabitCompletions(),
   ]);
   return results.flatMap((result) => (result.error === null ? [] : [result.error]));
 }

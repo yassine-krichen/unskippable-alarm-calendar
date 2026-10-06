@@ -14,6 +14,8 @@ export interface RecordedCall {
 
 export const fake = {
   calls: [] as RecordedCall[],
+  /** Range filters (gte, lt, in) in call order, for tests that check what a query asked for. */
+  filters: [] as Array<{ op: string; args: unknown[] }>,
   responses: {} as Record<string, FakeResponse>,
   /**
    * Responses a test resolves by hand, consumed first-in-first-out per name before `responses`,
@@ -22,6 +24,7 @@ export const fake = {
   queued: {} as Record<string, Array<Promise<FakeResponse>>>,
   reset(): void {
     this.calls = [];
+    this.filters = [];
     this.responses = {};
     this.queued = {};
   },
@@ -67,8 +70,20 @@ function builder(table: string) {
       return chain;
     },
     eq: () => chain,
-    gte: () => chain,
+    gte: (...args: unknown[]) => {
+      fake.filters.push({ op: 'gte', args });
+      return chain;
+    },
+    lt: (...args: unknown[]) => {
+      fake.filters.push({ op: 'lt', args });
+      return chain;
+    },
+    in: (...args: unknown[]) => {
+      fake.filters.push({ op: 'in', args });
+      return chain;
+    },
     limit: () => chain,
+    range: () => chain,
     order: () => chain,
     overrideTypes: () => chain,
     maybeSingle: () => resolve(),

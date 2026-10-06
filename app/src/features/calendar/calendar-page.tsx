@@ -1,4 +1,11 @@
-import { AlarmClockIcon, ChevronLeftIcon, ChevronRightIcon, PlusIcon, SettingsIcon } from 'lucide-react';
+import {
+  AlarmClockIcon,
+  ChartNoAxesColumnIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  PlusIcon,
+  SettingsIcon,
+} from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 
@@ -101,6 +108,9 @@ export function CalendarPage() {
           <Button className="hidden sm:inline-flex" onClick={() => openCreate()}>
             <PlusIcon data-icon="inline-start" />
             New alarm
+          </Button>
+          <Button variant="ghost" size="icon" aria-label="Habits and ranks" onClick={() => navigate('/stats')}>
+            <ChartNoAxesColumnIcon />
           </Button>
           <Button variant="ghost" size="icon" aria-label="Settings" onClick={() => navigate('/settings')}>
             <SettingsIcon />

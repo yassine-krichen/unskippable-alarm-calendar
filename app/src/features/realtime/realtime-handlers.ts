@@ -2,6 +2,8 @@ import type { CompletionRow, EventRow, Settings } from '@alarm-calendar/core';
 
 import { removeCompletion, upsertCompletion } from '@/features/completions/completions-store';
 import { recordRealtimeEventChange, useEventsStore } from '@/features/events/events-store';
+import { removeHabitCompletion, upsertHabitCompletion } from '@/features/habits/habits-store';
+import type { HabitCompletionRow } from '@/features/habits/habits-api';
 import { loadCheatDays } from '@/features/passes/passes-store';
 import { useSettingsStore } from '@/features/settings/settings-store';
 
@@ -69,14 +71,21 @@ export function handleCheatDayChange(): void {
   void loadCheatDays();
 }
 
-/** completions: keep the recent list current so a done occurrence is known to the alarm engine. */
+/**
+ * completions: keep the recent list current so a done occurrence is known to the alarm engine,
+ * and the 28-day list the Stats screen scores, so a Done on any device moves the ranks live.
+ */
 export function handleCompletionChange(payload: ChangePayload): void {
   if (payload.eventType === 'DELETE') {
     const id = payload.old.id;
-    if (typeof id === 'string') removeCompletion(id);
+    if (typeof id === 'string') {
+      removeCompletion(id);
+      removeHabitCompletion(id);
+    }
     return;
   }
   const row = payload.new;
   if (!hasString(row, 'id') || !hasString(row, 'event_id') || !hasString(row, 'occurrence_at')) return;
   upsertCompletion(row as unknown as CompletionRow);
+  upsertHabitCompletion(row as unknown as HabitCompletionRow);
 }

@@ -6,7 +6,7 @@ import { fail, ok, type Result } from '@/lib/result';
 import type { EventWriteInput } from './event-form';
 
 const EVENT_COLUMNS =
-  'id, user_id, title, notes, start_at, duration_min, repeat_unit, repeat_interval, repeat_weekdays, ends_at, max_snoozes, snooze_minutes, passable, color, active, updated_at';
+  'id, user_id, title, notes, start_at, duration_min, repeat_unit, repeat_interval, repeat_weekdays, ends_at, max_snoozes, snooze_minutes, passable, color, active, created_at, updated_at';
 
 export async function fetchActiveEvents(): Promise<Result<EventRow[]>> {
   const { data, error } = await supabase

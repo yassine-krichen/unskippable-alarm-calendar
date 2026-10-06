@@ -101,6 +101,15 @@ describe('bootstrap', () => {
     expect(names).not.toContain('update:settings');
   });
 
+  it('does not load the habit history: startup only reads the recent completions', async () => {
+    arrange({ settings: settingsRow('Europe/Berlin'), anchored: true });
+
+    expect(await bootstrap('u1')).toBeNull();
+
+    const columns = fake.calls.filter((call) => call.name === 'select:completions').map((call) => call.payload);
+    expect(columns).toEqual(['id, user_id, event_id, occurrence_at, status, snoozes_used, done_at']);
+  });
+
   it('stops before syncing when the wallet anchor cannot be read', async () => {
     arrange({ settings: settingsRow('UTC'), anchored: false });
     fake.responses['select:pass_wallet'] = { data: null, error: { message: 'boom' } };

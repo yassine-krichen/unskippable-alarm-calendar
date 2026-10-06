@@ -34,6 +34,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { EventRank } from '@/features/habits/event-rank';
 import { formatDay, weekdayName, weekdayShortName } from '@/lib/zoned-time';
 
 import { EVENT_COLORS } from './event-colors';
@@ -150,6 +151,7 @@ export function EventFormView({ target, settings, onDone }: EventFormViewProps) 
         className="min-h-0 flex-1 overflow-y-auto px-4 py-4"
       >
         <FieldGroup>
+          {editing && editing.repeat_unit !== 'none' ? <EventRank eventId={editing.id} /> : null}
           {editing && editing.repeat_unit !== 'none' ? (
             <Alert>
               <InfoIcon />

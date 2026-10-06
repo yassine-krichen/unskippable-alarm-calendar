@@ -162,3 +162,15 @@ mirror (step 10) and the app code must follow these.
   `electron/src/config.ts` decides, and refuses a seed flag combined with an override that points at the
   daily dev or installed folder. Packaged builds ignore all of it. The single-instance lock is keyed by
   userData, so a seeded run (no real alarms) can run beside the daily instance without double-ringing.
+
+- **Habit scoring (roadmap-v2 phase 1) lives in `packages/core/src/habits.ts`** with shared vectors in
+  `test-vectors/habits.json`. Each habit has its own window, `max(28 days, 5 × nominal repeat period)` capped at 180,
+  and the recency half-life is half of it. The app loads 28 days of completions for everything and older history only
+  for slow habits; it never scores a habit whose window the loaded history does not cover.
+- **`events.created_at` is pinned by a trigger, not a column grant.** `authenticated` holds table-wide INSERT and UPDATE
+  on `events`, so `private.pin_event_created_at` sets it to `now()` on insert (whatever the client sends) and keeps the
+  old value on update. Scoring ignores occurrences before it. The migration backfills existing rows with
+  `least(start_at, now())` and pauses the `updated_at` trigger meanwhile, so no row's `updated_at` moves. Setting the
+  column by hand (an import, say) needs the trigger dropped first. `supabase/tests/security_checks.sql` checks the trigger
+  and the NOT NULL.
+

@@ -20,10 +20,11 @@ Each phase ends with tests green, a code review, and a commit. Android work stay
   - excused (a cheat day on a passable event),
   - pending (not yet due, or still inside grace).
 - Score per habit, computed in `packages/core`:
-  - The window is the last 28 days, with recency weight `w = 0.5^(daysAgo / 14)`.
+  - Each habit has its own window: `max(28 days, 5 × its nominal repeat period)`, capped at 180 days, so slow habits (weekly, monthly) can be ranked. Nominal period: hour = interval hours; day = interval days; week = interval × 7 days divided by the number of weekdays chosen; month = interval × 30 days. A weekly habit gets 35 days, a monthly one 150, every 2 months or slower 180.
+  - Recency weight is `w = 0.5^(daysAgo / (window / 2))`, so the half-life is 14 days for the 28-day window.
   - Done credit is `max(0.5, 1 - 0.1 * snoozes)`. A miss weighs `λ = 2`.
   - `score = 100 * Σ w·credit / Σ w·(done ? 1 : λ)`. Excused and pending occurrences are left out.
-  - Fewer than 5 scored occurrences in the window means "Unranked". That is also how inactivity decays a rank.
+  - Fewer than 5 scored occurrences (done or missed) in the window means "Unranked". That is also how inactivity decays a rank.
 - Tiers:
 
   | Tier | Score |
@@ -34,8 +35,12 @@ Each phase ends with tests green, a code review, and a commit. Android work stay
   | Platinum | 75–89 |
   | Diamond | ≥ 90 |
 
-- Streaks: current and best run of consecutive done or excused occurrences.
-- UI: a Stats screen with a tier badge, score, done/missed/excused counts and streaks per habit, plus an overall score weighted by scheduled count. The tier badge also shows on the event sheet.
+- Streaks use the same per-habit window: current and best run of consecutive done occurrences. An excused occurrence keeps a run alive but does not add to it, so cheat days cannot inflate a streak; a miss resets it. Pending occurrences are skipped. The UI labels the best run "Best in N weeks", because it only sees the window.
+- Overall score: pooled over the ranked habits as `100 × ΣN / ΣD`, where N and D are each habit's weighted credit and weighted possible total (the numerator and denominator of its score, using its own weights). Unranked habits are left out. A habit with more recent scored occurrences therefore counts for more.
+- Scoring starts at `max(window start, event.created_at)`: occurrences before the alarm existed are neither done nor missed, so a habit created today with a start date last week is not charged for last week. `events.created_at` is set by the database (migration `events_created_at`, existing rows backfilled with `least(start_at, now())`) and a trigger pins it, since clients hold table-wide write access to `events`.
+- A skipped_cheat completion excuses an occurrence only for a passable event, like a cheat day.
+- Data: the app bulk-loads the last 28 days of completions (explicit columns, paged; hitting the page cap with a full last page is a failed read, never a truncated list). Habits whose window is longer get one extra read (`event_id in (...)`, rows older than the bulk range, back to the longest of their windows), so a fast habit such as an hourly one never pulls 180 days. The history loads after the app is ready, so startup and the alarm schedule push never wait for it, and reloads when a slow habit is added or its window changes. The store records which window each slow habit was loaded for; a habit whose window is not covered is shown as loading or unavailable (with a retry), never scored. Realtime changes that arrive during a load are replayed over its result, and each row is pruned by its own habit's window. The 3-day list sent to the alarm engine is unchanged.
+- UI: a Stats screen with a tier badge, score, done/missed/excused counts and streaks per habit, plus the pooled overall score. The tier badge also shows on the event sheet.
 - Known limit: editing a series recomputes its past occurrences with the new rule (spec §4 "applies going forward"). Scores near an edit can shift.
 
 ## Phase 2: yearly repeat and relationship reminders

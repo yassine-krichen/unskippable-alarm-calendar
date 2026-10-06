@@ -4,6 +4,7 @@ import { getAlarmAdapter } from '@/features/alarm-adapter/create-alarm-adapter';
 import { startScheduleSync } from '@/features/alarm-adapter/schedule-sync';
 import { startSessionSync } from '@/features/alarm-adapter/session-sync';
 import { useAuthStore } from '@/features/auth/auth-store';
+import { startHabitHistorySync } from '@/features/habits/habits-store';
 import { startRealtime } from '@/features/realtime/realtime';
 import { parseEnv } from '@/lib/env';
 import { detectPlatform } from '@/lib/platform';
@@ -36,12 +37,14 @@ export function useLiveSync(ready: boolean): void {
   useEffect(() => {
     if (!ready || userId === null) return;
     const stopSchedule = startScheduleSync({ adapter: getAlarmAdapter() });
+    const stopHabitHistory = startHabitHistorySync();
     const stopRealtime = startRealtime(supabase, userId, () => {
       // After every (re)subscribe, catch up on whatever changed while the socket was not up.
       void refreshAll();
     });
     return () => {
       stopRealtime();
+      stopHabitHistory();
       stopSchedule();
     };
   }, [ready, userId]);

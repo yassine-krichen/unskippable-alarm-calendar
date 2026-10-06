@@ -1,0 +1,1505 @@
+{
+  "description": "Shared habit vectors for the TypeScript and Kotlin suites (docs/roadmap-v2.md, phase 1). score = 100 * sum(w*credit) / sum(w*(done ? 1 : 2)) over done and missed occurrences in the habit's window up to 'now' (inclusive at both ends), w = 0.5^(daysAgo/(window/2)), window = min(180, max(28, 5 * nominal period)) days, credit = max(0.5, 1 - 0.1*snoozes); fewer than 5 scored occurrences is unranked (score null). Pending (not yet due, or at most grace_minutes late) and excused (cheat day on a passable event) occurrences are left out of the score. Streaks count consecutive done occurrences, skip pending ones, let an excused occurrence keep the run alive without adding to it, and reset on a miss; they use the habit's own window. Outcome lists are oldest first. Scores were evaluated by a script that implements only the formula (not the app code) and are compared with a tolerance of 1e-6. The overall score is 100 * sum(earned) / sum(possible) over the ranked habits, each habit on its own weights. 'windows' pins the window length, 'tiers' pins the boundaries, 'weights' and 'credits' pin the building blocks.",
+  "windows": [
+    {
+      "repeat_unit": "hour",
+      "repeat_interval": 12,
+      "repeat_weekdays": null,
+      "nominal_period_days": 0.5,
+      "window_days": 28
+    },
+    {
+      "repeat_unit": "hour",
+      "repeat_interval": 1,
+      "repeat_weekdays": null,
+      "nominal_period_days": 0.041666667,
+      "window_days": 28
+    },
+    {
+      "repeat_unit": "day",
+      "repeat_interval": 1,
+      "repeat_weekdays": null,
+      "nominal_period_days": 1,
+      "window_days": 28
+    },
+    {
+      "repeat_unit": "day",
+      "repeat_interval": 3,
+      "repeat_weekdays": null,
+      "nominal_period_days": 3,
+      "window_days": 28
+    },
+    {
+      "repeat_unit": "day",
+      "repeat_interval": 7,
+      "repeat_weekdays": null,
+      "nominal_period_days": 7,
+      "window_days": 35
+    },
+    {
+      "repeat_unit": "day",
+      "repeat_interval": 10,
+      "repeat_weekdays": null,
+      "nominal_period_days": 10,
+      "window_days": 50
+    },
+    {
+      "repeat_unit": "week",
+      "repeat_interval": 1,
+      "repeat_weekdays": null,
+      "nominal_period_days": 7,
+      "window_days": 35
+    },
+    {
+      "repeat_unit": "week",
+      "repeat_interval": 1,
+      "repeat_weekdays": [
+        0,
+        3
+      ],
+      "nominal_period_days": 3.5,
+      "window_days": 28
+    },
+    {
+      "repeat_unit": "week",
+      "repeat_interval": 2,
+      "repeat_weekdays": [
+        0
+      ],
+      "nominal_period_days": 14,
+      "window_days": 70
+    },
+    {
+      "repeat_unit": "week",
+      "repeat_interval": 2,
+      "repeat_weekdays": null,
+      "nominal_period_days": 14,
+      "window_days": 70
+    },
+    {
+      "repeat_unit": "week",
+      "repeat_interval": 1,
+      "repeat_weekdays": [
+        0,
+        0,
+        3
+      ],
+      "nominal_period_days": 3.5,
+      "window_days": 28
+    },
+    {
+      "repeat_unit": "month",
+      "repeat_interval": 1,
+      "repeat_weekdays": null,
+      "nominal_period_days": 30,
+      "window_days": 150
+    },
+    {
+      "repeat_unit": "month",
+      "repeat_interval": 2,
+      "repeat_weekdays": null,
+      "nominal_period_days": 60,
+      "window_days": 180
+    },
+    {
+      "repeat_unit": "month",
+      "repeat_interval": 12,
+      "repeat_weekdays": null,
+      "nominal_period_days": 360,
+      "window_days": 180
+    }
+  ],
+  "tiers": [
+    {
+      "score": null,
+      "tier": "unranked"
+    },
+    {
+      "score": 0,
+      "tier": "bronze"
+    },
+    {
+      "score": 39.99,
+      "tier": "bronze"
+    },
+    {
+      "score": 40,
+      "tier": "silver"
+    },
+    {
+      "score": 59.99,
+      "tier": "silver"
+    },
+    {
+      "score": 60,
+      "tier": "gold"
+    },
+    {
+      "score": 74.99,
+      "tier": "gold"
+    },
+    {
+      "score": 75,
+      "tier": "platinum"
+    },
+    {
+      "score": 89.99,
+      "tier": "platinum"
+    },
+    {
+      "score": 90,
+      "tier": "diamond"
+    },
+    {
+      "score": 100,
+      "tier": "diamond"
+    }
+  ],
+  "weights": [
+    {
+      "days_ago": 0,
+      "weight": 1
+    },
+    {
+      "days_ago": 14,
+      "weight": 0.5
+    },
+    {
+      "days_ago": 28,
+      "weight": 0.25
+    },
+    {
+      "days_ago": 7,
+      "weight": 0.707106781
+    }
+  ],
+  "credits": [
+    {
+      "snoozes": 0,
+      "credit": 1
+    },
+    {
+      "snoozes": 1,
+      "credit": 0.9
+    },
+    {
+      "snoozes": 2,
+      "credit": 0.8
+    },
+    {
+      "snoozes": 5,
+      "credit": 0.5
+    },
+    {
+      "snoozes": 6,
+      "credit": 0.5
+    },
+    {
+      "snoozes": 10,
+      "credit": 0.5
+    }
+  ],
+  "vectors": [
+    {
+      "name": "six days all done is Diamond with a 6 streak",
+      "now": "2026-03-10T12:00:00Z",
+      "settings": {
+        "timezone": "UTC",
+        "grace_minutes": 30
+      },
+      "cheat_days": [],
+      "events": [
+        {
+          "id": "daily",
+          "title": "Take vitamins",
+          "start_at": "2026-03-05T08:00:00Z",
+          "repeat_unit": "day",
+          "repeat_interval": 1,
+          "repeat_weekdays": null,
+          "ends_at": null,
+          "active": true,
+          "passable": true,
+          "color": null
+        }
+      ],
+      "completions": [
+        {
+          "event_id": "daily",
+          "occurrence_at": "2026-03-05T08:00:00Z",
+          "status": "done",
+          "snoozes_used": 0
+        },
+        {
+          "event_id": "daily",
+          "occurrence_at": "2026-03-06T08:00:00Z",
+          "status": "done",
+          "snoozes_used": 0
+        },
+        {
+          "event_id": "daily",
+          "occurrence_at": "2026-03-07T08:00:00Z",
+          "status": "done",
+          "snoozes_used": 0
+        },
+        {
+          "event_id": "daily",
+          "occurrence_at": "2026-03-08T08:00:00Z",
+          "status": "done",
+          "snoozes_used": 0
+        },
+        {
+          "event_id": "daily",
+          "occurrence_at": "2026-03-09T08:00:00Z",
+          "status": "done",
+          "snoozes_used": 0
+        },
+        {
+          "event_id": "daily",
+          "occurrence_at": "2026-03-10T08:00:00Z",
+          "status": "done",
+          "snoozes_used": 0
+        }
+      ],
+      "expected": {
+        "habits": [
+          {
+            "event_id": "daily",
+            "window_days": 28,
+            "done": 6,
+            "missed": 0,
+            "excused": 0,
+            "pending": 0,
+            "score": 100,
+            "tier": "diamond",
+            "current_streak": 6,
+            "best_streak": 6,
+            "outcomes": [
+              "done",
+              "done",
+              "done",
+              "done",
+              "done",
+              "done"
+            ]
+          }
+        ],
+        "overall_score": 100,
+        "overall_tier": "diamond"
+      }
+    },
+    {
+      "name": "an occurrence exactly grace_minutes late is still pending and does not break the streak",
+      "now": "2026-03-10T08:30:00Z",
+      "settings": {
+        "timezone": "UTC",
+        "grace_minutes": 30
+      },
+      "cheat_days": [],
+      "events": [
+        {
+          "id": "daily",
+          "title": "Take vitamins",
+          "start_at": "2026-03-05T08:00:00Z",
+          "repeat_unit": "day",
+          "repeat_interval": 1,
+          "repeat_weekdays": null,
+          "ends_at": null,
+          "active": true,
+          "passable": true,
+          "color": null
+        }
+      ],
+      "completions": [
+        {
+          "event_id": "daily",
+          "occurrence_at": "2026-03-05T08:00:00Z",
+          "status": "done",
+          "snoozes_used": 0
+        },
+        {
+          "event_id": "daily",
+          "occurrence_at": "2026-03-06T08:00:00Z",
+          "status": "done",
+          "snoozes_used": 0
+        },
+        {
+          "event_id": "daily",
+          "occurrence_at": "2026-03-07T08:00:00Z",
+          "status": "done",
+          "snoozes_used": 0
+        },
+        {
+          "event_id": "daily",
+          "occurrence_at": "2026-03-08T08:00:00Z",
+          "status": "done",
+          "snoozes_used": 0
+        },
+        {
+          "event_id": "daily",
+          "occurrence_at": "2026-03-09T08:00:00Z",
+          "status": "done",
+          "snoozes_used": 0
+        }
+      ],
+      "expected": {
+        "habits": [
+          {
+            "event_id": "daily",
+            "window_days": 28,
+            "done": 5,
+            "missed": 0,
+            "excused": 0,
+            "pending": 1,
+            "score": 100,
+            "tier": "diamond",
+            "current_streak": 5,
+            "best_streak": 5,
+            "outcomes": [
+              "done",
+              "done",
+              "done",
+              "done",
+              "done",
+              "pending"
+            ]
+          }
+        ],
+        "overall_score": 100,
+        "overall_tier": "diamond"
+      }
+    },
+    {
+      "name": "one second past grace the occurrence is missed and ends the streak",
+      "now": "2026-03-10T08:30:01Z",
+      "settings": {
+        "timezone": "UTC",
+        "grace_minutes": 30
+      },
+      "cheat_days": [],
+      "events": [
+        {
+          "id": "daily",
+          "title": "Take vitamins",
+          "start_at": "2026-03-05T08:00:00Z",
+          "repeat_unit": "day",
+          "repeat_interval": 1,
+          "repeat_weekdays": null,
+          "ends_at": null,
+          "active": true,
+          "passable": true,
+          "color": null
+        }
+      ],
+      "completions": [
+        {
+          "event_id": "daily",
+          "occurrence_at": "2026-03-05T08:00:00Z",
+          "status": "done",
+          "snoozes_used": 0
+        },
+        {
+          "event_id": "daily",
+          "occurrence_at": "2026-03-06T08:00:00Z",
+          "status": "done",
+          "snoozes_used": 0
+        },
+        {
+          "event_id": "daily",
+          "occurrence_at": "2026-03-07T08:00:00Z",
+          "status": "done",
+          "snoozes_used": 0
+        },
+        {
+          "event_id": "daily",
+          "occurrence_at": "2026-03-08T08:00:00Z",
+          "status": "done",
+          "snoozes_used": 0
+        },
+        {
+          "event_id": "daily",
+          "occurrence_at": "2026-03-09T08:00:00Z",
+          "status": "done",
+          "snoozes_used": 0
+        }
+      ],
+      "expected": {
+        "habits": [
+          {
+            "event_id": "daily",
+            "window_days": 28,
+            "done": 5,
+            "missed": 1,
+            "excused": 0,
+            "pending": 0,
+            "score": 68.356614257,
+            "tier": "gold",
+            "current_streak": 0,
+            "best_streak": 5,
+            "outcomes": [
+              "done",
+              "done",
+              "done",
+              "done",
+              "done",
+              "missed"
+            ]
+          }
+        ],
+        "overall_score": 68.356614257,
+        "overall_tier": "gold"
+      }
+    },
+    {
+      "name": "four scored occurrences are Unranked, with no score",
+      "now": "2026-03-08T12:00:00Z",
+      "settings": {
+        "timezone": "UTC",
+        "grace_minutes": 30
+      },
+      "cheat_days": [],
+      "events": [
+        {
+          "id": "new",
+          "title": "New habit",
+          "start_at": "2026-03-05T08:00:00Z",
+          "repeat_unit": "day",
+          "repeat_interval": 1,
+          "repeat_weekdays": null,
+          "ends_at": null,
+          "active": true,
+          "passable": true,
+          "color": null
+        }
+      ],
+      "completions": [
+        {
+          "event_id": "new",
+          "occurrence_at": "2026-03-05T08:00:00Z",
+          "status": "done",
+          "snoozes_used": 0
+        },
+        {
+          "event_id": "new",
+          "occurrence_at": "2026-03-06T08:00:00Z",
+          "status": "done",
+          "snoozes_used": 0
+        },
+        {
+          "event_id": "new",
+          "occurrence_at": "2026-03-07T08:00:00Z",
+          "status": "done",
+          "snoozes_used": 0
+        },
+        {
+          "event_id": "new",
+          "occurrence_at": "2026-03-08T08:00:00Z",
+          "status": "done",
+          "snoozes_used": 0
+        }
+      ],
+      "expected": {
+        "habits": [
+          {
+            "event_id": "new",
+            "window_days": 28,
+            "done": 4,
+            "missed": 0,
+            "excused": 0,
+            "pending": 0,
+            "score": null,
+            "tier": "unranked",
+            "current_streak": 4,
+            "best_streak": 4,
+            "outcomes": [
+              "done",
+              "done",
+              "done",
+              "done"
+            ]
+          }
+        ],
+        "overall_score": null,
+        "overall_tier": "unranked"
+      }
+    },
+    {
+      "name": "a weekly habit is scored over 35 days and ranked: snooze credit has a 0.5 floor, an occurrence exactly 35 days back counts, older ones do not",
+      "now": "2026-03-10T08:00:00Z",
+      "settings": {
+        "timezone": "UTC",
+        "grace_minutes": 30
+      },
+      "cheat_days": [],
+      "events": [
+        {
+          "id": "weekly",
+          "title": "Weekly review",
+          "start_at": "2026-01-27T08:00:00Z",
+          "repeat_unit": "week",
+          "repeat_interval": 1,
+          "repeat_weekdays": null,
+          "ends_at": null,
+          "active": true,
+          "passable": true,
+          "color": null
+        }
+      ],
+      "completions": [
+        {
+          "event_id": "weekly",
+          "occurrence_at": "2026-02-03T08:00:00Z",
+          "status": "done",
+          "snoozes_used": 0
+        },
+        {
+          "event_id": "weekly",
+          "occurrence_at": "2026-02-10T08:00:00Z",
+          "status": "done",
+          "snoozes_used": 9
+        },
+        {
+          "event_id": "weekly",
+          "occurrence_at": "2026-02-17T08:00:00Z",
+          "status": "done",
+          "snoozes_used": 2
+        },
+        {
+          "event_id": "weekly",
+          "occurrence_at": "2026-02-24T08:00:00Z",
+          "status": "done",
+          "snoozes_used": 5
+        },
+        {
+          "event_id": "weekly",
+          "occurrence_at": "2026-03-03T08:00:00Z",
+          "status": "done",
+          "snoozes_used": 1
+        },
+        {
+          "event_id": "weekly",
+          "occurrence_at": "2026-03-10T08:00:00Z",
+          "status": "done",
+          "snoozes_used": 0
+        }
+      ],
+      "expected": {
+        "habits": [
+          {
+            "event_id": "weekly",
+            "window_days": 35,
+            "done": 6,
+            "missed": 0,
+            "excused": 0,
+            "pending": 0,
+            "score": 81.628686079,
+            "tier": "platinum",
+            "current_streak": 6,
+            "best_streak": 6,
+            "outcomes": [
+              "done",
+              "done",
+              "done",
+              "done",
+              "done",
+              "done"
+            ]
+          }
+        ],
+        "overall_score": 81.628686079,
+        "overall_tier": "platinum"
+      }
+    },
+    {
+      "name": "a monthly habit is scored over 150 days with a 75 day half-life, so five months make it rankable",
+      "now": "2026-03-10T08:00:00Z",
+      "settings": {
+        "timezone": "UTC",
+        "grace_minutes": 30
+      },
+      "cheat_days": [],
+      "events": [
+        {
+          "id": "monthly",
+          "title": "Pay rent",
+          "start_at": "2025-10-10T08:00:00Z",
+          "repeat_unit": "month",
+          "repeat_interval": 1,
+          "repeat_weekdays": null,
+          "ends_at": null,
+          "active": true,
+          "passable": true,
+          "color": null
+        }
+      ],
+      "completions": [
+        {
+          "event_id": "monthly",
+          "occurrence_at": "2025-11-10T08:00:00Z",
+          "status": "done",
+          "snoozes_used": 0
+        },
+        {
+          "event_id": "monthly",
+          "occurrence_at": "2026-01-10T08:00:00Z",
+          "status": "done",
+          "snoozes_used": 0
+        },
+        {
+          "event_id": "monthly",
+          "occurrence_at": "2026-02-10T08:00:00Z",
+          "status": "done",
+          "snoozes_used": 3
+        },
+        {
+          "event_id": "monthly",
+          "occurrence_at": "2026-03-10T08:00:00Z",
+          "status": "done",
+          "snoozes_used": 0
+        }
+      ],
+      "expected": {
+        "habits": [
+          {
+            "event_id": "monthly",
+            "window_days": 150,
+            "done": 4,
+            "missed": 1,
+            "excused": 0,
+            "pending": 0,
+            "score": 68.97194142,
+            "tier": "gold",
+            "current_streak": 3,
+            "best_streak": 3,
+            "outcomes": [
+              "done",
+              "missed",
+              "done",
+              "done",
+              "done"
+            ]
+          }
+        ],
+        "overall_score": 68.97194142,
+        "overall_tier": "gold"
+      }
+    },
+    {
+      "name": "overall pools ranked habits with 100 * sum(earned) / sum(possible), each on its own window",
+      "now": "2026-03-10T08:00:00Z",
+      "settings": {
+        "timezone": "UTC",
+        "grace_minutes": 30
+      },
+      "cheat_days": [],
+      "events": [
+        {
+          "id": "daily",
+          "title": "Take vitamins",
+          "start_at": "2026-03-05T08:00:00Z",
+          "repeat_unit": "day",
+          "repeat_interval": 1,
+          "repeat_weekdays": null,
+          "ends_at": null,
+          "active": true,
+          "passable": true,
+          "color": null
+        },
+        {
+          "id": "monthly",
+          "title": "Pay rent",
+          "start_at": "2025-10-10T08:00:00Z",
+          "repeat_unit": "month",
+          "repeat_interval": 1,
+          "repeat_weekdays": null,
+          "ends_at": null,
+          "active": true,
+          "passable": true,
+          "color": null
+        }
+      ],
+      "completions": [
+        {
+          "event_id": "daily",
+          "occurrence_at": "2026-03-05T08:00:00Z",
+          "status": "done",
+          "snoozes_used": 0
+        },
+        {
+          "event_id": "daily",
+          "occurrence_at": "2026-03-06T08:00:00Z",
+          "status": "done",
+          "snoozes_used": 0
+        },
+        {
+          "event_id": "daily",
+          "occurrence_at": "2026-03-07T08:00:00Z",
+          "status": "done",
+          "snoozes_used": 0
+        },
+        {
+          "event_id": "daily",
+          "occurrence_at": "2026-03-08T08:00:00Z",
+          "status": "done",
+          "snoozes_used": 0
+        },
+        {
+          "event_id": "daily",
+          "occurrence_at": "2026-03-09T08:00:00Z",
+          "status": "done",
+          "snoozes_used": 0
+        },
+        {
+          "event_id": "daily",
+          "occurrence_at": "2026-03-10T08:00:00Z",
+          "status": "done",
+          "snoozes_used": 0
+        },
+        {
+          "event_id": "monthly",
+          "occurrence_at": "2025-11-10T08:00:00Z",
+          "status": "done",
+          "snoozes_used": 0
+        },
+        {
+          "event_id": "monthly",
+          "occurrence_at": "2026-01-10T08:00:00Z",
+          "status": "done",
+          "snoozes_used": 0
+        },
+        {
+          "event_id": "monthly",
+          "occurrence_at": "2026-02-10T08:00:00Z",
+          "status": "done",
+          "snoozes_used": 3
+        },
+        {
+          "event_id": "monthly",
+          "occurrence_at": "2026-03-10T08:00:00Z",
+          "status": "done",
+          "snoozes_used": 0
+        }
+      ],
+      "expected": {
+        "habits": [
+          {
+            "event_id": "daily",
+            "window_days": 28,
+            "done": 6,
+            "missed": 0,
+            "excused": 0,
+            "pending": 0,
+            "score": 100,
+            "tier": "diamond",
+            "current_streak": 6,
+            "best_streak": 6,
+            "outcomes": [
+              "done",
+              "done",
+              "done",
+              "done",
+              "done",
+              "done"
+            ]
+          },
+          {
+            "event_id": "monthly",
+            "window_days": 150,
+            "done": 4,
+            "missed": 1,
+            "excused": 0,
+            "pending": 0,
+            "score": 68.97194142,
+            "tier": "gold",
+            "current_streak": 3,
+            "best_streak": 3,
+            "outcomes": [
+              "done",
+              "missed",
+              "done",
+              "done",
+              "done"
+            ]
+          }
+        ],
+        "overall_score": 87.577973234,
+        "overall_tier": "platinum"
+      }
+    },
+    {
+      "name": "Paris spring DST: 08:00 local moves from 07:00Z to 06:00Z, a cheat day excuses without adding to the streak, mixed timestamp formats match, a completion at the old offset does not",
+      "now": "2026-03-31T12:00:00Z",
+      "settings": {
+        "timezone": "Europe/Paris",
+        "grace_minutes": 30
+      },
+      "cheat_days": [
+        "2026-03-30"
+      ],
+      "events": [
+        {
+          "id": "daily",
+          "title": "Morning pills",
+          "start_at": "2026-03-26T07:00:00Z",
+          "repeat_unit": "day",
+          "repeat_interval": 1,
+          "repeat_weekdays": null,
+          "ends_at": null,
+          "active": true,
+          "passable": true,
+          "color": null
+        }
+      ],
+      "completions": [
+        {
+          "event_id": "daily",
+          "occurrence_at": "2026-03-26T07:00:00+00:00",
+          "status": "done",
+          "snoozes_used": 0
+        },
+        {
+          "event_id": "daily",
+          "occurrence_at": "2026-03-27T07:00:00Z",
+          "status": "done",
+          "snoozes_used": 1
+        },
+        {
+          "event_id": "daily",
+          "occurrence_at": "2026-03-28T07:00:00.000000+00:00",
+          "status": "done",
+          "snoozes_used": 0
+        },
+        {
+          "event_id": "daily",
+          "occurrence_at": "2026-03-29T07:00:00Z",
+          "status": "done",
+          "snoozes_used": 0
+        },
+        {
+          "event_id": "daily",
+          "occurrence_at": "2026-03-31T06:00:00.000Z",
+          "status": "done",
+          "snoozes_used": 0
+        }
+      ],
+      "expected": {
+        "habits": [
+          {
+            "event_id": "daily",
+            "window_days": 28,
+            "done": 4,
+            "missed": 1,
+            "excused": 1,
+            "pending": 0,
+            "score": 64.132361362,
+            "tier": "gold",
+            "current_streak": 1,
+            "best_streak": 3,
+            "outcomes": [
+              "done",
+              "done",
+              "done",
+              "missed",
+              "excused",
+              "done"
+            ]
+          }
+        ],
+        "overall_score": 64.132361362,
+        "overall_tier": "gold"
+      }
+    },
+    {
+      "name": "a cheat day does not excuse a non-passable event",
+      "now": "2026-03-31T12:00:00Z",
+      "settings": {
+        "timezone": "Europe/Paris",
+        "grace_minutes": 30
+      },
+      "cheat_days": [
+        "2026-03-30"
+      ],
+      "events": [
+        {
+          "id": "meds",
+          "title": "Medication",
+          "start_at": "2026-03-26T07:00:00Z",
+          "repeat_unit": "day",
+          "repeat_interval": 1,
+          "repeat_weekdays": null,
+          "ends_at": null,
+          "active": true,
+          "passable": false,
+          "color": null
+        }
+      ],
+      "completions": [
+        {
+          "event_id": "meds",
+          "occurrence_at": "2026-03-26T07:00:00Z",
+          "status": "done",
+          "snoozes_used": 0
+        },
+        {
+          "event_id": "meds",
+          "occurrence_at": "2026-03-27T07:00:00Z",
+          "status": "done",
+          "snoozes_used": 1
+        },
+        {
+          "event_id": "meds",
+          "occurrence_at": "2026-03-28T07:00:00Z",
+          "status": "done",
+          "snoozes_used": 0
+        },
+        {
+          "event_id": "meds",
+          "occurrence_at": "2026-03-31T06:00:00Z",
+          "status": "done",
+          "snoozes_used": 0
+        }
+      ],
+      "expected": {
+        "habits": [
+          {
+            "event_id": "meds",
+            "window_days": 28,
+            "done": 4,
+            "missed": 2,
+            "excused": 0,
+            "pending": 0,
+            "score": 47.138081445,
+            "tier": "silver",
+            "current_streak": 1,
+            "best_streak": 3,
+            "outcomes": [
+              "done",
+              "done",
+              "done",
+              "missed",
+              "missed",
+              "done"
+            ]
+          }
+        ],
+        "overall_score": 47.138081445,
+        "overall_tier": "silver"
+      }
+    },
+    {
+      "name": "the cheat day is matched by local date: 00:30 in Tokyo is the previous day in UTC",
+      "now": "2026-03-07T00:00:00Z",
+      "settings": {
+        "timezone": "Asia/Tokyo",
+        "grace_minutes": 30
+      },
+      "cheat_days": [
+        "2026-03-04"
+      ],
+      "events": [
+        {
+          "id": "late",
+          "title": "Midnight stretch",
+          "start_at": "2026-02-28T15:30:00Z",
+          "repeat_unit": "day",
+          "repeat_interval": 1,
+          "repeat_weekdays": null,
+          "ends_at": null,
+          "active": true,
+          "passable": true,
+          "color": null
+        }
+      ],
+      "completions": [
+        {
+          "event_id": "late",
+          "occurrence_at": "2026-02-28T15:30:00Z",
+          "status": "done",
+          "snoozes_used": 0
+        },
+        {
+          "event_id": "late",
+          "occurrence_at": "2026-03-01T15:30:00Z",
+          "status": "done",
+          "snoozes_used": 0
+        },
+        {
+          "event_id": "late",
+          "occurrence_at": "2026-03-02T15:30:00Z",
+          "status": "done",
+          "snoozes_used": 0
+        },
+        {
+          "event_id": "late",
+          "occurrence_at": "2026-03-04T15:30:00Z",
+          "status": "done",
+          "snoozes_used": 0
+        },
+        {
+          "event_id": "late",
+          "occurrence_at": "2026-03-05T15:30:00Z",
+          "status": "done",
+          "snoozes_used": 0
+        },
+        {
+          "event_id": "late",
+          "occurrence_at": "2026-03-06T15:30:00Z",
+          "status": "done",
+          "snoozes_used": 0
+        }
+      ],
+      "expected": {
+        "habits": [
+          {
+            "event_id": "late",
+            "window_days": 28,
+            "done": 6,
+            "missed": 0,
+            "excused": 1,
+            "pending": 0,
+            "score": 100,
+            "tier": "diamond",
+            "current_streak": 6,
+            "best_streak": 6,
+            "outcomes": [
+              "done",
+              "done",
+              "done",
+              "excused",
+              "done",
+              "done",
+              "done"
+            ]
+          }
+        ],
+        "overall_score": 100,
+        "overall_tier": "diamond"
+      }
+    },
+    {
+      "name": "overall score pools the ranked habits and ignores unranked, one-off and inactive events",
+      "now": "2026-03-10T12:00:00Z",
+      "settings": {
+        "timezone": "UTC",
+        "grace_minutes": 30
+      },
+      "cheat_days": [],
+      "events": [
+        {
+          "id": "x",
+          "title": "Habit X",
+          "start_at": "2026-03-05T08:00:00Z",
+          "repeat_unit": "day",
+          "repeat_interval": 1,
+          "repeat_weekdays": null,
+          "ends_at": null,
+          "active": true,
+          "passable": true,
+          "color": null
+        },
+        {
+          "id": "y",
+          "title": "Habit Y",
+          "start_at": "2026-03-05T08:00:00Z",
+          "repeat_unit": "day",
+          "repeat_interval": 1,
+          "repeat_weekdays": null,
+          "ends_at": null,
+          "active": true,
+          "passable": true,
+          "color": null
+        },
+        {
+          "id": "z",
+          "title": "Habit Z",
+          "start_at": "2026-03-08T08:00:00Z",
+          "repeat_unit": "day",
+          "repeat_interval": 1,
+          "repeat_weekdays": null,
+          "ends_at": null,
+          "active": true,
+          "passable": true,
+          "color": null
+        },
+        {
+          "id": "once",
+          "title": "One off",
+          "start_at": "2026-03-06T08:00:00Z",
+          "repeat_unit": "none",
+          "repeat_interval": 1,
+          "repeat_weekdays": null,
+          "ends_at": null,
+          "active": true,
+          "passable": true,
+          "color": null
+        },
+        {
+          "id": "gone",
+          "title": "Deleted",
+          "start_at": "2026-03-05T08:00:00Z",
+          "repeat_unit": "day",
+          "repeat_interval": 1,
+          "repeat_weekdays": null,
+          "ends_at": null,
+          "active": false,
+          "passable": true,
+          "color": null
+        }
+      ],
+      "completions": [
+        {
+          "event_id": "x",
+          "occurrence_at": "2026-03-05T08:00:00Z",
+          "status": "done",
+          "snoozes_used": 0
+        },
+        {
+          "event_id": "x",
+          "occurrence_at": "2026-03-06T08:00:00Z",
+          "status": "done",
+          "snoozes_used": 0
+        },
+        {
+          "event_id": "x",
+          "occurrence_at": "2026-03-07T08:00:00Z",
+          "status": "done",
+          "snoozes_used": 0
+        },
+        {
+          "event_id": "x",
+          "occurrence_at": "2026-03-08T08:00:00Z",
+          "status": "done",
+          "snoozes_used": 0
+        },
+        {
+          "event_id": "x",
+          "occurrence_at": "2026-03-09T08:00:00Z",
+          "status": "done",
+          "snoozes_used": 0
+        },
+        {
+          "event_id": "x",
+          "occurrence_at": "2026-03-10T08:00:00Z",
+          "status": "done",
+          "snoozes_used": 0
+        },
+        {
+          "event_id": "y",
+          "occurrence_at": "2026-03-05T08:00:00Z",
+          "status": "done",
+          "snoozes_used": 0
+        },
+        {
+          "event_id": "y",
+          "occurrence_at": "2026-03-06T08:00:00Z",
+          "status": "done",
+          "snoozes_used": 0
+        },
+        {
+          "event_id": "y",
+          "occurrence_at": "2026-03-07T08:00:00Z",
+          "status": "done",
+          "snoozes_used": 0
+        },
+        {
+          "event_id": "y",
+          "occurrence_at": "2026-03-08T08:00:00Z",
+          "status": "done",
+          "snoozes_used": 0
+        },
+        {
+          "event_id": "y",
+          "occurrence_at": "2026-03-09T08:00:00Z",
+          "status": "done",
+          "snoozes_used": 0
+        },
+        {
+          "event_id": "z",
+          "occurrence_at": "2026-03-08T08:00:00Z",
+          "status": "done",
+          "snoozes_used": 0
+        },
+        {
+          "event_id": "z",
+          "occurrence_at": "2026-03-09T08:00:00Z",
+          "status": "done",
+          "snoozes_used": 0
+        },
+        {
+          "event_id": "z",
+          "occurrence_at": "2026-03-10T08:00:00Z",
+          "status": "done",
+          "snoozes_used": 0
+        }
+      ],
+      "expected": {
+        "habits": [
+          {
+            "event_id": "x",
+            "window_days": 28,
+            "done": 6,
+            "missed": 0,
+            "excused": 0,
+            "pending": 0,
+            "score": 100,
+            "tier": "diamond",
+            "current_streak": 6,
+            "best_streak": 6,
+            "outcomes": [
+              "done",
+              "done",
+              "done",
+              "done",
+              "done",
+              "done"
+            ]
+          },
+          {
+            "event_id": "y",
+            "window_days": 28,
+            "done": 5,
+            "missed": 1,
+            "excused": 0,
+            "pending": 0,
+            "score": 68.356614257,
+            "tier": "gold",
+            "current_streak": 0,
+            "best_streak": 5,
+            "outcomes": [
+              "done",
+              "done",
+              "done",
+              "done",
+              "done",
+              "missed"
+            ]
+          },
+          {
+            "event_id": "z",
+            "window_days": 28,
+            "done": 3,
+            "missed": 0,
+            "excused": 0,
+            "pending": 0,
+            "score": null,
+            "tier": "unranked",
+            "current_streak": 3,
+            "best_streak": 3,
+            "outcomes": [
+              "done",
+              "done",
+              "done"
+            ]
+          }
+        ],
+        "overall_score": 82.819157025,
+        "overall_tier": "platinum"
+      }
+    },
+    {
+      "name": "no completions at all scores 0, Bronze",
+      "now": "2026-03-10T12:00:00Z",
+      "settings": {
+        "timezone": "UTC",
+        "grace_minutes": 30
+      },
+      "cheat_days": [],
+      "events": [
+        {
+          "id": "d",
+          "title": "Ignored habit",
+          "start_at": "2026-03-05T08:00:00Z",
+          "repeat_unit": "day",
+          "repeat_interval": 1,
+          "repeat_weekdays": null,
+          "ends_at": null,
+          "active": true,
+          "passable": true,
+          "color": null
+        }
+      ],
+      "completions": [],
+      "expected": {
+        "habits": [
+          {
+            "event_id": "d",
+            "window_days": 28,
+            "done": 0,
+            "missed": 6,
+            "excused": 0,
+            "pending": 0,
+            "score": 0,
+            "tier": "bronze",
+            "current_streak": 0,
+            "best_streak": 0,
+            "outcomes": [
+              "missed",
+              "missed",
+              "missed",
+              "missed",
+              "missed",
+              "missed"
+            ]
+          }
+        ],
+        "overall_score": 0,
+        "overall_tier": "bronze"
+      }
+    },
+    {
+      "name": "scoring starts at created_at: earlier occurrences are neither done nor missed, and one exactly at created_at counts",
+      "now": "2026-03-12T12:00:00Z",
+      "settings": {
+        "timezone": "UTC",
+        "grace_minutes": 30
+      },
+      "cheat_days": [],
+      "events": [
+        {
+          "id": "late-start",
+          "title": "Created a week in",
+          "start_at": "2026-03-01T08:00:00Z",
+          "repeat_unit": "day",
+          "repeat_interval": 1,
+          "repeat_weekdays": null,
+          "ends_at": null,
+          "active": true,
+          "passable": true,
+          "color": null,
+          "created_at": "2026-03-07T08:00:00Z"
+        }
+      ],
+      "completions": [
+        {
+          "event_id": "late-start",
+          "occurrence_at": "2026-03-07T08:00:00Z",
+          "status": "done",
+          "snoozes_used": 0
+        },
+        {
+          "event_id": "late-start",
+          "occurrence_at": "2026-03-08T08:00:00Z",
+          "status": "done",
+          "snoozes_used": 0
+        },
+        {
+          "event_id": "late-start",
+          "occurrence_at": "2026-03-09T08:00:00Z",
+          "status": "done",
+          "snoozes_used": 0
+        },
+        {
+          "event_id": "late-start",
+          "occurrence_at": "2026-03-10T08:00:00Z",
+          "status": "done",
+          "snoozes_used": 0
+        },
+        {
+          "event_id": "late-start",
+          "occurrence_at": "2026-03-11T08:00:00Z",
+          "status": "done",
+          "snoozes_used": 0
+        },
+        {
+          "event_id": "late-start",
+          "occurrence_at": "2026-03-12T08:00:00Z",
+          "status": "done",
+          "snoozes_used": 0
+        }
+      ],
+      "expected": {
+        "habits": [
+          {
+            "event_id": "late-start",
+            "window_days": 28,
+            "done": 6,
+            "missed": 0,
+            "excused": 0,
+            "pending": 0,
+            "score": 100,
+            "tier": "diamond",
+            "current_streak": 6,
+            "best_streak": 6,
+            "outcomes": [
+              "done",
+              "done",
+              "done",
+              "done",
+              "done",
+              "done"
+            ]
+          }
+        ],
+        "overall_score": 100,
+        "overall_tier": "diamond"
+      }
+    },
+    {
+      "name": "an occurrence due earlier on the day the alarm was created is not scored, and with too few scored left the habit is Unranked",
+      "now": "2026-03-12T12:00:00Z",
+      "settings": {
+        "timezone": "UTC",
+        "grace_minutes": 30
+      },
+      "cheat_days": [],
+      "events": [
+        {
+          "id": "same-day",
+          "title": "Created after its time",
+          "start_at": "2026-03-01T08:00:00Z",
+          "repeat_unit": "day",
+          "repeat_interval": 1,
+          "repeat_weekdays": null,
+          "ends_at": null,
+          "active": true,
+          "passable": true,
+          "color": null,
+          "created_at": "2026-03-08T10:00:00Z"
+        }
+      ],
+      "completions": [
+        {
+          "event_id": "same-day",
+          "occurrence_at": "2026-03-09T08:00:00Z",
+          "status": "done",
+          "snoozes_used": 0
+        },
+        {
+          "event_id": "same-day",
+          "occurrence_at": "2026-03-10T08:00:00Z",
+          "status": "done",
+          "snoozes_used": 0
+        },
+        {
+          "event_id": "same-day",
+          "occurrence_at": "2026-03-11T08:00:00Z",
+          "status": "done",
+          "snoozes_used": 0
+        }
+      ],
+      "expected": {
+        "habits": [
+          {
+            "event_id": "same-day",
+            "window_days": 28,
+            "done": 3,
+            "missed": 1,
+            "excused": 0,
+            "pending": 0,
+            "score": null,
+            "tier": "unranked",
+            "current_streak": 0,
+            "best_streak": 3,
+            "outcomes": [
+              "done",
+              "done",
+              "done",
+              "missed"
+            ]
+          }
+        ],
+        "overall_score": null,
+        "overall_tier": "unranked"
+      }
+    }
+  ]
+}
