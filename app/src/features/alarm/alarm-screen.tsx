@@ -6,6 +6,7 @@ import { useSearchParams } from 'react-router';
 import { Button } from '@/components/ui/button';
 
 import { soundUrl } from './alarm-sounds';
+import { shortSnoozeLabel } from './snooze-label';
 
 type LoadState =
   | { kind: 'loading' }
@@ -20,7 +21,8 @@ function formatTime(iso: string): string {
  * The desktop alarm window (spec sections 6 and 9): what is ringing, when, and two ways out.
  * Done is the one primary action; Snooze is shown only while snoozes are left, and says how many.
  * There is deliberately no close control: the window is the alarm, and main re-opens it if it
- * goes away without a choice. Always black and white, whatever the app theme.
+ * goes away without a choice. Always black and white, whatever the app theme. Laid out for the centered, semi-transparent
+ * panel main opens (about 560x440), not for a full screen.
  */
 export function AlarmScreen() {
   const [params] = useSearchParams();
@@ -97,38 +99,41 @@ export function AlarmScreen() {
   }
 
   return (
-    <main className="dark flex min-h-dvh flex-col items-center justify-center gap-8 bg-black px-8 py-12 text-center text-white">
+    <main className="dark flex h-dvh flex-col items-center justify-center gap-4 border border-white/20 bg-black px-8 py-6 text-center text-white">
       {state.kind === 'loading' ? (
-        <p className="text-2xl text-neutral-400" role="status">
+        <p className="text-xl text-neutral-400" role="status">
           Loading alarm
         </p>
       ) : null}
 
       {state.kind === 'unavailable' ? (
-        <p className="max-w-xl text-3xl font-semibold" role="status">
+        <p className="max-w-md text-2xl font-semibold" role="status">
           {state.message}
         </p>
       ) : null}
 
       {state.kind === 'ready' ? (
         <>
-          <p className="text-8xl font-bold tabular-nums tracking-tight sm:text-9xl">
+          <p className="text-7xl font-bold tabular-nums tracking-tight">
             {formatTime(state.view.occurrenceAt)}
           </p>
-          <h1 className="max-w-4xl text-4xl font-semibold text-balance sm:text-5xl">{state.view.title}</h1>
+          <h1 className="line-clamp-2 max-w-full text-3xl font-semibold text-balance">
+            {state.view.title}
+          </h1>
           {state.view.notes ? (
-            <p className="line-clamp-4 max-w-2xl text-xl text-neutral-400">{state.view.notes}</p>
+            <p className="line-clamp-2 max-w-full text-base text-neutral-400">{state.view.notes}</p>
           ) : null}
 
-          <div className="mt-4 flex flex-col items-stretch gap-4 sm:flex-row">
+          {/* Stacked, equal width: Done is the one primary action, Snooze the quieter way out. */}
+          <div className="mt-2 flex w-full max-w-sm flex-col gap-3">
             <Button
               autoFocus
               size="lg"
               disabled={busy}
               onClick={() => void choose('done')}
-              className="h-20 min-w-72 rounded-2xl px-10 text-2xl font-semibold"
+              className="h-14 w-full gap-3 rounded-2xl text-xl font-semibold"
             >
-              <CheckIcon data-icon="inline-start" className="size-7" />
+              <CheckIcon className="size-6" />
               Done
             </Button>
             {state.view.snoozeLabel !== null ? (
@@ -137,22 +142,22 @@ export function AlarmScreen() {
                 variant="outline"
                 disabled={busy}
                 onClick={() => void choose('snooze')}
-                className="h-20 min-w-72 rounded-2xl px-10 text-2xl font-semibold"
+                className="h-14 w-full gap-3 rounded-2xl text-lg font-semibold"
               >
-                <AlarmClockIcon data-icon="inline-start" className="size-7" />
-                {state.view.snoozeLabel}
+                <AlarmClockIcon className="size-5" />
+                {shortSnoozeLabel(state.view.snoozeLabel)}
               </Button>
             ) : null}
           </div>
 
           {state.view.snoozeNotice !== null ? (
-            <p className="text-2xl font-semibold">{state.view.snoozeNotice}</p>
+            <p className="text-lg font-semibold">{state.view.snoozeNotice}</p>
           ) : null}
         </>
       ) : null}
 
       {problem !== null ? (
-        <p className="text-lg text-neutral-300" role="alert">
+        <p className="text-base text-neutral-300" role="alert">
           {problem}
         </p>
       ) : null}

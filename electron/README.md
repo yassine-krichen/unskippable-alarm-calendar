@@ -1,6 +1,6 @@
 # Electron shell
 
-Main process: scheduler, full-screen alarm windows, tray, local JSON cache, and the
+Main process: scheduler, centered alarm panels, tray, local JSON cache, and the
 loader for the shared React app (`app/`). See `docs/spec.md` sections 6 and 9.
 
 ## Run
@@ -64,6 +64,13 @@ loader for the shared React app (`app/`). See `docs/spec.md` sections 6 and 9.
 
 ## Behaviour to know
 
+- The alarm window is a centered panel (560x440, at most 90% of the work area), not full screen.
+  It opens on the display that holds the cursor (the primary display if none does) and is about
+  70% opaque (`opacity: 0.7`, set in `alarm-window.ts`), so a call or demo behind it stays
+  visible. Several simultaneous alarms cascade 36 px down and right (`alarm-bounds.ts`) instead
+  of stacking exactly. It is the opacity option, not `transparent: true`, so it keeps the OS
+  rounded corners and shadow and works the same on any frameless Windows window. The window
+  logs its bounds and opacity as `alarm_window.opened`.
 - The alarm window cannot be minimized; hiding or defocusing it brings it back.
   Closing it (Alt+F4) re-opens it after `refire_seconds`. If its page fails to load it beeps and
   is retried after `refire_seconds`.

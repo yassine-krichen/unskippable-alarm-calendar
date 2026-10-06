@@ -1,9 +1,12 @@
-import { BrowserWindow, shell } from 'electron';
+import { BrowserWindow, screen, shell } from 'electron';
 
+import { alarmPanelBounds } from './alarm-bounds';
 import type { AlarmView } from './alarm-ipc';
 import type { Logger } from './logger';
 
 const REFOCUS_DELAY_MS = 250;
+// About 70% opaque: still hard to ignore, but a call or demo behind it stays visible.
+const ALARM_OPACITY = 0.7;
 
 export interface AlarmWindowsOptions {
   preloadPath: string;
@@ -14,7 +17,7 @@ export interface AlarmWindowsOptions {
   log: Logger;
 }
 
-/** One full-screen, always-on-top window per ringing occurrence. */
+/** One centered, semi-transparent, always-on-top panel per ringing occurrence. */
 export class AlarmWindows {
   private readonly windows = new Map<string, BrowserWindow>();
   private readonly occurrenceByWebContents = new Map<number, string>();
@@ -30,10 +33,19 @@ export class AlarmWindows {
       return;
     }
 
+    // The display the user is working on: the one holding the cursor (Electron falls back to the
+    // nearest display, which is the primary one when the point is off every screen).
+    const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+    const openAlarms = [...this.windows.values()].filter((open) => !open.isDestroyed()).length;
+    const bounds = alarmPanelBounds(display.workArea, openAlarms);
+
     const win = new BrowserWindow({
+      ...bounds,
       show: false,
       frame: false,
-      fullscreen: true,
+      // Plain opacity, not transparent:true: it is reliable on Windows (layered window)
+      // and keeps the OS rounded corners and the window shadow.
+      opacity: ALARM_OPACITY,
       alwaysOnTop: true,
       skipTaskbar: false,
       // Win+D / Win+M / Win+Down must not be a way to hide the alarm.
@@ -61,7 +73,7 @@ export class AlarmWindows {
     win.on('minimize', () => this.bringToFront(win));
     win.on('hide', () => this.bringToFront(win));
     win.on('blur', () => this.refocusSoon(win));
-    // A dead or hung page would leave a full-screen window with no buttons.
+    // A dead or hung page would leave a window with no buttons.
     // destroy() still emits 'closed', which schedules the re-ring.
     win.webContents.on('render-process-gone', (_event, details) => {
       this.options.log('alarm_window.render_process_gone', { reason: details.reason });
@@ -77,7 +89,7 @@ export class AlarmWindows {
       this.options.onClosed(view.occurrenceId);
     });
 
-    // A page that failed to load has no buttons and no sound, and a full-screen window with
+    // A page that failed to load has no buttons and no sound, and a window with
     // nothing on it is worse than none. Beep, then destroy it: 'closed' schedules the re-ring.
     win.webContents.on('did-fail-load', (_event, code, description, _url, isMainFrame) => {
       if (!isMainFrame) return;
@@ -89,7 +101,12 @@ export class AlarmWindows {
       // did-fail-load above already handled the window; this only keeps the rejection handled.
       this.options.log('alarm_window.load_rejected', { error: String(error) });
     });
-    this.options.log('alarm_window.opened', { occurrenceId: view.occurrenceId });
+    this.options.log('alarm_window.opened', {
+      occurrenceId: view.occurrenceId,
+      bounds: win.getBounds(),
+      opacity: win.getOpacity(),
+      displayId: display.id,
+    });
   }
 
   /** Closes the window of an occurrence; its onClosed callback still fires. */

@@ -142,3 +142,15 @@ mirror (step 10) and the app code must follow these.
   repo; the three files total about 690 KB. The same script draws the clock icon at 16 to 256 px into
   `electron/assets/icon.ico` and `tray.png`.
 - **Spec step 7 "permission flow copy" is Android-only** (section 10) and waits for the Android project.
+- **The desktop alarm is a centered, 70%-opaque panel, not a full-screen layer (roadmap v2, phase 0).**
+  Owner feedback: full screen covered a call or a demo. The window is 560x440 (capped at 90% of the
+  work area), centered on the display holding the cursor, and uses `BrowserWindow` `opacity: 0.7` rather
+  than `transparent: true` (opacity works on any frameless Windows window and keeps rounded corners and
+  shadow). The step-4 guarantees are unchanged: frameless, always on top at `screen-saver` level, not
+  minimizable, maximizable or resizable, re-fronted on minimize, hide, blur and every evaluation, re-opened
+  after `refire_seconds`, taskbar flash, no close button. The panel has no drag
+  region, so it stays centered. Extra simultaneous alarms cascade by 36 px (five slots, then wrap). The
+  alarm screen stacks Done above Snooze, both full width, and shortens core's label "Snooze 5 min (2 left)"
+  to "Snooze 5 min · 2 left" in the app (`snooze-label.ts`); core's `snoozeUi` is unchanged. The old
+  button was off-center because the button component's `has-data-[icon=inline-start]:pl-2` overrode the
+  large left padding while the right padding stayed, so the alarm buttons no longer use `data-icon`.
