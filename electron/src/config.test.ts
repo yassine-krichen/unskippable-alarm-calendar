@@ -1,6 +1,8 @@
+import { join, resolve } from 'node:path';
+
 import { describe, expect, it } from 'vitest';
 
-import { resolveConfig } from './config';
+import { resolveConfig, resolveUserDataDir } from './config';
 
 describe('resolveConfig', () => {
   it('enables autostart in packaged builds and not in dev', () => {
@@ -42,5 +44,51 @@ describe('resolveConfig', () => {
     expect(resolveConfig({ ALARM_AUTOSTART: '0' }, true).autostartForced).toBe(true);
     expect(resolveConfig({}, true, ['electron.exe', '--hidden']).startHidden).toBe(true);
     expect(resolveConfig({}, true, ['electron.exe']).startHidden).toBe(false);
+  });
+});
+
+describe('resolveUserDataDir', () => {
+  const appData = resolve('appdata-root');
+  const daily = join(appData, 'alarm-calendar-dev');
+  const seed = join(appData, 'alarm-calendar-dev-seed');
+  const scratch = resolve('scratch-user-data');
+
+  it('uses the daily dev folder for a plain unpackaged run', () => {
+    expect(resolveUserDataDir({}, false, appData)).toBe(daily);
+  });
+
+  it('uses the separate seed folder for ALARM_DEV_SEED=1', () => {
+    expect(resolveUserDataDir({ ALARM_DEV_SEED: '1' }, false, appData)).toBe(seed);
+  });
+
+  it('uses the separate seed folder for ALARM_DEV_SEED_RESET=1, never the daily one', () => {
+    expect(resolveUserDataDir({ ALARM_DEV_SEED_RESET: '1' }, false, appData)).toBe(seed);
+    expect(
+      resolveUserDataDir({ ALARM_DEV_SEED: '1', ALARM_DEV_SEED_RESET: '1' }, false, appData)
+    ).toBe(seed);
+  });
+
+  it('uses ALARM_USER_DATA_DIR when set, with or without seeding', () => {
+    expect(resolveUserDataDir({ ALARM_USER_DATA_DIR: scratch }, false, appData)).toBe(scratch);
+    expect(
+      resolveUserDataDir({ ALARM_USER_DATA_DIR: scratch, ALARM_DEV_SEED_RESET: '1' }, false, appData)
+    ).toBe(scratch);
+  });
+
+  it('refuses to seed or reset an override that points at real app data', () => {
+    for (const real of [daily, join(appData, 'alarm-calendar'), daily.toUpperCase()]) {
+      expect(() =>
+        resolveUserDataDir({ ALARM_USER_DATA_DIR: real, ALARM_DEV_SEED_RESET: '1' }, false, appData)
+      ).toThrow(/real app data/);
+    }
+  });
+
+  it('ignores every override and seed flag in packaged builds', () => {
+    const env = {
+      ALARM_USER_DATA_DIR: scratch,
+      ALARM_DEV_SEED: '1',
+      ALARM_DEV_SEED_RESET: '1',
+    };
+    expect(resolveUserDataDir(env, true, appData)).toBe(join(appData, 'alarm-calendar'));
   });
 });

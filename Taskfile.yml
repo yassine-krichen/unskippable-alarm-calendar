@@ -24,19 +24,19 @@ tasks:
       - pnpm --filter app dev --port {{.PORT}} --strictPort
 
   electron:
-    desc: Run the Electron app against the Vite dev server (starts Vite on {{.PORT}} unless it is already up)
+    desc: Run the Electron app (daily dev data, %APPDATA%\alarm-calendar-dev) against the Vite dev server (starts Vite on {{.PORT}} unless it is already up)
     cmds:
       - pnpm --filter @alarm-calendar/electron dev
 
   electron:seed:
-    desc: Same as electron, plus two seeded test alarms about 1 and 1.5 min after launch (only into an empty dev cache)
+    desc: Same as electron, but in the separate seed folder (%APPDATA%\alarm-calendar-dev-seed) with two test alarms about 1 and 1.5 min after launch (only into an empty cache)
     env:
       ALARM_DEV_SEED: '1'
     cmds:
       - pnpm --filter @alarm-calendar/electron dev
 
   electron:reset:
-    desc: Wipe the Electron dev cache and re-seed alarms about 1 and 1.5 min after launch
+    desc: Wipe the seed folder cache (%APPDATA%\alarm-calendar-dev-seed, never the daily dev data) and re-seed alarms about 1 and 1.5 min after launch
     env:
       ALARM_DEV_SEED: '1'
       ALARM_DEV_SEED_RESET: '1'

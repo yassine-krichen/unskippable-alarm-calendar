@@ -4,8 +4,11 @@
 //
 // Env flags:
 //   ALARM_APP_URL          dev server to load (default http://localhost:3021, see root PORTS.md)
-//   ALARM_DEV_SEED=1       seed two test alarms (~1 and 1.5 min after launch) into an empty dev cache
-//   ALARM_DEV_SEED_RESET=1 wipe the dev cache and seed again
+//   ALARM_DEV_SEED=1       seed two test alarms (~1 and 1.5 min after launch) into an empty cache
+//   ALARM_DEV_SEED_RESET=1 wipe the cache and seed again
+//                          (both seed flags use %APPDATA%\alarm-calendar-dev-seed, never the
+//                          daily %APPDATA%\alarm-calendar-dev)
+//   ALARM_USER_DATA_DIR    explicit data folder for scratch runs (unpackaged only)
 //   ALARM_DEV_CHEAT_DAY=1  with the seed, make today a cheat day
 //   ALARM_AUTOSTART=1|0    touch the OS login items in dev (off by default)
 import { spawn, spawnSync } from 'node:child_process';

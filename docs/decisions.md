@@ -154,3 +154,11 @@ mirror (step 10) and the app code must follow these.
   to "Snooze 5 min · 2 left" in the app (`snooze-label.ts`); core's `snoozeUi` is unchanged. The old
   button was off-center because the button component's `has-data-[icon=inline-start]:pl-2` overrode the
   large left padding while the right padding stayed, so the alarm buttons no longer use `data-icon`.
+
+- **Seeded and scratch Electron runs never share the daily dev folder.** The unpackaged daily run uses
+  `%APPDATA%\alarm-calendar-dev`, which is the owner's real data; a seeded test run once wiped it. Now
+  `ALARM_DEV_SEED=1` or `ALARM_DEV_SEED_RESET=1` selects `%APPDATA%\alarm-calendar-dev-seed`, and
+  `ALARM_USER_DATA_DIR` (unpackaged only) picks any scratch folder; `resolveUserDataDir` in
+  `electron/src/config.ts` decides, and refuses a seed flag combined with an override that points at the
+  daily dev or installed folder. Packaged builds ignore all of it. The single-instance lock is keyed by
+  userData, so a seeded run (no real alarms) can run beside the daily instance without double-ringing.

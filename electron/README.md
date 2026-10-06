@@ -9,18 +9,29 @@ loader for the shared React app (`app/`). See `docs/spec.md` sections 6 and 9.
   (unless something already answers there) and Electron, which loads it. Sign in by emailed
   code in the main window. Only processes the script started are stopped when Electron exits.
 - `task alarm-calendar:electron:seed` adds two seeded test alarms (about 1 and 1.5 min after
-  launch) to an empty dev cache; once a signed-in sync has delivered real events they replace the seed.
-  `task alarm-calendar:electron:reset` wipes the dev cache first.
+  launch) to an empty seed cache; once a signed-in sync has delivered real events they replace the seed.
+  `task alarm-calendar:electron:reset` wipes the seed cache first. Both use the separate seed
+  folder, so they never touch the daily dev data.
 - `task alarm-calendar:build` then `task alarm-calendar:electron:built` runs the packaged-style
   path: the built `app/dist` served from `app://alarm-calendar/` (no dev server).
 - Env flags: `ALARM_APP_URL` (dev server to load, only honoured unpackaged), `ALARM_DEV_SEED=1`,
-  `ALARM_DEV_SEED_RESET=1`, `ALARM_DEV_CHEAT_DAY=1`, `ALARM_AUTOSTART=1|0` (touch the OS login
+  `ALARM_DEV_SEED_RESET=1`, `ALARM_USER_DATA_DIR` (explicit data folder, unpackaged only), `ALARM_DEV_CHEAT_DAY=1`, `ALARM_AUTOSTART=1|0` (touch the OS login
   items in dev), `ALARM_APP_DIST` (serve another app build; unpackaged only). Extra arguments to
   `pnpm --filter @alarm-calendar/electron dev` go to Electron.
 - The Electron build needs the Supabase URL (`VITE_SUPABASE_URL` in the environment or in
   `app/.env`); it is baked in as the only origin the CSP and the session hand-off allow.
-- Dev data lives in `%APPDATA%\alarm-calendar-dev` (`cache.json`, `main.log`); any unpackaged
-  run is "dev" and never touches an installed app's data.
+- Data folders (`cache.json`, `main.log`), chosen by `resolveUserDataDir` in `config.ts`:
+  - Daily dev run (`task alarm-calendar:electron`): `%APPDATA%\alarm-calendar-dev`. This is the
+    owner's real data; do not run tests or agents against it.
+  - Any run with `ALARM_DEV_SEED=1` or `ALARM_DEV_SEED_RESET=1` (the seed and reset tasks):
+    `%APPDATA%\alarm-calendar-dev-seed`. A reset can only ever wipe this folder.
+  - `ALARM_USER_DATA_DIR=<folder>` overrides both, for scratch runs by agents and tests. It is
+    ignored in packaged builds, and combining it with a seed flag is refused when it points at the
+    daily dev or the installed folder.
+  - Packaged: `%APPDATA%\alarm-calendar`. Every override and seed flag is ignored.
+- The single-instance lock is keyed by the userData folder, so a seeded or scratch run (its own
+  folder, no real alarms) starts beside a running daily dev app instead of quitting; two runs on
+  the same folder still collide, and the second one exits.
 
 ## How the pieces fit
 

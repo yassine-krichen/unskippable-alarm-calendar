@@ -22,7 +22,7 @@ import { SUPABASE_ORIGIN } from './build-env';
 import { emptyCache, loadCache, persistWithRetry, saveCache } from './cache';
 import type { CacheData } from './cache';
 import { CompletionFlusher } from './completion-flusher';
-import { resolveConfig, START_HIDDEN_ARG } from './config';
+import { resolveConfig, resolveUserDataDir, START_HIDDEN_ARG } from './config';
 import { buildDevSeed } from './dev-seed';
 import { parseBoolean, parseSchedulePayload, parseSessionPayload } from './desktop-payloads';
 import { createLogger } from './logger';
@@ -38,14 +38,11 @@ registerAppScheme();
 // Retry cadence for completions that could not be sent (offline, expired token).
 const COMPLETION_FLUSH_INTERVAL_MS = 60_000;
 
-// Explicit userData so the scoped package name never becomes a folder name,
-// and so dev runs never touch real data.
+// Explicit userData so the scoped package name never becomes a folder name, and so dev and
+// seeded test runs never touch real data. The single-instance lock below is keyed by this
+// folder, so a seeded run (own folder, no real alarms) can run beside the daily dev app.
 app.setName('Alarm Calendar');
-app.setPath(
-  'userData',
-  // Any unpackaged run is "dev": it must never touch an installed app's data or lock.
-  join(app.getPath('appData'), app.isPackaged ? 'alarm-calendar' : 'alarm-calendar-dev')
-);
+app.setPath('userData', resolveUserDataDir(process.env, app.isPackaged, app.getPath('appData')));
 
 const log = createLogger(join(app.getPath('userData'), 'main.log'));
 
@@ -153,6 +150,7 @@ function serveApp(): void {
 }
 
 function startAlarmEngine(): void {
+  log('app.user_data', { dir: app.getPath('userData') });
   const cachePath = join(app.getPath('userData'), 'cache.json');
   const cache = loadCache(cachePath, log);
   const persist = (data: CacheData): void => {
