@@ -7,7 +7,7 @@ import {
   type HabitStats,
   type HabitsReport,
 } from '@alarm-calendar/core';
-import { ArrowLeftIcon, CheckIcon, FlameIcon, RepeatIcon, TicketIcon, XIcon } from 'lucide-react';
+import { ArrowLeftIcon, CheckIcon, FlameIcon, PauseIcon, RepeatIcon, TicketIcon, XIcon } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useNavigate } from 'react-router';
 
@@ -193,6 +193,7 @@ function HabitRow({ habit }: { habit: HabitStats }) {
         <Stat icon={CheckIcon} label="Done" value={habit.done} />
         <Stat icon={XIcon} label="Missed" value={habit.missed} />
         <Stat icon={TicketIcon} label="Excused" value={habit.excused} />
+        {habit.paused > 0 ? <Stat icon={PauseIcon} label="Paused" value={habit.paused} /> : null}
         <Stat icon={FlameIcon} label="Streak" value={habit.currentStreak} />
         <Stat icon={RepeatIcon} label={`Best in ${weeksLabel(habit.windowDays)}`} value={habit.bestStreak} />
       </dl>
@@ -248,9 +249,10 @@ function HowRanksWork() {
       <p className="max-w-prose text-sm text-muted-foreground">
         Only repeating alarms count. Each one is scored over the last {MIN_WEEKS}, or over five of its own repeat periods
         if that is longer (up to {MAX_WEEKS}), so a weekly or monthly alarm can be ranked too. A done alarm earns full
-        credit, each snooze costs a little, and a miss counts double. Recent alarms weigh more. Cheat days and alarms
-        still inside their late window are left out. A streak is a run of done alarms over the same window; a cheat day
-        keeps it going without adding to it.
+        credit, each snooze costs a little, and a miss counts double. Recent alarms weigh more. Cheat days, alarms
+        paused by a mode (Sick, Vacation and the like) and alarms still inside their late window are left out. A
+        streak is a run of done alarms over the same window; a cheat day or a paused alarm keeps it going without
+        adding to it.
       </p>
       <ul className="grid gap-2 sm:grid-cols-2">
         {RANKED_TIERS_DESCENDING.map((tier) => (

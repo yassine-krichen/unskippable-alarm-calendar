@@ -7,6 +7,7 @@ import {
 import { useMemo } from 'react';
 
 import { useEventsStore } from '@/features/events/events-store';
+import { useModeConfig } from '@/features/modes/use-modes';
 import { usePassesStore } from '@/features/passes/passes-store';
 import { useSettingsStore } from '@/features/settings/settings-store';
 import { useNow } from '@/hooks/use-now';
@@ -39,6 +40,7 @@ export function useHabitsReport(): HabitsView | null {
   const completions = useHabitCompletionsStore((state) => state.completions);
   const coverage = useHabitCompletionsStore((state) => state.coverage);
   const loading = useHabitCompletionsStore((state) => state.reloading);
+  const modes = useModeConfig();
   const now = useNow();
 
   return useMemo(() => {
@@ -50,8 +52,10 @@ export function useHabitsReport(): HabitsView | null {
       cheatDays,
       // The whole row: prayers are scored from the prayer times in it.
       settings,
-      now
+      now,
+      // Occurrences a mode paused are left out of the score (Sick, Vacation ...).
+      modes
     );
     return { report, pending, loading };
-  }, [settings, events, completions, coverage, cheatDays, loading, now]);
+  }, [settings, events, completions, coverage, cheatDays, loading, now, modes]);
 }

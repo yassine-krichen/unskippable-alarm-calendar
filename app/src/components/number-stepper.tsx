@@ -10,6 +10,8 @@ interface NumberStepperProps {
   onChange: (value: number) => void;
   min: number;
   max: number;
+  /** How much the plus and minus buttons change the value; 1 unless given. */
+  step?: number;
   /** Shown after the input, e.g. 'min'. */
   unit?: string;
   label: string;
@@ -24,6 +26,7 @@ export function NumberStepper({
   onChange,
   min,
   max,
+  step: stepSize = 1,
   unit,
   label,
   invalid,
@@ -56,7 +59,7 @@ export function NumberStepper({
         size="icon"
         aria-label={`Decrease ${label}`}
         disabled={value <= min}
-        onClick={() => step(-1)}
+        onClick={() => step(-stepSize)}
       >
         <MinusIcon />
       </Button>
@@ -77,7 +80,7 @@ export function NumberStepper({
         size="icon"
         aria-label={`Increase ${label}`}
         disabled={value >= max}
-        onClick={() => step(1)}
+        onClick={() => step(stepSize)}
       >
         <PlusIcon />
       </Button>

@@ -3,6 +3,7 @@ import { catchUpsToCancel, planCatchUps } from '@alarm-calendar/core';
 import { getAlarmAdapter } from '@/features/alarm-adapter/create-alarm-adapter';
 import { addEventsToStore, removeEventGroup, useEventsStore } from '@/features/events/events-store';
 import { insertCatchUps } from '@/features/events/events-api';
+import { useModesStore } from '@/features/modes/modes-store';
 import { usePassesStore } from '@/features/passes/passes-store';
 import { useSettingsStore } from '@/features/settings/settings-store';
 
@@ -64,6 +65,11 @@ async function createCatchUps(now: Date, deps: CatchUpDeps): Promise<number> {
   const events = useEventsStore.getState();
   const exams = useExamsStore.getState();
   if (settings === null) return 0;
+  const modeState = useModesStore.getState();
+  const modeConfig =
+    modeState.modes.length === 0
+      ? undefined
+      : { modes: modeState.modes, rules: modeState.rules, activations: modeState.activations, exams: exams.exams };
 
   const plans = planCatchUps({
     exams: exams.exams,
@@ -72,6 +78,8 @@ async function createCatchUps(now: Date, deps: CatchUpDeps): Promise<number> {
     cheatDays: usePassesStore.getState().cheatDays,
     settings,
     now,
+    // A session a mode paused (Sick, Vacation ...) is skipped, not missed: it gets no catch-up.
+    ...(modeConfig === undefined ? {} : { modes: modeConfig }),
     skip: handled,
   });
   if (plans.length === 0) return 0;
@@ -186,6 +194,11 @@ export function startCatchUpSync({
     }),
     useSettingsStore.subscribe((state, previous) => {
       if (state.settings !== previous.settings) checkSoon();
+    }),
+    useModesStore.subscribe((state, previous) => {
+      if (state.modes !== previous.modes || state.rules !== previous.rules || state.activations !== previous.activations) {
+        checkSoon();
+      }
     }),
   ];
   focusTarget?.addEventListener('focus', checkSoon);

@@ -2,6 +2,7 @@ import { loadRecentCompletions } from '@/features/completions/completions-store'
 import { loadEvents } from '@/features/events/events-store';
 import { loadExamCompletions, loadExams } from '@/features/exams/exams-store';
 import { loadHabitCompletions } from '@/features/habits/habits-store';
+import { loadModes } from '@/features/modes/modes-store';
 import { fetchWalletAnchored } from '@/features/passes/passes-api';
 import { loadCheatDays, syncPassWallet } from '@/features/passes/passes-store';
 import { shouldAdoptDeviceTimeZone } from '@/features/settings/device-timezone';
@@ -15,7 +16,9 @@ import { detectDeviceTimeZone } from '@/lib/zoned-time';
  *    the 'UTC' default, write the device zone with UPDATE (never upsert: it would touch pass_cap).
  * 3. sync_wallet, which anchors the wallet in that zone.
  * 4. Load cheat days and events, plus recent completions (best effort: they only stop an already
- *    done occurrence from ringing again, so a failure must not block the app). The habit history
+ *    done occurrence from ringing again, so a failure must not block the app). The modes load with them,
+ *    best effort too: without them every alarm rings, which is the safe direction, and the schedule is pushed
+ *    again as soon as they arrive. The habit history
  *    for the Stats screen is not part of this: it loads after the app is ready (see
  *    startHabitHistorySync), so it can never delay startup or the alarm schedule push.
  */
@@ -40,8 +43,18 @@ export async function bootstrap(userId: string): Promise<string | null> {
   const wallet = await syncPassWallet();
   if (wallet.error !== null) return wallet.error;
 
-  const [cheatDays, events, completions] = await Promise.all([loadCheatDays(), loadEvents(), loadRecentCompletions()]);
+  // The exams come with the modes: Exam mode's automatic window is derived from them, and the first schedule
+  // push should already know it.
+  const [cheatDays, events, completions, modes, exams] = await Promise.all([
+    loadCheatDays(),
+    loadEvents(),
+    loadRecentCompletions(),
+    loadModes(),
+    loadExams(),
+  ]);
   if (completions.error !== null) console.warn('Could not load recent completions:', completions.error);
+  if (modes.error !== null) console.warn('Could not load modes:', modes.error);
+  if (exams.error !== null) console.warn('Could not load exams:', exams.error);
   return cheatDays.error ?? events.error;
 }
 
@@ -65,6 +78,7 @@ export async function refreshAll(): Promise<string[]> {
     loadRecentCompletions(),
     loadHabitCompletions(),
     loadExams(),
+    loadModes(),
   ]);
   const failures = results.flatMap((result) => (result.error === null ? [] : [result.error]));
   // After the events, which say which alarms belong to an exam.

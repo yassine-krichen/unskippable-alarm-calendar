@@ -48,7 +48,7 @@ interface SchedulePayload {
   settings: AlarmSettings   // timezone, grace_minutes, refire_seconds, ... plus the device's sound id
   occurrences: ScheduleOccurrence[]   // ascending by `at`, then event id
   eventInfo: Record<string, ScheduleEventInfo>   // per active event, even one with no occurrence in the window
-  refillSource: { events: EventRow[]; cheatDays: string[] }   // Electron main only; other engines ignore it
+  refillSource: { events: EventRow[]; cheatDays: string[]; modes?: ModeConfig }   // Electron main only; other engines ignore it
 }
 
 interface ScheduleOccurrence {   // thin on purpose: what differs per ring
@@ -57,6 +57,7 @@ interface ScheduleOccurrence {   // thin on purpose: what differs per ring
   at: string                // ISO UTC with milliseconds
   silenced: boolean         // a cheat day covers it (passable only): never rings
   completed: boolean        // a completion is known for it, on any device: never rings
+  originalAt?: string       // only for an occurrence a mode shifted: when it would have rung without the shift (at most 12 h from `at`)
   label?: string            // text instead of the event title (a pre-prayer alarm), decided when the list was built
   labelIfUnlogged?: { id: string; label: string }   // shown instead of `label` when occurrence `id` is not completed as this rings
 }
@@ -95,6 +96,15 @@ Bounds: at most 1500 occurrences per event and 5000 in all. When a cap cuts occu
 just before the first one cut and `truncated` is true, so an engine never reads silence as "nothing scheduled". A cap
 never cuts at or before `now` (`horizonEnd` is never earlier than `generatedAt`). `grace_minutes` is validated up to the
 7 day look-back, and `buildSchedulePayload` states a larger setting as the look-back.
+**Modes (phase 5).** A mode is applied inside `expandSchedule`, so the engines never see one. An occurrence a mode skips (paused)
+is not in `occurrences` at all; the alarm keeps its `eventInfo` entry, so a ringing alarm is not dismissed as deleted. An occurrence
+a mode shifts is listed at its new instant under the id of that instant (the id still equals `${eventId}@${at}`) with `originalAt` set to
+the instant it would have had; it is `completed` when a completion exists for the new instant, `originalAt`, or the instant any shift
+rule of that alarm could have moved it to (core's `ModeTimeline.matchInstants`). A shift never moves an alarm to before its mode began or
+out of the grace window while the original is still due. A shorten rule changes only the calendar. Prayers and their
+reminders are never affected. `refillSource.modes` (`ModeConfig`: modes, rules, activations, and the exams as id, time and active
+flag) lets Electron main re-expand with the same rules. See `packages/core/src/modes.ts`.
+
 The app pushes a fresh list on every change, on launch, when the window gains focus, and once a day. An engine that can
 re-expand itself (Electron main, via `refillSource`) does so when under 7 days of horizon remain and at least daily.
 `eventInfo` is how an engine learns an event was deleted or switched off: it dismisses a ringing or snoozed
@@ -187,7 +197,28 @@ Unique `(event_id, occurrence_at)`. Writes are upserts so offline flushes are id
 
 **settings** (one row per user): `timezone` (IANA, default from device), `week_starts_on` (0 = Monday default), `refire_seconds` (default 120), `pass_cap` (default 2), `grace_minutes` (default 30).
 
+`exam_mode_days_before` (roadmap-v2 phase 5, default 10, 0 to 60, 0 = Exam mode does not start by itself).
+
 Prayer columns (roadmap-v2 phase 3b), all with defaults for Ariana, Tunis: `prayers_enabled` (false), `prayers_enabled_since`, `latitude` (36.8625, range -65 to 65) / `longitude` (10.1956), `location_label`, `fajr_angle` / `isha_angle` (18, range 10 to 22), `asr_factor` (1 or 2), `fajr_offset_min` ... `isha_offset_min` (-60 to 60), `pre_prayer_minutes` (15, 0 to 120, 0 = no reminders), `prayer_max_snoozes` (0, 0 to 10), `prayer_snooze_minutes` (5, 1 to 120). The RPC `set_prayers_enabled(boolean)` switches them on (creating or re-activating the 10 rows) or off (deactivating them) in one transaction.
+
+**modes** (roadmap-v2 phase 5; RLS own rows, in the realtime publication, `updated_at` trigger)
+| column | type | notes |
+|---|---|---|
+| id | uuid pk | |
+| user_id | uuid | default `auth.uid()` |
+| name | text | 1 to 60 characters after trimming |
+| kind | text | `builtin` or `custom` (default), fixed at insert |
+| builtin_key | text | `exam`, `ramadan`, `vacation`, `sick`; set exactly for the built-ins, unique per user (partial index), fixed at insert |
+| default_behavior | text | `keep` or `skip`: what an alarm with no rule does. Sick and Vacation are created as `skip` |
+| active | bool | default true. Off = the mode never takes effect; the app's "delete" for a custom mode |
+
+Clients may insert `name, kind, builtin_key, default_behavior, active` and update only `name, default_behavior, active` (column grants). The RPC `ensure_builtin_modes()` (security invoker) creates the four built-ins that are missing and touches no existing one.
+
+**mode_rules** (RLS own rows, realtime): `mode_id`, `event_id` (both ownership-checked in the insert and update policies, because foreign key checks ignore RLS), `behavior` (`keep`, `skip`, `shift`, `shorten`), `shift_minutes` (-720 to 720, set exactly for `shift`), `duration_min` (1 to 1440, set exactly for `shorten`). Unique `(mode_id, event_id)`, so the app upserts with `onConflict: 'mode_id,event_id'`. Deleting the mode or the alarm cascades.
+
+**mode_activations** (RLS own rows, realtime): `mode_id` (ownership-checked), `starts_at`, `ends_at` (null = open-ended, manual only; a check requires `ends_at > starts_at` and a bounded range), `source` (`manual` or `range`). Exam mode's automatic window is not stored. The RPC `set_manual_mode(p_mode_id, p_starts_at, p_ends_at)` (security invoker) is the header switch: in one transaction it removes the manual activations that began at or after the new start, ends the ones still running at the new start, and inserts the new one; a null mode means "back to normal". The start may be up to 7 days back and never in the future.
+
+Resolution (`packages/core/src/modes.ts`): the mode in effect at an instant is the one of the strongest window containing it, manual over range over exam, the latest start among equals; a mode that is off contributes nothing. For an alarm: a prayer or reminder is never affected; skipping applies only to a passable alarm; otherwise the alarm's rule, else the mode's default.
 
 **pass_wallet** (one row per user): `balance` int, `last_granted_week_start` date.
 
@@ -296,7 +327,8 @@ Dark by default with a light toggle.
 Screens:
 1. **Calendar** (main). Tabs: **Week**, **Month**, **Agenda** (list, today first). Week is the default on desktop, Agenda is the default on phone widths. Click an empty slot to create an event, click an event to edit. Prev, next, Today buttons. Pass chip in the header.
 2. **Event form** as a Sheet (side sheet on desktop, bottom sheet on mobile). Section 4.
-3. **Settings:** timezone, week start, refire interval, grace window, sound picker (3 bundled sounds), permissions status panel (Android: exact alarm, full-screen intent, battery optimization, notifications), sign out.
+3. **Settings:** timezone, week start, refire interval, grace window, sound picker (3 bundled sounds), permissions status panel (Android: exact alarm, full-screen intent, battery optimization, notifications), a link to Modes, sign out.
+3a. **Modes** (roadmap-v2 phase 5): a mode chip in the calendar header (outlined for Normal, filled while a mode is on) opens a dialog to switch the mode (starting now or since this morning; lasting until switched off or until the end of a day). The Modes screen lists the modes and opens an editor sheet: default behavior, a keep / pause / shift / shorten rule per repeating alarm, planned date ranges, and for Exam mode the days before an exam. Paused alarms are greyed, dashed and struck through with the mode's name; days under a mode are tinted and labelled.
 4. **Alarm screen** (see 9 and 10). Not part of the normal navigation.
 
 Auth screen: **email one-time code** (enter email, receive a 6-digit code, enter it with the shadcn Input OTP component, `supabase.auth.signInWithOtp` then `verifyOtp`). No magic link and no Google sign-in in v1, because both need deep-link redirects back into Electron and the Android app, which is a time sink. Session persists and auto-refreshes.

@@ -122,11 +122,17 @@ export interface PrayerSettings {
   prayer_snooze_minutes: number;
 }
 
+/** The mode column of settings (migration modes). Absent means DEFAULT_EXAM_MODE_DAYS_BEFORE in modes.ts. */
+export interface ModeSettings {
+  /** Days before an exam that Exam mode switches itself on (it ends the day after the exam); 0 turns that off. 0 to 60. */
+  exam_mode_days_before: number;
+}
+
 /**
  * Optional prayer fields: the database always has them, but a cache or a push from before the
  * feature, and most test fixtures, do not. Absent means "prayers off" to the occurrence rules.
  */
-export interface Settings extends Partial<PrayerSettings> {
+export interface Settings extends Partial<PrayerSettings>, Partial<ModeSettings> {
   user_id: string;
   /** IANA zone name. */
   timezone: string;
@@ -201,6 +207,11 @@ export interface ScheduleOccurrence {
   /** A completion is known for it (any device). A completed occurrence never rings. */
   completed: boolean;
   /**
+   * Only for an occurrence a mode shifted: when it would have rung without the shift (ISO, at most 12 hours
+   * from `at`). A completion recorded at that instant counts for it too.
+   */
+  originalAt?: string;
+  /**
    * Text to show instead of the event's title, for an occurrence whose text depends on state when
    * the list was built (a pre-prayer alarm: "Asr in 15 min", or "You haven't logged Dhuhr ...").
    */
@@ -264,6 +275,11 @@ export interface SchedulePayload {
   refillSource: {
     events: EventRow[];
     cheatDays: string[];
+    /**
+     * The modes the list was computed with, so main's own refill applies them too. Absent in a push from
+     * before modes, and when the person has none.
+     */
+    modes?: ModeConfig;
   };
 }
 
@@ -292,4 +308,70 @@ export interface AlarmAdapter {
   getPendingDoneOccurrences(): Promise<string[]>;
   getPermissionStatus(): Promise<PermissionStatus>;
   openPermissionSettings(): Promise<void>;
+}
+
+/** The four built-in modes; Normal is the absence of a mode, not a row. */
+export type BuiltinModeKey = 'exam' | 'ramadan' | 'vacation' | 'sick';
+
+/**
+ * What a mode does to one alarm: keep it, skip it (paused: it never rings and is not scored), shift it
+ * (rings `shift_minutes` later, negative = earlier) or shorten it (a shorter calendar block; it still rings).
+ */
+export type ModeBehavior = 'keep' | 'skip' | 'shift' | 'shorten';
+
+/** A mode (roadmap v2, phase 5). The built-ins are found by `builtin_key`, never by name. */
+export interface ModeRow {
+  id: string;
+  user_id: string;
+  name: string;
+  kind: 'builtin' | 'custom';
+  /** Set exactly for the built-ins. */
+  builtin_key: BuiltinModeKey | null;
+  /** What an alarm with no rule does while the mode is in effect. A non-passable alarm is never skipped. */
+  default_behavior: 'keep' | 'skip';
+  /** Off = the mode never takes effect. The app's "delete" for a custom mode. */
+  active: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+/** One alarm's behavior under one mode; at most one per (mode, alarm). */
+export interface ModeRuleRow {
+  id: string;
+  user_id: string;
+  mode_id: string;
+  event_id: string;
+  behavior: ModeBehavior;
+  /** Minutes, -720 to 720; set exactly when `behavior` is 'shift'. */
+  shift_minutes: number | null;
+  /** Calendar block length in minutes, 1 to 1440; set exactly when `behavior` is 'shorten'. */
+  duration_min: number | null;
+  updated_at?: string;
+}
+
+/** 'manual' is the header switch (open-ended unless given an end), 'range' a planned start and end. */
+export type ModeActivationSource = 'manual' | 'range';
+
+/** When a mode is in effect. Exam mode's automatic window before an exam is derived, not stored (see modes.ts). */
+export interface ModeActivationRow {
+  id: string;
+  user_id: string;
+  mode_id: string;
+  starts_at: string;
+  /** Null = open-ended, until switched back; only a manual activation may be. */
+  ends_at: string | null;
+  source: ModeActivationSource;
+  updated_at?: string;
+}
+
+/**
+ * Everything the mode rules read: the modes, their per-alarm rules, when they were switched on or planned,
+ * and the exams that drive Exam mode's automatic window. The exams are only the three fields the window
+ * needs. Applied by buildModeTimeline in modes.ts.
+ */
+export interface ModeConfig {
+  modes: readonly ModeRow[];
+  rules: readonly ModeRuleRow[];
+  activations: readonly ModeActivationRow[];
+  exams: ReadonlyArray<Pick<ExamRow, 'id' | 'exam_at' | 'active'>>;
 }

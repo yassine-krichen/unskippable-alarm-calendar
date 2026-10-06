@@ -3,12 +3,19 @@ import type {
   AlarmAdapter,
   CompletionRow,
   EventRow,
+  ExamRow,
+  ModeActivationRow,
+  ModeConfig,
+  ModeRow,
+  ModeRuleRow,
   SchedulePayload,
   Settings,
 } from '@alarm-calendar/core';
 
 import { useCompletionsStore } from '@/features/completions/completions-store';
 import { useEventsStore } from '@/features/events/events-store';
+import { useExamsStore } from '@/features/exams/exams-store';
+import { useModesStore } from '@/features/modes/modes-store';
 import { usePassesStore } from '@/features/passes/passes-store';
 import { reportScheduleProblem } from './schedule-problem';
 import { getPrayerSoundId, getSoundId, subscribeSoundId } from '@/features/settings/sound-preference';
@@ -27,9 +34,18 @@ interface ScheduleInputs {
   cheatDays: string[];
   settings: Settings;
   completions: CompletionRow[];
+  /** The modes and what Exam mode's window is derived from: replaced as a whole by their stores. */
+  modes: ModeRow[];
+  rules: ModeRuleRow[];
+  activations: ModeActivationRow[];
+  exams: ExamRow[];
   sound: string;
   /** The prayer alarms' own sound on this device, or null when they use `sound`. */
   prayerSound: string | null;
+}
+
+function modeConfigOf(inputs: ScheduleInputs): ModeConfig {
+  return { modes: inputs.modes, rules: inputs.rules, activations: inputs.activations, exams: inputs.exams };
 }
 
 function sameInputs(a: ScheduleInputs, b: ScheduleInputs): boolean {
@@ -38,6 +54,10 @@ function sameInputs(a: ScheduleInputs, b: ScheduleInputs): boolean {
     a.cheatDays === b.cheatDays &&
     a.settings === b.settings &&
     a.completions === b.completions &&
+    a.modes === b.modes &&
+    a.rules === b.rules &&
+    a.activations === b.activations &&
+    a.exams === b.exams &&
     a.sound === b.sound &&
     a.prayerSound === b.prayerSound
   );
@@ -57,7 +77,7 @@ export interface ScheduleSyncOptions {
  * Keeps the platform alarm engine in step with the app's data: expands the schedule (core's
  * buildSchedulePayload: the concrete occurrences of the next 60 days) and pushes it once now, then
  * after any change to events, cheat days, settings, completions (which covers pass changes and
- * every realtime update, since those land in the same stores) or the sound choice, whenever the
+ * every realtime update, since those land in the same stores), modes, exams or the sound choice, whenever the
  * window gains focus, and once a day. Debounced so a burst, such as the loads after a window focus,
  * becomes one push. Expansion is memoized on the identity of its inputs for an hour, and a focus
  * with unchanged inputs inside that hour pushes nothing. Returns the stop function.
@@ -88,6 +108,10 @@ export function startScheduleSync({
       cheatDays: usePassesStore.getState().cheatDays,
       settings,
       completions: useCompletionsStore.getState().completions,
+      modes: useModesStore.getState().modes,
+      rules: useModesStore.getState().rules,
+      activations: useModesStore.getState().activations,
+      exams: useExamsStore.getState().exams,
       sound: getSoundId(),
       prayerSound: getPrayerSoundId(),
     };
@@ -125,6 +149,8 @@ export function startScheduleSync({
           ...(inputs.prayerSound === null ? {} : { prayerSound: inputs.prayerSound }),
         },
         completions: inputs.completions,
+        // No modes at all: no `modes` key, so the payload is what it was before modes existed.
+        ...(inputs.modes.length === 0 ? {} : { modes: modeConfigOf(inputs) }),
         now: at,
         onEventFailed: (eventId) => failedEventIds.push(eventId),
       });
@@ -161,6 +187,15 @@ export function startScheduleSync({
     }),
     useCompletionsStore.subscribe((state, previous) => {
       if (state.completions !== previous.completions) pushSoon();
+    }),
+    useModesStore.subscribe((state, previous) => {
+      if (state.modes !== previous.modes || state.rules !== previous.rules || state.activations !== previous.activations) {
+        pushSoon();
+      }
+    }),
+    // Exam mode's window is derived from the exams, so moving an exam moves the paused alarms.
+    useExamsStore.subscribe((state, previous) => {
+      if (state.exams !== previous.exams) pushSoon();
     }),
     subscribeSoundId(pushSoon),
   ];

@@ -2,6 +2,7 @@ import { examProgress, type ExamProgress, type ExamRow } from '@alarm-calendar/c
 import { useMemo } from 'react';
 
 import { useEventsStore } from '@/features/events/events-store';
+import { useModeConfig } from '@/features/modes/use-modes';
 import { usePassesStore } from '@/features/passes/passes-store';
 import { useSettingsStore } from '@/features/settings/settings-store';
 import { useNow } from '@/hooks/use-now';
@@ -27,6 +28,7 @@ export function useExamProgress(exam: Pick<ExamRow, 'id' | 'exam_at'>): ExamProg
   const completions = useExamsStore((state) => state.completions);
   const completionsStatus = useExamsStore((state) => state.completionsStatus);
   const cheatDays = usePassesStore((state) => state.cheatDays);
+  const modes = useModeConfig();
   const now = useNow();
 
   return useMemo((): ExamProgressState => {
@@ -35,7 +37,7 @@ export function useExamProgress(exam: Pick<ExamRow, 'id' | 'exam_at'>): ExamProg
     if (settings === null || completionsStatus !== 'ready') return { status: 'loading' };
     return {
       status: 'ready',
-      progress: examProgress({ examId: exam.id, events, completions, cheatDays, settings, now }),
+      progress: examProgress({ examId: exam.id, events, completions, cheatDays, settings, now, ...(modes === undefined ? {} : { modes }) }),
     };
-  }, [exam, settings, events, completions, completionsStatus, cheatDays, now]);
+  }, [exam, settings, events, completions, completionsStatus, cheatDays, now, modes]);
 }

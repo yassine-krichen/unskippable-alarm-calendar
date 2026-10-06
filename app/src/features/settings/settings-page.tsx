@@ -1,5 +1,5 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { ArrowLeftIcon, LogOutIcon, MoonIcon, ShieldAlertIcon, SunIcon } from 'lucide-react';
+import { ArrowLeftIcon, LogOutIcon, MoonIcon, ShieldAlertIcon, SlidersHorizontalIcon, SunIcon } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router';
@@ -332,6 +332,24 @@ export function SettingsPage() {
         <Separator />
 
         <PrayerSettingsSection form={form} settings={settings} />
+
+        <Separator />
+
+        <FieldSet>
+          <FieldLegend>Modes</FieldLegend>
+          <Field orientation="horizontal">
+            <div className="flex flex-1 flex-col gap-1">
+              <FieldLabel>Exam, Ramadan, Vacation, Sick and your own</FieldLabel>
+              <FieldDescription>
+                Pause, move or shorten alarms for a while. Switch one on from the calendar header, or plan it ahead.
+              </FieldDescription>
+            </div>
+            <Button type="button" variant="outline" onClick={() => navigate('/modes')}>
+              <SlidersHorizontalIcon data-icon="inline-start" />
+              Manage modes
+            </Button>
+          </Field>
+        </FieldSet>
 
         <Separator />
 

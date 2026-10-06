@@ -6,6 +6,8 @@ export * from './snooze';
 export * from './wallet';
 export * from './habits';
 export * from './exams';
+export * from './modes';
+export { instantMs } from './instant';
 export * from './schedule';
 export {
   assertValidTimeZone,

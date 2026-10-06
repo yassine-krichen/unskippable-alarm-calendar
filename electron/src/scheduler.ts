@@ -1,5 +1,6 @@
 import {
   applySnooze,
+  buildModeTimeline,
   expandSchedule,
   MAX_LOOKBACK_MINUTES,
   prayerDayKey,
@@ -8,7 +9,10 @@ import {
   snoozeUi,
 } from '@alarm-calendar/core';
 import type {
+  AlarmSettings,
   CompletionRow,
+  ModeConfig,
+  ModeTimeline,
   ScheduleEventInfo,
   ScheduleOccurrence,
   SchedulePayload,
@@ -141,6 +145,7 @@ export class AlarmScheduler {
     const cache = this.deps.cache;
     cache.events = payload.refillSource.events;
     cache.cheatDays = payload.refillSource.cheatDays;
+    cache.modes = payload.refillSource.modes ?? null;
     cache.settings = payload.settings;
     cache.schedule = {
       generatedAt: payload.generatedAt,
@@ -248,17 +253,36 @@ export class AlarmScheduler {
    */
   private isKnownCompleted(eventId: string, occurrenceAt: Date): boolean {
     const cache = this.deps.cache;
-    const iso = occurrenceAt.toISOString();
-    if (
-      cache.knownCompletions.includes(makeOccurrenceId(eventId, occurrenceAt)) ||
-      cache.pendingCompletions.some(
-        (pending) =>
-          pending.event_id === eventId && new Date(pending.occurrence_at).toISOString() === iso
-      )
-    ) {
-      return true;
+    // A normal alarm also matches at the instants its shift rules could have moved it to (a Done at the shifted
+    // 08:30 covers the 09:00 occurrence once the mode is over, and the reverse). Without modes that is just itself.
+    const event = cache.modes === null ? undefined : cache.events.find((candidate) => candidate.id === eventId);
+    const instants =
+      event === undefined || cache.settings === null
+        ? [occurrenceAt.getTime()]
+        : this.modeTimeline(cache.modes, cache.settings).matchInstants(event, occurrenceAt.getTime());
+    for (const ms of instants) {
+      const at = new Date(ms);
+      const iso = at.toISOString();
+      if (
+        cache.knownCompletions.includes(makeOccurrenceId(eventId, at)) ||
+        cache.pendingCompletions.some(
+          (pending) => pending.event_id === eventId && new Date(pending.occurrence_at).toISOString() === iso
+        )
+      ) {
+        return true;
+      }
     }
     return this.isCompletedByPrayerDay(eventId, occurrenceAt);
+  }
+
+  private timelineMemo: { modes: ModeConfig | null; settings: AlarmSettings; timeline: ModeTimeline } | null = null;
+
+  /** The resolved modes of the cache, rebuilt only when a push or a refill replaced them. */
+  private modeTimeline(modes: ModeConfig | null, settings: AlarmSettings): ModeTimeline {
+    if (this.timelineMemo?.modes !== modes || this.timelineMemo.settings !== settings) {
+      this.timelineMemo = { modes, settings, timeline: buildModeTimeline(modes, settings) };
+    }
+    return this.timelineMemo.timeline;
   }
 
   private isCompletedByPrayerDay(eventId: string, occurrenceAt: Date): boolean {
@@ -311,6 +335,8 @@ export class AlarmScheduler {
       const expanded = expandSchedule({
         events: cache.events,
         cheatDays: cache.cheatDays,
+        // The modes the list was computed with: a refill must skip and shift exactly as the app's push did.
+        ...(cache.modes === null ? {} : { modes: cache.modes }),
         settings,
         // What is known to be done, including what was done here and is still waiting to be flushed.
         completions: [
@@ -488,7 +514,11 @@ export class AlarmScheduler {
     this.advanceHandledThrough(occurrence.eventId, at);
     // Done on another device (flagged in the list or synced earlier) or here (pending): do not
     // ring it again on resume.
-    const alreadyCompleted = occurrence.completed || this.isKnownCompleted(occurrence.eventId, at);
+    const alreadyCompleted =
+      occurrence.completed ||
+      this.isKnownCompleted(occurrence.eventId, at) ||
+      // A shifted occurrence is also done if it was done at the time it had before the shift.
+      (occurrence.originalAt !== undefined && this.isKnownCompleted(occurrence.eventId, new Date(occurrence.originalAt)));
     if (!shouldRingMissedOccurrence(at, now, graceMinutesOf(settings), alreadyCompleted)) {
       if (alreadyCompleted) {
         this.deps.log('alarm.skipped_already_completed', { eventId: occurrence.eventId });

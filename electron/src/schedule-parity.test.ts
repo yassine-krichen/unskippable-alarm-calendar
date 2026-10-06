@@ -263,7 +263,8 @@ const windows = [
   ['around the autumn DST change', Date.parse('2026-10-22T00:07:00.000Z')],
 ] as const;
 
-describe('parity with the per-event scheduler', () => {
+// These run every alarm for 30 days on a fake clock; under load (a parallel `pnpm -r test`) the default 5 s is too tight.
+describe('parity with the per-event scheduler', { timeout: 30_000 }, () => {
   describe('every alarm answered at once, over 30 days', () => {
     const cases: Array<[string, string, number]> = [
       ...windows.map(([label, startMs]) => ['Europe/Paris', label, startMs] as [string, string, number]),

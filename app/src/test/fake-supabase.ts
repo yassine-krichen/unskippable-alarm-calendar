@@ -1,6 +1,6 @@
 // A recording stand-in for the supabase-js client, shared by the tests that mock '@/lib/supabase'.
 // It records each table operation and RPC by name ('select:settings', 'update:settings',
-// 'insert:settings', 'upsert:settings', 'rpc:sync_wallet') in call order, and answers from `responses`.
+// 'insert:settings', 'upsert:settings', 'delete:mode_rules', 'rpc:sync_wallet') in call order, and answers from `responses`.
 
 export interface FakeResponse {
   data: unknown;
@@ -16,8 +16,10 @@ export const fake = {
   calls: [] as RecordedCall[],
   /** Options of each upsert (onConflict, ignoreDuplicates) in call order, for tests that check what a write asked for. */
   upsertOptions: [] as unknown[],
-  /** Range filters (gte, lt, in) in call order, for tests that check what a query asked for. */
+  /** Range filters (gte, lt, in, or) in call order, for tests that check what a query asked for. */
   filters: [] as Array<{ op: string; args: unknown[] }>,
+  /** The [from, to] of each .range() call (paged reads), in call order. */
+  ranges: [] as Array<[number, number]>,
   responses: {} as Record<string, FakeResponse>,
   /**
    * Responses a test resolves by hand, consumed first-in-first-out per name before `responses`,
@@ -27,6 +29,7 @@ export const fake = {
   reset(): void {
     this.calls = [];
     this.filters = [];
+    this.ranges = [];
     this.upsertOptions = [];
     this.responses = {};
     this.queued = {};
@@ -67,6 +70,11 @@ function builder(table: string) {
       record(`insert:${table}`, payload);
       return chain;
     },
+    delete() {
+      operation = 'delete';
+      record(`delete:${table}`);
+      return chain;
+    },
     upsert(payload: unknown, options?: unknown) {
       operation = 'upsert';
       record(`upsert:${table}`, payload);
@@ -86,8 +94,15 @@ function builder(table: string) {
       fake.filters.push({ op: 'in', args });
       return chain;
     },
+    or: (...args: unknown[]) => {
+      fake.filters.push({ op: 'or', args });
+      return chain;
+    },
     limit: () => chain,
-    range: () => chain,
+    range: (from: number, to: number) => {
+      fake.ranges.push([from, to]);
+      return chain;
+    },
     order: () => chain,
     overrideTypes: () => chain,
     maybeSingle: () => resolve(),

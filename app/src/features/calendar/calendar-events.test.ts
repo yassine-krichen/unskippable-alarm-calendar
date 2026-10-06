@@ -127,6 +127,8 @@ describe('toCalendarEvent', () => {
       passable: true,
       prayer: false,
       examRole: null,
+      paused: false,
+      modeName: null,
     });
   });
 

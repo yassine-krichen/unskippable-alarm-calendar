@@ -95,16 +95,21 @@ Needs migration `20261006050221_exams_and_revision` pushed (after `2026100601061
 - UI: an "Exam" tab in the New alarm sheet next to Birthday / anniversary, an Exams screen (graduation cap in the header) with done / to go / missed per exam, and edit and delete. Editing regenerates the sessions still to come and keeps the finished ones; deleting switches off every alarm of the exam. Sessions and exam alarms carry a book or graduation cap icon on the calendar and open the exam form when clicked.
 - Habits: sessions are one-off, so they are never scored.
 
-## Phase 5: modes
+## Phase 5: modes (done on branch `v2-overnight`, not yet pushed or released)
 
-- Built-in modes: Normal, Exam, Ramadan, Vacation, Sick, plus custom ones.
-- Per-habit rule for each mode: keep, shift (new time), shorten, skip (paused, not scored), or replace with another event.
+Needs migration `20261006153533_modes` pushed (after `20261006050221`); the app selects the three new tables and `settings.exam_mode_days_before`. Built as specified below, with the choices and deviations listed in `docs/decisions.md`.
+
+- Built-in modes: Normal (no row, the default), Exam, Ramadan, Vacation, Sick, plus custom ones. The four built-ins are created by the RPC `ensure_builtin_modes()`.
+- Per-habit rule for each mode: keep, skip (paused, not scored), shift (rings N minutes earlier or later, up to 12 hours), or shorten (the calendar block only). "Replace with another event" was dropped: it is a skip plus an ordinary alarm, which the person can already make.
 - Activation:
-  - a **manual switch** in the header, open-ended until switched back (for example on a sick day),
-  - or a date range,
-  - Exam mode can auto-activate N days before an exam and end the day after.
-- Sick mode defaults: everything paused except non-passable alarms (medication, prayers).
-- Paused occurrences are excluded from scoring, like excused ones.
+  - a **manual switch** in the header (a chip and a dialog), open-ended until switched back (for example on a sick day) or until the end of a chosen day, starting now or "since this morning",
+  - or a planned date range (Modes screen),
+  - Exam mode auto-activates `settings.exam_mode_days_before` days (default 10, 0 = off) before each exam and ends with the day after it. The window is derived from the exams, never stored, so editing an exam moves it.
+  - One mode at any instant: manual beats range beats exam; among equals the one that started last wins.
+- Sick (and Vacation) skip every passable alarm by default. A non-passable alarm (medication, the alarm before an exam) is never paused, by a default or by a rule; an explicit rule may still shift or shorten it. Prayers and their reminders are never changed by a mode.
+- Paused occurrences are excluded from scoring, like excused ones (a streak is kept alive, not extended), and an exam session a mode paused counts as skipped, so it gets no catch-up.
+- Modes are applied while occurrences are computed (schedule list, calendar, habit scoring), so the engines need no mode logic: a paused occurrence is left out of the list, a shifted one is listed at its new time. Electron's own refill applies the modes too (they ride along in `refillSource`).
+- UI: mode chip and dialog in the header, a Modes screen (list, per-alarm rules, planned dates, the exam lead), paused alarms greyed and struck through with the mode's name, days under a mode tinted and labelled, and a "Paused" count and legend on the Stats screen.
 
 ## Deferred
 

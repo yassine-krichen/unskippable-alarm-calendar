@@ -16,8 +16,9 @@ import {
 import { Separator } from '@/components/ui/separator';
 import { dayImpact } from '@/features/calendar/calendar-events';
 import { useEventsStore } from '@/features/events/events-store';
+import { useModeTimeline } from '@/features/modes/use-modes';
 import { useSettingsStore } from '@/features/settings/settings-store';
-import { dateFromString, formatDay, stringFromDate } from '@/lib/zoned-time';
+import { dateFromString, formatDay, pickerWeekStart, stringFromDate } from '@/lib/zoned-time';
 
 import { passErrorMessage } from './pass-errors';
 import { nextPassLabel, passChipLabel } from './pass-status';
@@ -35,6 +36,7 @@ export function PassDialog({ open, onOpenChange }: PassDialogProps) {
   const wallet = usePassesStore((state) => state.wallet);
   const cheatDays = usePassesStore((state) => state.cheatDays);
   const events = useEventsStore((state) => state.events);
+  const modeTimeline = useModeTimeline();
   const today = usePassToday();
 
   const [selected, setSelected] = useState<string | null>(null);
@@ -43,8 +45,8 @@ export function PassDialog({ open, onOpenChange }: PassDialogProps) {
   const cheatDayDates = useMemo(() => cheatDays.map(dateFromString), [cheatDays]);
   const upcoming = useMemo(() => (today === null ? [] : cheatDays.filter((day) => day >= today)), [cheatDays, today]);
   const impact = useMemo(
-    () => (selected !== null && settings ? dayImpact(events, selected, settings) : null),
-    [events, selected, settings]
+    () => (selected !== null && settings ? dayImpact(events, selected, settings, new Date(), modeTimeline) : null),
+    [events, selected, settings, modeTimeline]
   );
 
   if (!settings || !wallet || today === null) return null;
@@ -110,7 +112,7 @@ export function PassDialog({ open, onOpenChange }: PassDialogProps) {
             selected={selected === null ? undefined : dateFromString(selected)}
             onSelect={(date) => setSelected(date ? stringFromDate(date) : null)}
             defaultMonth={dateFromString(today)}
-            weekStartsOn={(((settings.week_starts_on + 1) % 7) as 0 | 1 | 2 | 3 | 4 | 5 | 6)}
+            weekStartsOn={pickerWeekStart(settings.week_starts_on)}
             disabled={[{ before: dateFromString(today) }, ...cheatDayDates]}
             modifiers={{ cheat: cheatDayDates }}
             modifiersClassNames={{ cheat: 'cheat-day' }}

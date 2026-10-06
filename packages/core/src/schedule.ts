@@ -1,3 +1,4 @@
+import { MAX_SHIFT_MS, applyModesToInstants, buildModeTimeline } from './modes';
 import { eventKindOf, eventOccurrencesBetween, prayerDayKey } from './occurrences';
 import {
   prePrayerLabel,
@@ -12,6 +13,8 @@ import type {
   AlarmSettings,
   CompletionRow,
   EventRow,
+  ModeConfig,
+  ModeSettings,
   PrayerName,
   PrayerSettings,
   ScheduleEventInfo,
@@ -25,8 +28,8 @@ import type {
  * AlarmEngine needs no recurrence, cheat day, completion or (later) prayer and mode logic.
  *
  * Pipeline: sources (the event series, which for a prayer event means the prayer times; exam
- * revision sessions join here later) -> annotations (cheat days, completions; modes join here as
- * transforms) -> sort, dedupe and bound. Everything after the sources works on ScheduleOccurrence
+ * revision sessions are plain one-off events) -> modes (an occurrence a mode skips is dropped, one it
+ * shifts moves; see modes.ts) -> annotations (cheat days, completions) -> sort, dedupe and bound. Everything after the sources works on ScheduleOccurrence
  * records, not on events, which is what lets a prayer occurrence flow through unchanged. Where an
  * occurrence comes from (a recurrence rule or the prayer times) is decided in one place,
  * eventOccurrencesBetween.
@@ -62,7 +65,15 @@ export interface ExpandScheduleInput {
   events: readonly EventRow[];
   /** 'yyyy-MM-dd' in the user's timezone. */
   cheatDays: readonly string[];
-  settings: Pick<AlarmSettings, 'timezone' | 'grace_minutes' | 'sound' | 'prayerSound'> & Partial<PrayerSettings>;
+  settings: Pick<AlarmSettings, 'timezone' | 'grace_minutes' | 'sound' | 'prayerSound'> &
+    Partial<PrayerSettings> &
+    Partial<ModeSettings>;
+  /**
+   * The modes. An occurrence a mode skips is left out of the list (the engines never see it); one it shifts
+   * is listed at its new time, with the id of that time, and counts as completed if a completion exists
+   * for either the new or the original instant.
+   */
+  modes?: ModeConfig;
   /** Any completion marks its occurrence completed, whatever its status. */
   completions: ReadonlyArray<Pick<CompletionRow, 'event_id' | 'occurrence_at'>>;
   now: Date;
@@ -109,6 +120,7 @@ export function expandSchedule(input: ExpandScheduleInput): ExpandedSchedule {
   const requestedEndMs = nowMs + horizonDays * MS_PER_DAY;
   const soundId = settings.sound ?? null;
   const completedIds = completedOccurrenceIds(completions);
+  const modes = buildModeTimeline(input.modes, settings);
 
   // Prayer settings that cannot be used fail every prayer event, and only those. Prayers switched
   // off (no config) leave their events out of the schedule altogether, so a ringing prayer alarm is
@@ -150,9 +162,39 @@ export function expandSchedule(input: ExpandScheduleInput): ExpandedSchedule {
     eventInfo[event.id] = eventInfoOf(event, soundId, settings.prayerSound ?? soundId, prayerConfig);
 
     let instants: Date[];
+    // A shifted occurrence's original instant may lie outside the window while its new one is inside.
+    const originals = new Map<number, Date>();
+    // Where a completion of an occurrence at `atMs` may have been recorded (itself, shifted by this alarm's rules).
+    const completedAtAnyMatch = (atMs: number): boolean =>
+      modes
+        .matchInstants(event, atMs)
+        .some((ms) => ms !== atMs && completedIds.has(makeOccurrenceId(event.id, new Date(ms))));
     try {
       // The range is half-open; +1 ms makes the horizon inclusive.
-      instants = eventOccurrencesBetween(event, windowStart, new Date(requestedEndMs + 1), settings);
+      const slack = modes.active && kind === 'normal' ? MAX_SHIFT_MS : 0;
+      const recurrence = eventOccurrencesBetween(
+        event,
+        new Date(windowStart.getTime() - slack),
+        new Date(requestedEndMs + 1 + slack),
+        settings
+      );
+      if (modes.active) {
+        // Skipped (paused) occurrences are dropped here: the engines must never ring them.
+        instants = [];
+        for (const moded of applyModesToInstants(event, recurrence, modes)) {
+          if (moded.paused) continue;
+          let at = moded.at;
+          // A negative shift must never make an alarm vanish: if it moved an occurrence that is still to come
+          // (or inside the grace window) to before the window, ring it at its own time instead.
+          if (at.getTime() < windowStart.getTime() && moded.original.getTime() >= windowStart.getTime()) at = moded.original;
+          const atMs = at.getTime();
+          if (atMs < windowStart.getTime() || atMs >= requestedEndMs + 1) continue;
+          instants.push(at);
+          if (moded.original.getTime() !== atMs) originals.set(atMs, moded.original);
+        }
+      } else {
+        instants = recurrence;
+      }
     } catch (error) {
       input.onEventFailed?.(event.id, error);
       continue;
@@ -174,8 +216,15 @@ export function expandSchedule(input: ExpandScheduleInput): ExpandedSchedule {
         eventId: event.id,
         at: at.toISOString(),
         silenced: isSilencedByCheatDay(event, at, cheatDays, settings.timezone),
-        completed: isCompleted(event, at),
+        // A shifted occurrence is also done if it was done at the time it had before the shift.
+        completed:
+          isCompleted(event, at) ||
+          (originals.has(at.getTime()) && isCompleted(event, originals.get(at.getTime()) as Date)) ||
+          // Done at a shifted time, the mode since ended (or the reverse): see ModeTimeline.matchInstants.
+          completedAtAnyMatch(at.getTime()),
       };
+      const original = originals.get(at.getTime());
+      if (original !== undefined) occurrence.originalAt = original.toISOString();
       if (kind === 'pre_prayer' && prayerConfig !== null && event.prayer != null) {
         Object.assign(
           occurrence,
@@ -223,7 +272,21 @@ export function buildSchedulePayload(
     },
     occurrences: expanded.occurrences,
     eventInfo: expanded.eventInfo,
-    refillSource: { events: [...input.events], cheatDays: [...input.cheatDays] },
+    refillSource: {
+      events: [...input.events],
+      cheatDays: [...input.cheatDays],
+      ...(input.modes === undefined ? {} : { modes: modeConfigSnapshot(input.modes) }),
+    },
+  };
+}
+
+/** The copy of the modes that rides along for main's refill: only what the rules read, plain arrays. */
+function modeConfigSnapshot(modes: ModeConfig): ModeConfig {
+  return {
+    modes: [...modes.modes],
+    rules: [...modes.rules],
+    activations: [...modes.activations],
+    exams: modes.exams.map((exam) => ({ id: exam.id, exam_at: exam.exam_at, active: exam.active })),
   };
 }
 

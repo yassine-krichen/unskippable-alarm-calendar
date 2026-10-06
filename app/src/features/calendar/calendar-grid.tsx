@@ -3,7 +3,8 @@ import dayGridPlugin from '@fullcalendar/react/daygrid';
 import interactionPlugin from '@fullcalendar/react/interaction';
 import classicTheme from '@fullcalendar/react/themes/classic';
 import timeGridPlugin from '@fullcalendar/react/timegrid';
-import { BellOffIcon, BookOpenIcon, GraduationCapIcon, MoonStarIcon } from 'lucide-react';
+import type { ModeRow } from '@alarm-calendar/core';
+import { BellOffIcon, BookOpenIcon, GraduationCapIcon, MoonStarIcon, PauseIcon } from 'lucide-react';
 import { useEffect, useMemo } from 'react';
 
 import { Badge } from '@/components/ui/badge';
@@ -24,6 +25,8 @@ interface CalendarGridProps {
   weekStartsOn: number;
   events: CalendarEvent[];
   cheatDays: ReadonlySet<string>;
+  /** The mode that covers most of each day, by 'yyyy-MM-dd'; a day with none is absent. */
+  modeDays: ReadonlyMap<string, ModeRow>;
   onCreate: (slot: EventSlot) => void;
   onEdit: (eventId: string) => void;
 }
@@ -42,10 +45,14 @@ export function CalendarGrid({
   weekStartsOn,
   events,
   cheatDays,
+  modeDays,
   onCreate,
   onEdit,
 }: CalendarGridProps) {
   const controller = useCalendarController();
+  // A cheat day is hatched; a day under a mode is tinted. Both can apply to one day.
+  const dayClass = (day: string): string =>
+    [cheatDays.has(day) ? 'cheat-day' : '', modeDays.has(day) ? 'mode-day' : ''].filter((name) => name !== '').join(' ');
   const plugins = useMemo(
     () => [classicTheme, dayGridPlugin, timeGridPlugin, interactionPlugin],
     []
@@ -78,32 +85,50 @@ export function CalendarGrid({
       slotHeaderFormat={TIME_24H}
       events={events}
       // info.date is the real instant the day starts at in the calendar's zone.
-      dayCellClass={(info) => (cheatDays.has(zonedDate(info.date, tz)) ? 'cheat-day' : '')}
-      dayLaneClass={(info) => (cheatDays.has(zonedDate(info.date, tz)) ? 'cheat-day' : '')}
-      dayHeaderContent={(info) => (
-        <span className="flex flex-col items-center gap-0.5">
-          <span>{info.text}</span>
-          {cheatDays.has(zonedDate(info.date, tz)) ? (
-            <Badge variant="outline" className="h-4 px-1.5 text-[0.65rem]">
-              Cheat day
-            </Badge>
-          ) : null}
-        </span>
-      )}
-      dayCellTopContent={(info) =>
-        cheatDays.has(zonedDate(info.date, tz)) ? (
-          <span className="flex items-center gap-1.5">
-            <Badge variant="outline" className="h-4 px-1.5 text-[0.65rem]">
-              Cheat day
-            </Badge>
+      dayCellClass={(info) => dayClass(zonedDate(info.date, tz))}
+      dayLaneClass={(info) => dayClass(zonedDate(info.date, tz))}
+      dayHeaderContent={(info) => {
+        const day = zonedDate(info.date, tz);
+        return (
+          <span className="flex flex-col items-center gap-0.5">
+            <span>{info.text}</span>
+            {cheatDays.has(day) ? (
+              <Badge variant="outline" className="h-4 px-1.5 text-[0.65rem]">
+                Cheat day
+              </Badge>
+            ) : null}
+            {modeDays.has(day) ? (
+              <Badge variant="secondary" className="h-4 max-w-full px-1.5 text-[0.65rem]">
+                <span className="truncate">{modeDays.get(day)?.name}</span>
+              </Badge>
+            ) : null}
+          </span>
+        );
+      }}
+      dayCellTopContent={(info) => {
+        const day = zonedDate(info.date, tz);
+        return cheatDays.has(day) || modeDays.has(day) ? (
+          <span className="flex min-w-0 items-center gap-1.5">
+            {cheatDays.has(day) ? (
+              <Badge variant="outline" className="h-4 px-1.5 text-[0.65rem]">
+                Cheat day
+              </Badge>
+            ) : null}
+            {modeDays.has(day) ? (
+              <Badge variant="secondary" className="h-4 min-w-0 px-1.5 text-[0.65rem]">
+                <span className="truncate">{modeDays.get(day)?.name}</span>
+              </Badge>
+            ) : null}
             <span>{info.dayNumberText}</span>
           </span>
         ) : (
           true
-        )
-      }
+        );
+      }}
       eventContent={(info) => {
         const silenced = info.event.extendedProps['silenced'] === true;
+        const paused = info.event.extendedProps['paused'] === true;
+        const modeName: unknown = info.event.extendedProps['modeName'];
         const prayer = info.event.extendedProps['prayer'] === true;
         const examRole: unknown = info.event.extendedProps['examRole'];
         return (
@@ -114,8 +139,14 @@ export function CalendarGrid({
             {silenced ? (
               <BellOffIcon aria-label="Silenced by a cheat day" className="mt-0.5 size-3 shrink-0" />
             ) : null}
+            {paused ? (
+              <PauseIcon
+                aria-label={typeof modeName === 'string' ? `Paused by ${modeName}` : 'Paused by a mode'}
+                className="mt-0.5 size-3 shrink-0"
+              />
+            ) : null}
             <span className={info.timeClass}>{info.timeText}</span>
-            <span className={info.titleClass}>{info.event.title}</span>
+            <span className={paused ? `${info.titleClass} line-through` : info.titleClass}>{info.event.title}</span>
           </>
         );
       }}

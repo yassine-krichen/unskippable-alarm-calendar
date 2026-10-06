@@ -82,6 +82,14 @@ export function zonedDate(instant: Date, tz: string): string {
   return localDateString(instant, tz);
 }
 
+/**
+ * The first weekday of the week for react-day-picker (Sunday = 0), from the settings' week start (Monday = 0). The
+ * date pickers and the calendar grid take it.
+ */
+export function pickerWeekStart(weekStartsOn: number): 0 | 1 | 2 | 3 | 4 | 5 | 6 {
+  return ((weekStartsOn + 1) % 7) as 0 | 1 | 2 | 3 | 4 | 5 | 6;
+}
+
 /** Whether a 'yyyy-MM-dd' string names a real calendar date. */
 export function isRealDate(date: string): boolean {
   try {

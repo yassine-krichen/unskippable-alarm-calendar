@@ -17,6 +17,8 @@ vi.mock('@/features/alarm-adapter/create-alarm-adapter', () => ({
 
 import { resetGroupIdColumnProbe } from '@/features/events/events-api';
 import { useEventsStore } from '@/features/events/events-store';
+import { BUILTIN_MODES, SICK_ID, activationRow } from '@/features/modes/mode-fixtures';
+import { useModesStore } from '@/features/modes/modes-store';
 import { usePassesStore } from '@/features/passes/passes-store';
 import { useSettingsStore } from '@/features/settings/settings-store';
 
@@ -91,6 +93,7 @@ function arrange(events: EventRow[] = [MISSED, LATER]): void {
 
 beforeEach(() => {
   fake.reset();
+  useModesStore.setState({ modes: [], rules: [], activations: [], status: 'idle', error: null });
   resetGroupIdColumnProbe();
   resetExams();
   resetCatchUps();
@@ -115,6 +118,24 @@ describe('runCatchUps', () => {
       start_at: '2026-03-16T21:00:00.000Z',
     });
     expect(useEventsStore.getState().events.map((event) => event.id)).toContain('c1');
+  });
+
+  it('gives no catch-up for a session that Sick mode paused, and one once the mode no longer covers it', async () => {
+    arrange();
+    useModesStore.setState({
+      modes: BUILTIN_MODES,
+      rules: [],
+      // Sick since the morning of the 13th, still on: the 18:00 session on the 13th was paused, not missed.
+      activations: [activationRow(SICK_ID, '2026-03-13T06:00:00.000Z', null)],
+      status: 'ready',
+      error: null,
+    });
+    expect(await runCatchUps(NOW)).toBe(0);
+    expect(fake.names()).toEqual([]);
+
+    // Switched back to normal before the session: it was missed after all.
+    useModesStore.setState({ activations: [activationRow(SICK_ID, '2026-03-13T06:00:00.000Z', '2026-03-13T12:00:00.000Z')] });
+    expect(await runCatchUps(NOW)).toBe(1);
   });
 
   it('checks the missed session against the database first, so a Done not yet synced here makes no catch-up', async () => {

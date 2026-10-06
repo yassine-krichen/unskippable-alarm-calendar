@@ -14,6 +14,7 @@ import type {
   CompletionRow,
   EventKind,
   EventRow,
+  ModeConfig,
   ScheduleEventInfo,
   ScheduleOccurrence,
 } from '@alarm-calendar/core';
@@ -80,12 +81,17 @@ export interface CacheData {
   /**
    * With cheatDays and settings, the inputs the schedule was expanded from. Main re-expands from
    * them (see AlarmScheduler.refillIfStale) so alarms continue while the app window is closed.
-   * These four fields are only ever replaced, never edited in place: the persister tells whether
+   * These fields are only ever replaced, never edited in place: the persister tells whether
    * they changed by identity.
    */
   events: EventRow[];
   /** 'yyyy-MM-dd' in the user's timezone. */
   cheatDays: string[];
+  /**
+   * The modes (roadmap v2, phase 5) the list was computed with, so the refill applies them too. Null when
+   * the push carried none (an app from before modes, or no mode set up), and after a migration.
+   */
+  modes: ModeConfig | null;
   settings: AlarmSettings | null;
   /** Null until the first push, and right after a version 1 migration (the scheduler then refills). */
   schedule: StoredSchedule | null;
@@ -112,6 +118,8 @@ interface ScheduleFile {
   version: 1;
   events: EventRow[];
   cheatDays: string[];
+  /** Absent in a file written before modes. */
+  modes?: ModeConfig | null;
   settings: AlarmSettings | null;
   schedule: StoredSchedule | null;
 }
@@ -121,6 +129,7 @@ export function emptyCache(): CacheData {
     version: 2,
     events: [],
     cheatDays: [],
+    modes: null,
     settings: null,
     schedule: null,
     occurrences: [],
@@ -136,6 +145,7 @@ function withDefaults(cache: CacheData): CacheData {
   const candidate = cache as Partial<CacheData> & CacheData;
   if (!Array.isArray(candidate.knownCompletions)) candidate.knownCompletions = [];
   if (typeof candidate.autostartInitialized !== 'boolean') candidate.autostartInitialized = false;
+  if (candidate.modes === undefined) candidate.modes = null;
   return candidate;
 }
 
@@ -280,6 +290,7 @@ export function loadCache(filePath: string, log: CacheLogger): CacheData {
   if (!Array.isArray(cache.events) || !Array.isArray(cache.cheatDays) || !hasScheduleShape(cache.schedule)) {
     cache.events = [];
     cache.cheatDays = [];
+    cache.modes = null;
     cache.settings = null;
     cache.schedule = null;
   }
@@ -289,6 +300,7 @@ export function loadCache(filePath: string, log: CacheLogger): CacheData {
   if (isScheduleFile(scheduleParsed)) {
     cache.events = scheduleParsed.events;
     cache.cheatDays = scheduleParsed.cheatDays;
+    cache.modes = scheduleParsed.modes ?? null;
     cache.settings = scheduleParsed.settings;
     cache.schedule = scheduleParsed.schedule;
   } else {
@@ -324,12 +336,13 @@ function writeFileAtomic(filePath: string, text: string): void {
  * while the other order could pair new state with an older schedule.
  */
 export function createCachePersister(filePath: string): (data: CacheData) => void {
-  let saved: Pick<CacheData, 'events' | 'cheatDays' | 'settings' | 'schedule'> | null = null;
+  let saved: Pick<CacheData, 'events' | 'cheatDays' | 'modes' | 'settings' | 'schedule'> | null = null;
   return (data) => {
     const unchanged =
       saved !== null &&
       saved.events === data.events &&
       saved.cheatDays === data.cheatDays &&
+      saved.modes === data.modes &&
       saved.settings === data.settings &&
       saved.schedule === data.schedule;
     if (!unchanged) {
@@ -337,6 +350,7 @@ export function createCachePersister(filePath: string): (data: CacheData) => voi
         version: 1,
         events: data.events,
         cheatDays: data.cheatDays,
+        modes: data.modes,
         settings: data.settings,
         schedule: data.schedule,
       };
@@ -344,6 +358,7 @@ export function createCachePersister(filePath: string): (data: CacheData) => voi
       saved = {
         events: data.events,
         cheatDays: data.cheatDays,
+        modes: data.modes,
         settings: data.settings,
         schedule: data.schedule,
       };
@@ -351,6 +366,7 @@ export function createCachePersister(filePath: string): (data: CacheData) => voi
     const {
       events: _events,
       cheatDays: _cheatDays,
+      modes: _modes,
       settings: _settings,
       schedule: _schedule,
       ...state

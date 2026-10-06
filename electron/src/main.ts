@@ -347,7 +347,7 @@ function registerDesktopIpc(
       truncated: schedule.truncated,
     });
     const { dropped } = parsed;
-    if (dropped.occurrences + dropped.events + dropped.cheatDays + dropped.completions > 0) {
+    if (dropped.occurrences + dropped.events + dropped.cheatDays + dropped.completions + (dropped.modeRows ?? 0) > 0) {
       log('desktop.schedule_rows_dropped', { ...dropped });
     }
     return { dropped };

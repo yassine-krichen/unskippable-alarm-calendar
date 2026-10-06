@@ -1,10 +1,14 @@
 import {
+  MAX_SHIFT_MS,
+  applyModesToInstants,
+  buildModeTimeline,
   eventKindOf,
   eventOccurrencesBetween,
   isEventPassable,
   type EventKind,
   type EventRow,
   type ExamRole,
+  type ModeTimeline,
   type OccurrenceSettings,
   type PrayerName,
 } from '@alarm-calendar/core';
@@ -34,7 +38,15 @@ export interface Occurrence {
   prayer: PrayerName | null;
   /** 'exam' for the alarm before an exam, 'session' for a revision session; null for any other alarm. */
   examRole: ExamRole | null;
+  /** A mode skips it (roadmap v2, phase 5): it does not ring and is not scored. Shown greyed with the mode's name. */
+  paused: boolean;
+  /** A mode moved it: `start` is where it rings now. */
+  shifted: boolean;
+  /** The mode that paused, shifted or shortened it; null when nothing changed. */
+  modeName: string | null;
 }
+
+const NO_MODES = buildModeTimeline(undefined, { timezone: 'UTC' });
 
 export interface TimeRange {
   from: Date;
@@ -54,7 +66,9 @@ export function expandOccurrences(
   settings: OccurrenceSettings,
   cheatDays: readonly string[],
   /** Called for an event whose occurrences cannot be computed (it is skipped, the rest still shows). */
-  onEventFailed?: (event: EventRow) => void
+  onEventFailed?: (event: EventRow) => void,
+  /** The modes in effect: skipped occurrences stay in the list, flagged `paused`; shifted ones show where they ring. */
+  modes?: ModeTimeline
 ): Occurrence[] {
   const tz = settings.timezone;
   const cheatDaySet = new Set(cheatDays);
@@ -67,17 +81,25 @@ export function expandOccurrences(
     if (kind === 'pre_prayer') continue;
     const passable = isEventPassable(event);
     const durationMs = event.duration_min * MS_PER_MINUTE;
-    let starts: Date[];
+    let moded: ReturnType<typeof applyModesToInstants>;
     try {
-      starts = eventOccurrencesBetween(event, searchFrom, range.to, settings);
+      // A shift moves an occurrence up to 12 hours, so look that much further and filter on where it rings.
+      const slack = modes?.active === true && kind === 'normal' ? MAX_SHIFT_MS : 0;
+      const starts = eventOccurrencesBetween(
+        event,
+        new Date(searchFrom.getTime() - slack),
+        new Date(range.to.getTime() + slack),
+        settings
+      );
+      moded = applyModesToInstants(event, starts, modes ?? NO_MODES);
     } catch {
       // A malformed row or unusable prayer settings must not blank the whole calendar.
       onEventFailed?.(event);
       continue;
     }
-    for (const start of starts) {
-      const end = new Date(start.getTime() + durationMs);
-      if (end.getTime() <= range.from.getTime()) continue;
+    for (const { at: start, paused, durationMin, mode, original } of moded) {
+      const end = new Date(start.getTime() + (durationMin === null ? durationMs : durationMin * MS_PER_MINUTE));
+      if (start.getTime() >= range.to.getTime() || end.getTime() <= range.from.getTime()) continue;
       const day = zonedDate(start, tz);
       occurrences.push({
         key: `${event.id}@${start.toISOString()}`,
@@ -88,10 +110,14 @@ export function expandOccurrences(
         day,
         color: event.color,
         passable,
-        silenced: passable && cheatDaySet.has(day),
+        // A paused alarm does not ring either way; the mode, not the cheat day, is why it is grey.
+        silenced: !paused && passable && cheatDaySet.has(day),
         kind,
         prayer: event.prayer ?? null,
         examRole: event.exam_role ?? null,
+        paused,
+        shifted: original.getTime() !== start.getTime(),
+        modeName: mode?.name ?? null,
       });
     }
   }
@@ -133,7 +159,9 @@ export function dayImpact(
   events: readonly EventRow[],
   day: string,
   settings: OccurrenceSettings,
-  now: Date = new Date()
+  now: Date = new Date(),
+  /** Alarms a mode pauses neither ring nor can be silenced, so they are not counted. */
+  modes?: ModeTimeline
 ): DayImpact {
   const tz = settings.timezone;
   const dayStart = startOfZonedDay(day, tz);
@@ -141,8 +169,8 @@ export function dayImpact(
   const range = { from, to: startOfZonedDay(addDays(day, 1), tz) };
   let silenced = 0;
   let stillRing = 0;
-  for (const occurrence of expandOccurrences(events, range, settings, [])) {
-    if (occurrence.day !== day || occurrence.start.getTime() < from.getTime()) continue;
+  for (const occurrence of expandOccurrences(events, range, settings, [], undefined, modes)) {
+    if (occurrence.day !== day || occurrence.start.getTime() < from.getTime() || occurrence.paused) continue;
     if (occurrence.passable) silenced += 1;
     else stillRing += 1;
   }
@@ -151,6 +179,9 @@ export function dayImpact(
 
 /** The class the calendar grid puts on greyed-out (silenced) occurrences. */
 export const SILENCED_CLASS = 'occurrence-silenced';
+
+/** The class for an occurrence a mode skips: dashed and greyed, so it reads as "not going to ring". */
+export const PAUSED_CLASS = 'occurrence-paused';
 
 /** The class for the five daily prayers, which the stylesheet draws apart from ordinary alarms. */
 export const PRAYER_CLASS = 'occurrence-prayer';
@@ -172,6 +203,8 @@ export interface CalendarEvent {
     passable: boolean;
     prayer: boolean;
     examRole: ExamRole | null;
+    paused: boolean;
+    modeName: string | null;
   };
 }
 
@@ -184,7 +217,11 @@ export function toCalendarEvent(occurrence: Occurrence): CalendarEvent {
     end: occurrence.end.toISOString(),
     ...(occurrence.color !== null ? { color: occurrence.color } : {}),
     ...(contrastColor !== undefined ? { contrastColor } : {}),
-    className: [occurrence.silenced ? SILENCED_CLASS : '', occurrence.kind === 'prayer' ? PRAYER_CLASS : '']
+    className: [
+      occurrence.silenced ? SILENCED_CLASS : '',
+      occurrence.paused ? PAUSED_CLASS : '',
+      occurrence.kind === 'prayer' ? PRAYER_CLASS : '',
+    ]
       .filter((name) => name !== '')
       .join(' '),
     extendedProps: {
@@ -193,6 +230,8 @@ export function toCalendarEvent(occurrence: Occurrence): CalendarEvent {
       passable: occurrence.passable,
       prayer: occurrence.kind === 'prayer',
       examRole: occurrence.examRole,
+      paused: occurrence.paused,
+      modeName: occurrence.modeName,
     },
   };
 }

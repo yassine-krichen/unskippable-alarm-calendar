@@ -15,6 +15,8 @@ import { resetCatchUps } from '@/features/exams/catch-up-sync';
 import { resetExams } from '@/features/exams/exams-store';
 import { ExamsPage } from '@/features/exams/exams-page';
 import { StatsPage } from '@/features/habits/stats-page';
+import { resetModes } from '@/features/modes/modes-store';
+import { ModesPage } from '@/features/modes/modes-page';
 import { resetHabitCompletions } from '@/features/habits/habits-store';
 import { usePassesStore } from '@/features/passes/passes-store';
 import { SettingsPage } from '@/features/settings/settings-page';
@@ -30,6 +32,7 @@ function resetAppData(): void {
   usePassesStore.setState({ wallet: null, walletBeforeSync: null, cheatDays: [] });
   resetHabitCompletions();
   resetExams();
+  resetModes();
   resetCatchUps();
 }
 
@@ -80,6 +83,7 @@ function SignedInApp() {
       <Routes>
         <Route path="/" element={<CalendarPage />} />
         <Route path="/exams" element={<ExamsPage />} />
+        <Route path="/modes" element={<ModesPage />} />
         <Route path="/stats" element={<StatsPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />

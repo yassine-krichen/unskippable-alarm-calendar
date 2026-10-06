@@ -1,4 +1,13 @@
-import type { CompletionRow, EventRow, ExamRow, PrayerSettings, Settings } from '@alarm-calendar/core';
+import type {
+  CompletionRow,
+  EventRow,
+  ExamRow,
+  ModeActivationRow,
+  ModeRow,
+  ModeRuleRow,
+  PrayerSettings,
+  Settings,
+} from '@alarm-calendar/core';
 
 import { removeCompletion, upsertCompletion } from '@/features/completions/completions-store';
 import { recordRealtimeEventChange, useEventsStore } from '@/features/events/events-store';
@@ -9,6 +18,7 @@ import {
   useExamsStore,
 } from '@/features/exams/exams-store';
 import { removeHabitCompletion, upsertHabitCompletion } from '@/features/habits/habits-store';
+import { removeRealtimeRow, upsertRealtimeRow } from '@/features/modes/modes-store';
 import type { HabitCompletionRow } from '@/features/habits/habits-api';
 import { loadCheatDays } from '@/features/passes/passes-store';
 import { useSettingsStore } from '@/features/settings/settings-store';
@@ -79,6 +89,50 @@ export function handleExamChange(payload: ChangePayload): void {
   });
 }
 
+/**
+ * modes, mode_rules and mode_activations: a row is applied by id, an older echo of a row already held is
+ * ignored, and a DELETE (which carries only the primary key under RLS) removes by id. Nothing is soft-deleted
+ * here: a custom mode that is "deleted" is an update to active = false, which stays in the list (the rules
+ * ignore an inactive mode).
+ */
+function handleModeTableChange<T extends { id: string }>(
+  collection: 'modes' | 'rules' | 'activations',
+  isRow: (row: Record<string, unknown>) => boolean,
+  payload: ChangePayload
+): void {
+  if (payload.eventType === 'DELETE') {
+    const id = payload.old.id;
+    if (typeof id === 'string') removeRealtimeRow(collection, id);
+    return;
+  }
+  if (!isRow(payload.new)) return;
+  upsertRealtimeRow(collection, payload.new as unknown as T);
+}
+
+export function handleModeChange(payload: ChangePayload): void {
+  handleModeTableChange<ModeRow>(
+    'modes',
+    (row) => hasString(row, 'id') && hasString(row, 'name') && hasString(row, 'default_behavior') && hasString(row, 'updated_at'),
+    payload
+  );
+}
+
+export function handleModeRuleChange(payload: ChangePayload): void {
+  handleModeTableChange<ModeRuleRow>(
+    'rules',
+    (row) => hasString(row, 'id') && hasString(row, 'mode_id') && hasString(row, 'event_id') && hasString(row, 'behavior'),
+    payload
+  );
+}
+
+export function handleModeActivationChange(payload: ChangePayload): void {
+  handleModeTableChange<ModeActivationRow>(
+    'activations',
+    (row) => hasString(row, 'id') && hasString(row, 'mode_id') && hasString(row, 'starts_at') && hasString(row, 'source'),
+    payload
+  );
+}
+
 const PRAYER_NUMBER_KEYS = [
   'latitude',
   'longitude',
@@ -121,6 +175,9 @@ export function handleSettingsChange(payload: ChangePayload): void {
     refire_seconds: Number(row.refire_seconds),
     pass_cap: Number(row.pass_cap),
     grace_minutes: Number(row.grace_minutes),
+    ...(row.exam_mode_days_before === undefined || row.exam_mode_days_before === null
+      ? {}
+      : { exam_mode_days_before: Number(row.exam_mode_days_before) }),
     ...prayerFieldsOf(row),
   };
   useSettingsStore.getState().setSettings(next);

@@ -454,3 +454,88 @@ mirror (step 10) and the app code must follow these.
   off all day creates it on the next start, possibly late). A Done made on another device that is offline and not yet saved is invisible
   to this one until it reaches the database. Changing the exam time keeps catch-ups still to come; one that is now before an
   earlier-moved session is not re-planned.
+
+- **Modes (roadmap-v2 phase 5): applied while occurrences are computed, never to the alarm rows.** The schedule list, the calendar and habit scoring
+  all go through one core module (`modes.ts`): `buildModeTimeline` resolves the modes once, `modeEffectOf` says what the mode in effect does to
+  one alarm, `applyModesToInstants` applies it to the instants a recurrence produced. The engines needed no mode logic.
+  - **Skip is omission from the engine list, "paused" everywhere else.** A paused occurrence is not in `SchedulePayload.occurrences`; the calendar
+    keeps it in its list flagged `paused` (greyed, dashed, struck through, with the mode name), and habit scoring gives it the outcome `paused`
+    (new `HabitStats.paused`, left out of the score and the counts like `excused`, a streak is kept alive but not extended). The alternative, a
+    `paused` flag in the list for engines to honour, would have been the first mode logic in an engine. Limit: an alarm that is already ringing or
+    snoozed when a mode switches on keeps ringing (the engine only dismisses an alarm whose event is gone); Done or Snooze ends it.
+  - **Shift keeps the engine contract: the id follows the new instant.** `ScheduleOccurrence.id` must equal `${eventId}@${at}` (Electron's schema
+    checks it), so a shifted occurrence has a new id and a completion written for it is keyed by the shifted instant. To keep switching modes from
+    orphaning a Done, completion matching accepts either instant (`expandSchedule`'s `completed`, habit scoring): a Done pressed before a shift took
+    effect still counts after it, and the reverse. The mode is chosen by the occurrence's original time, the cheat day by the day it rings on. A
+    shift moves an occurrence at most 12 hours, so the recurrence is asked for 12 hours more on each side and the result is filtered on where it
+    rings (the same in `expandSchedule`, `expandOccurrences` and `computeHabitStats`). Two occurrences landing on one instant keep one, live over
+    paused. Shorten is a calendar-only change.
+  - **A shift never makes an alarm vanish (review fix).** Two guards, for every alarm and not only non-passable ones. `modeEffectOf` ignores a shift
+    that would put the occurrence before the start of the window of the mode in effect (a manual switch made at 09:40 does not move the 10:00
+    medication to 09:00 or 08:00: it would have rung before the switch, or been dropped as already past). And `expandSchedule` keeps an occurrence at
+    its own time when its shifted time falls before the grace window while the original is still ahead or inside it (an alarm 09:20, shift -120,
+    now 09:00).
+  - **Completion matching across a shift is symmetric (review fix).** `ModeTimeline.matchInstants(event, at)` returns the occurrence's own instant and
+    that instant moved by each shift minute any active mode has for the alarm, either way. A Done pressed at the shifted 08:30 therefore covers the
+    09:00 occurrence once the mode that shifted it ended at 08:35 (no second ring, habits count it done), and the reverse. A shift as long as the
+    alarm's own repeat period is ignored (an hourly alarm shifted by an hour would otherwise count the neighbouring occurrence). It is used in
+    `expandSchedule` (the `completed` flag), `computeHabitStats` and, live, in Electron's `isKnownCompleted` (the scheduler builds the timeline from
+    its cached modes, memoized). Exam sessions needed nothing: a session is one-off and its completion is matched by event, not by instant.
+    Limit: it matches only shifts that still exist as rules; deleting the rule afterwards leaves a Done at the old shifted time unmatched.
+  - **`originalAt`.** A shifted occurrence in the list carries `originalAt` (when it would have rung without the shift). Electron validates it (a
+    timestamp, different from `at`, at most 12 hours away) and `isKnownCompleted` also checks it, which matters where the reverse match is off (fast
+    alarms) and for a Done seen from another device before the list was rebuilt.
+  - **Non-passable alarms are never paused; an explicit shift or shorten rule may still move them.** The brief asked whether an explicit rule may
+    skip one: no. Skipping needs `isEventPassable`, so medication, the alarm before an exam and every prayer are immune to a default and to a rule
+    (the editor disables Pause for them and shows "Always rings"). Shifting a non-passable alarm is allowed because that is the person choosing its
+    time (Ramadan moving a medication), not a mode silencing it. Prayers and their reminders are fully immune, shift included; they are not even
+    listed in the editor.
+  - **Precedence and Normal.** Manual beats range beats exam; among windows of one source the one that started last wins, so a new switch overrides an
+    older open-ended one even if the database kept both. Normal is the absence of a row, so "back to normal" only ends the manual activation: under a
+    range or an exam window the planned mode applies again, and the dialog says so (Normal is disabled with an explanation when only a planned
+    mode is on). Opting out of an exam window is the lead setting (0) or switching the Exam mode off.
+  - **Exam auto-activation is derived, one global setting.** `settings.exam_mode_days_before` (default 10, 0 = off) instead of a per-exam
+    value: one number is enough for one user, and a column on `settings` is writable with the other settings. The window is the local midnight that
+    many days before the exam day to the end of the day after it, in the settings zone, for the built-in Exam mode when it is on. `examModeWindows`
+    computes it on every call from the active exams, so moving or deleting an exam moves or removes it, with no stored rows to go stale. Deviation
+    from the brief: `mode_activations.source` is only `manual` or `range` and there is no `exam_id` column, because a stored exam activation would
+    contradict "computed, not stored", and without the column there is one less cross-table check. In core the computed windows have source `exam`.
+  - **`effectiveModeAt` takes a config object.** `effectiveModeAt(instant, config, settings)` with `config = { modes, rules, activations, exams }`
+    rather than the four-argument form in the brief, because the Exam mode's id (to attach the computed windows to) lives in `modes`.
+    `effectiveModeSegments(from, to, config, settings)` is the range variant (the calendar's day marking, "next mode").
+  - **Built-ins by RPC, not a client upsert.** `ensure_builtin_modes()` (security invoker, `search_path ''`): the conflict target is the partial index
+    `modes_builtin_unique`, which PostgREST cannot name (the same reason `events.catch_up_of` has a plain unique index). The app calls it from
+    `loadModes` when a built-in is missing. It never updates an existing row, so a user's edits and an off switch survive. Kind and key are fixed at
+    insert by column-limited grants (`kind` and `builtin_key` are insertable but not updatable; `user_id` is neither), so a client cannot turn a custom
+    mode into the Exam mode.
+  - **Vacation also defaults to skip.** The brief gave a default only for Sick. An empty Vacation would do nothing until configured, so it is created
+    with Sick's default (editable in the Modes screen). Exam and Ramadan keep everything until rules are added.
+  - **The switch is one RPC.** `set_manual_mode(mode, starts_at, ends_at)` ends the running manual activation and starts the new one atomically.
+    "Since this morning" passes a start earlier than now (up to 7 days, enforced) so alarms that already rang today are paused rather than missed.
+  - **Loading and the first push.** Modes and exams are read in `bootstrap` (best effort, with the events), so the first schedule push already knows
+    them; a failed read means every alarm rings, the safe direction, and the push is repeated when they arrive. The schedule sync watches the modes
+    store and the exams store (moving an exam re-pushes). A payload for a person with no mode has no `modes` key. Modes and rules are loaded whole (a
+    full page of 1000 is a failed read, like the habit history). Activations are loaded in pages of 1000 (up to 10, then a failed read) and only
+    those that are open-ended or ended within the last 181 days (the longest habit window plus a day), since an older one cannot change a score or
+    what rings: a missing activation would un-pause alarms, so a partial list is never accepted.
+  - **Electron.** `refillSource.modes` is validated with bounds as the database (shift +-720, shorten 1 to 1440, the value only for its behavior, an
+    activation that ends after it starts, up to 200 modes, 5000 rules and activations, 1000 exams; the mode name is `max(400)`, looser than the
+    database's 60 on purpose). A mode is used whole or not at all (review fix): if any rule or activation of a mode is invalid, that mode, its rules and
+    its activations are all dropped, because a missing rule or activation would change what the mode does and the safe direction is ringing; one too
+    broken to name its mode drops every mode. An invalid mode row or exam is dropped alone (nothing then applies for it). Everything dropped is counted
+    in `dropped.modeRows`. The cache stores `modes` beside the events and cheat days in `schedule.json` (optional there, so an older file loads), and
+    `AlarmScheduler.refillIfStale` passes them to `expandSchedule`.
+  - **Exam sessions.** `sessionStateOf`, `examProgress` and `planCatchUps` take the modes: a session a mode pauses is `skipped` (never `missed`), so
+    sleeping through Sick does not earn a catch-up the day after.
+  - **Known limits.** History is recomputed from the current data: editing a mode's rules or default, deleting a custom mode, switching a built-in
+    off, deleting an exam (Exam mode's past window disappears) or changing the exam lead changes what was paused in the past, and so past scores.
+    Manual and range activations are stored and keep their history. The mode applies to one-off alarms too (through the default), but rules are
+    editable only for repeating ones. A mode cannot be switched to "Normal" over a planned one. The Kotlin engine needs nothing; a Kotlin mirror of
+    `modes.ts` is needed only if Android ever expands the schedule itself.
+  - **Test timing.** `schedule-parity.test.ts` (30 days of every alarm on a fake clock) took 4 to 5 seconds per case against the default 5 second
+    limit and failed whenever the machine was busy, also before phase 5. Its top-level `describe` now has a 30 second timeout.
+  - **Verification.** The migration and `supabase/tests/security_checks.sql` (306 rows, all PASS) were run against PGlite with stubbed Supabase roles,
+    together with a probe (79 checks) for: built-ins created once per user, identity and `user_id` not client-writable, cross-user `mode_id`,
+    `event_id` and random ids denied on rules and activations, rule shape bounds (shift +-720, shorten 1 to 1440, value only for its behavior), the
+    unique `(mode_id, event_id)` upsert, the manual switch (open-ended, bounded, since this morning, supersession, back to normal, future and
+    8-days-back starts denied, inactive and foreign modes denied), anon denied on every table and RPC, the settings column bounds, and cascades.

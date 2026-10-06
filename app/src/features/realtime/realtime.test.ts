@@ -119,10 +119,19 @@ afterEach(() => {
 });
 
 describe('startRealtime', () => {
-  it('subscribes to the five tables on one channel and removes it when stopped', () => {
+  it('subscribes to the eight tables on one channel and removes it when stopped', () => {
     const client = new FakeRealtime();
     const stop = startRealtime(client, 'u1', () => undefined);
-    expect([...client.handlers.keys()].sort()).toEqual(['cheat_days', 'completions', 'events', 'exams', 'settings']);
+    expect([...client.handlers.keys()].sort()).toEqual([
+      'cheat_days',
+      'completions',
+      'events',
+      'exams',
+      'mode_activations',
+      'mode_rules',
+      'modes',
+      'settings',
+    ]);
     stop();
     expect(client.removed).toBe(1);
   });

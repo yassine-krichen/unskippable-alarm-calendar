@@ -1,5 +1,5 @@
-import type { EventRow } from '@alarm-calendar/core';
-import { BellOffIcon, BookOpenIcon, CalendarPlusIcon, GraduationCapIcon, MoonStarIcon } from 'lucide-react';
+import type { EventRow, ModeRow } from '@alarm-calendar/core';
+import { BellOffIcon, BookOpenIcon, CalendarPlusIcon, GraduationCapIcon, MoonStarIcon, PauseIcon } from 'lucide-react';
 import { useMemo } from 'react';
 
 import { Badge } from '@/components/ui/badge';
@@ -19,6 +19,8 @@ interface AgendaViewProps {
   events: readonly EventRow[];
   occurrences: readonly Occurrence[];
   cheatDays: ReadonlySet<string>;
+  /** The mode that covers most of each day, by 'yyyy-MM-dd'. */
+  modeDays: ReadonlyMap<string, ModeRow>;
   onEdit: (eventId: string) => void;
   onCreate: () => void;
 }
@@ -32,6 +34,7 @@ export function AgendaView({
   events,
   occurrences,
   cheatDays,
+  modeDays,
   onEdit,
   onCreate,
 }: AgendaViewProps) {
@@ -43,10 +46,10 @@ export function AgendaView({
   for (let offset = 0; offset < days; offset++) {
     const day = addDays(start, offset);
     // Quiet days stay out of the list, except today and cheat days, which carry information.
-    if (groupsByDay.has(day) || day === today || cheatDays.has(day)) listedDays.push(day);
+    if (groupsByDay.has(day) || day === today || cheatDays.has(day) || modeDays.has(day)) listedDays.push(day);
   }
 
-  if (occurrences.length === 0 && !listedDays.some((day) => cheatDays.has(day))) {
+  if (occurrences.length === 0 && !listedDays.some((day) => cheatDays.has(day) || modeDays.has(day))) {
     return (
       <div className="flex flex-col items-start gap-3 px-4 py-10 sm:px-6">
         <h2 className="text-base font-medium">Nothing rings in this period</h2>
@@ -66,14 +69,16 @@ export function AgendaView({
       {listedDays.map((day) => {
         const group = groupsByDay.get(day);
         const cheat = cheatDays.has(day);
+        const dayMode = modeDays.get(day);
         return (
           <li key={day} className="flex flex-col gap-1">
-            <div className={`flex items-center gap-2 rounded-md px-2 py-1.5 ${cheat ? 'cheat-day' : ''}`}>
+            <div className={`flex items-center gap-2 rounded-md px-2 py-1.5 ${cheat ? 'cheat-day' : ''} ${dayMode ? 'mode-day' : ''}`}>
               <h2 className="text-sm font-medium">
                 {day === today ? 'Today' : formatDay(day)}
                 {day === today ? <span className="font-normal text-muted-foreground">, {formatDay(day)}</span> : null}
               </h2>
               {cheat ? <Badge variant="outline">Cheat day</Badge> : null}
+              {dayMode ? <Badge variant="secondary">{dayMode.name}</Badge> : null}
             </div>
             {group ? (
               <ul className="flex flex-col">
@@ -102,7 +107,9 @@ export function AgendaView({
                             style={occurrence.color ? { backgroundColor: occurrence.color } : undefined}
                           />
                         )}
-                        <span className={`min-w-0 flex-1 truncate ${occurrence.silenced ? 'text-muted-foreground' : ''}`}>
+                        <span
+                          className={`min-w-0 flex-1 truncate ${occurrence.silenced || occurrence.paused ? 'text-muted-foreground' : ''} ${occurrence.paused ? 'line-through' : ''}`}
+                        >
                           {occurrence.title}
                         </span>
                         {event && occurrence.kind === 'normal' && event.repeat_unit !== 'none' ? (
@@ -110,7 +117,16 @@ export function AgendaView({
                             {describeRepeat({ unit: event.repeat_unit, interval: event.repeat_interval })}
                           </span>
                         ) : null}
-                        {occurrence.silenced ? (
+                        {occurrence.paused ? (
+                          <Badge variant="secondary" className="shrink-0">
+                            <PauseIcon data-icon="inline-start" />
+                            Paused{occurrence.modeName ? ` by ${occurrence.modeName}` : ''}
+                          </Badge>
+                        ) : occurrence.shifted && occurrence.modeName ? (
+                          <Badge variant="outline" className="shrink-0">
+                            Moved by {occurrence.modeName}
+                          </Badge>
+                        ) : occurrence.silenced ? (
                           <Badge variant="secondary" className="shrink-0">
                             <BellOffIcon data-icon="inline-start" />
                             Silenced

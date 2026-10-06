@@ -5,11 +5,11 @@
 select 'rls enabled: ' || c.relname as name, 'true' as expected, c.relrowsecurity::text as actual,
   case when c.relrowsecurity then 'PASS' else 'FAIL' end as result
 from pg_class c join pg_namespace n on n.oid = c.relnamespace
-where n.nspname = 'public' and c.relname in ('events', 'completions', 'settings', 'pass_wallet', 'cheat_days', 'exams')
+where n.nspname = 'public' and c.relname in ('events', 'completions', 'settings', 'pass_wallet', 'cheat_days', 'exams', 'modes', 'mode_rules', 'mode_activations')
 union all
 select 'policy count: ' || t, expected::text, coalesce(p.cnt, 0)::text,
   case when coalesce(p.cnt, 0) = expected then 'PASS' else 'FAIL' end
-from (values ('events', 4), ('completions', 4), ('settings', 3), ('pass_wallet', 1), ('cheat_days', 1), ('exams', 4)) as v(t, expected)
+from (values ('events', 4), ('completions', 4), ('settings', 3), ('pass_wallet', 1), ('cheat_days', 1), ('exams', 4), ('modes', 4), ('mode_rules', 4), ('mode_activations', 4)) as v(t, expected)
 left join (select tablename, count(*) cnt from pg_policies where schemaname = 'public' group by tablename) p on p.tablename = v.t
 union all
 select 'policies only to authenticated: ' || tablename, 'true', bool_and(roles = '{authenticated}')::text,
@@ -27,7 +27,13 @@ from (values
   ('anon', 'events', 'SELECT', false), ('anon', 'pass_wallet', 'SELECT', false),
   ('anon', 'exams', 'SELECT', false), ('anon', 'exams', 'INSERT', false), ('anon', 'exams', 'UPDATE', false), ('anon', 'exams', 'DELETE', false),
   ('authenticated', 'exams', 'SELECT', true), ('authenticated', 'exams', 'INSERT', true),
-  ('authenticated', 'exams', 'UPDATE', true), ('authenticated', 'exams', 'DELETE', true)
+  ('authenticated', 'exams', 'UPDATE', true), ('authenticated', 'exams', 'DELETE', true),
+  ('anon', 'modes', 'SELECT', false), ('anon', 'modes', 'INSERT', false), ('anon', 'modes', 'UPDATE', false), ('anon', 'modes', 'DELETE', false),
+  ('anon', 'mode_rules', 'SELECT', false), ('anon', 'mode_rules', 'INSERT', false), ('anon', 'mode_rules', 'UPDATE', false), ('anon', 'mode_rules', 'DELETE', false),
+  ('anon', 'mode_activations', 'SELECT', false), ('anon', 'mode_activations', 'INSERT', false), ('anon', 'mode_activations', 'UPDATE', false), ('anon', 'mode_activations', 'DELETE', false),
+  ('authenticated', 'modes', 'SELECT', true), ('authenticated', 'modes', 'DELETE', true),
+  ('authenticated', 'mode_rules', 'SELECT', true), ('authenticated', 'mode_rules', 'INSERT', true), ('authenticated', 'mode_rules', 'UPDATE', true), ('authenticated', 'mode_rules', 'DELETE', true),
+  ('authenticated', 'mode_activations', 'SELECT', true), ('authenticated', 'mode_activations', 'INSERT', true), ('authenticated', 'mode_activations', 'UPDATE', true), ('authenticated', 'mode_activations', 'DELETE', true)
 ) as t(role, tbl, priv, expected)
 union all
 -- TRUNCATE, REFERENCES and TRIGGER are never needed by a client role.
@@ -36,7 +42,7 @@ select format('%s can %s %s', role, priv, tbl), 'false',
   case when has_table_privilege(role, 'public.' || tbl, priv) then 'FAIL' else 'PASS' end
 from unnest(array['anon', 'authenticated']) as role
 cross join unnest(array['TRUNCATE', 'REFERENCES', 'TRIGGER']) as priv
-cross join unnest(array['events', 'completions', 'settings', 'pass_wallet', 'cheat_days', 'exams']) as tbl
+cross join unnest(array['events', 'completions', 'settings', 'pass_wallet', 'cheat_days', 'exams', 'modes', 'mode_rules', 'mode_activations']) as tbl
 union all
 -- settings is writable by column: pass_cap must stay out of reach, and so must
 -- the table-level privileges that would imply every column.
@@ -92,6 +98,8 @@ from (values
   ('anon', 'public.sync_wallet()', false), ('anon', 'public.use_pass(date)', false), ('anon', 'public.refund_pass(date)', false),
   ('authenticated', 'public.sync_wallet()', true), ('authenticated', 'public.use_pass(date)', true), ('authenticated', 'public.refund_pass(date)', true),
   ('anon', 'public.set_prayers_enabled(boolean)', false), ('authenticated', 'public.set_prayers_enabled(boolean)', true),
+  ('anon', 'public.ensure_builtin_modes()', false), ('authenticated', 'public.ensure_builtin_modes()', true),
+  ('anon', 'public.set_manual_mode(uuid,timestamptz,timestamptz)', false), ('authenticated', 'public.set_manual_mode(uuid,timestamptz,timestamptz)', true),
   ('anon', 'private.use_pass(uuid,date,timestamptz)', false), ('authenticated', 'private.use_pass(uuid,date,timestamptz)', false),
   ('authenticated', 'private.pass_today(timestamptz,text,text,text)', false), ('anon', 'private.pass_today(timestamptz,text,text,text)', false),
   ('authenticated', 'private.sync_wallet(uuid,timestamptz)', false), ('authenticated', 'private.refund_pass(uuid,date,timestamptz)', false)
@@ -100,7 +108,7 @@ union all
 select 'realtime publication has ' || t, 'true',
   exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = t)::text,
   case when exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = t) then 'PASS' else 'FAIL' end
-from unnest(array['events', 'completions', 'cheat_days', 'settings', 'exams']) as t
+from unnest(array['events', 'completions', 'cheat_days', 'settings', 'exams', 'modes', 'mode_rules', 'mode_activations']) as t
 union all
 -- events.created_at is table-writable by the client roles, so a trigger must pin it
 -- (set on insert, unchanged on update). Needs the events_created_at migration.
@@ -179,4 +187,63 @@ select 'rls.owns_event is security definer with a fixed search_path', 'true',
     where p.oid = 'rls.owns_event(uuid)'::regprocedure), false)::text,
   case when coalesce((select (p.prosecdef and coalesce(p.proconfig::text, '') like '%search_path%') from pg_proc p
     where p.oid = 'rls.owns_event(uuid)'::regprocedure), false) then 'PASS' else 'FAIL' end
+union all
+-- Modes (modes migration). The identity of a mode (kind, builtin_key) is fixed at insert and user_id is never
+-- client-writable; settings.exam_mode_days_before is.
+select format('authenticated can %s modes.%s', priv, col), expected::text,
+  has_column_privilege('authenticated', 'public.modes', col, priv)::text,
+  case when has_column_privilege('authenticated', 'public.modes', col, priv) = expected then 'PASS' else 'FAIL' end
+from (values
+  ('name', 'INSERT', true), ('kind', 'INSERT', true), ('builtin_key', 'INSERT', true), ('default_behavior', 'INSERT', true), ('active', 'INSERT', true),
+  ('user_id', 'INSERT', false), ('user_id', 'UPDATE', false),
+  ('name', 'UPDATE', true), ('default_behavior', 'UPDATE', true), ('active', 'UPDATE', true),
+  ('kind', 'UPDATE', false), ('builtin_key', 'UPDATE', false)
+) as c(col, priv, expected)
+union all
+select format('%s can %s settings.exam_mode_days_before', role, priv), expected::text,
+  has_column_privilege(role, 'public.settings', 'exam_mode_days_before', priv)::text,
+  case when has_column_privilege(role, 'public.settings', 'exam_mode_days_before', priv) = expected then 'PASS' else 'FAIL' end
+from (values
+  ('authenticated', 'INSERT', true), ('authenticated', 'UPDATE', true), ('authenticated', 'SELECT', true),
+  ('anon', 'INSERT', false), ('anon', 'UPDATE', false), ('anon', 'SELECT', false)
+) as g(role, priv, expected)
+union all
+select 'modes has the unique built-in index and the shape check', 'true',
+  (exists (select 1 from pg_indexes where schemaname = 'public' and indexname = 'modes_builtin_unique')
+   and exists (select 1 from pg_constraint where conrelid = 'public.modes'::regclass and conname = 'modes_builtin_shape'))::text,
+  case when exists (select 1 from pg_indexes where schemaname = 'public' and indexname = 'modes_builtin_unique')
+        and exists (select 1 from pg_constraint where conrelid = 'public.modes'::regclass and conname = 'modes_builtin_shape') then 'PASS' else 'FAIL' end
+union all
+select 'mode_rules has the shift and shorten shape checks and one rule per mode and alarm', 'true',
+  (exists (select 1 from pg_constraint where conrelid = 'public.mode_rules'::regclass and conname = 'mode_rules_shift_shape')
+   and exists (select 1 from pg_constraint where conrelid = 'public.mode_rules'::regclass and conname = 'mode_rules_shorten_shape')
+   and exists (select 1 from pg_constraint where conrelid = 'public.mode_rules'::regclass and conname = 'mode_rules_mode_event_unique'))::text,
+  case when exists (select 1 from pg_constraint where conrelid = 'public.mode_rules'::regclass and conname = 'mode_rules_shift_shape')
+        and exists (select 1 from pg_constraint where conrelid = 'public.mode_rules'::regclass and conname = 'mode_rules_shorten_shape')
+        and exists (select 1 from pg_constraint where conrelid = 'public.mode_rules'::regclass and conname = 'mode_rules_mode_event_unique') then 'PASS' else 'FAIL' end
+union all
+-- mode_id and event_id are foreign keys (the check ignores RLS), so the write policies must verify ownership.
+select 'mode_rules write policies check mode and alarm ownership', 'true',
+  (select bool_and(coalesce(with_check, '') like '%modes%' and coalesce(with_check, '') like '%events%') from pg_policies
+   where schemaname = 'public' and tablename = 'mode_rules' and policyname in ('mode_rules_insert', 'mode_rules_update'))::text,
+  case when (select bool_and(coalesce(with_check, '') like '%modes%' and coalesce(with_check, '') like '%events%') from pg_policies
+   where schemaname = 'public' and tablename = 'mode_rules' and policyname in ('mode_rules_insert', 'mode_rules_update')) then 'PASS' else 'FAIL' end
+union all
+select 'mode_activations write policies check mode ownership', 'true',
+  (select bool_and(coalesce(with_check, '') like '%modes%') from pg_policies
+   where schemaname = 'public' and tablename = 'mode_activations' and policyname in ('mode_activations_insert', 'mode_activations_update'))::text,
+  case when (select bool_and(coalesce(with_check, '') like '%modes%') from pg_policies
+   where schemaname = 'public' and tablename = 'mode_activations' and policyname in ('mode_activations_insert', 'mode_activations_update')) then 'PASS' else 'FAIL' end
+union all
+select 'mode_activations has the order and bounded-range checks', 'true',
+  (exists (select 1 from pg_constraint where conrelid = 'public.mode_activations'::regclass and conname = 'mode_activations_order')
+   and exists (select 1 from pg_constraint where conrelid = 'public.mode_activations'::regclass and conname = 'mode_activations_range_bounded'))::text,
+  case when exists (select 1 from pg_constraint where conrelid = 'public.mode_activations'::regclass and conname = 'mode_activations_order')
+        and exists (select 1 from pg_constraint where conrelid = 'public.mode_activations'::regclass and conname = 'mode_activations_range_bounded') then 'PASS' else 'FAIL' end
+union all
+select 'the mode RPCs are security invoker with a fixed search_path', 'true',
+  (select bool_and(not p.prosecdef and coalesce(p.proconfig::text, '') like '%search_path%') from pg_proc p
+   where p.oid in ('public.ensure_builtin_modes()'::regprocedure, 'public.set_manual_mode(uuid,timestamptz,timestamptz)'::regprocedure))::text,
+  case when (select bool_and(not p.prosecdef and coalesce(p.proconfig::text, '') like '%search_path%') from pg_proc p
+   where p.oid in ('public.ensure_builtin_modes()'::regprocedure, 'public.set_manual_mode(uuid,timestamptz,timestamptz)'::regprocedure)) then 'PASS' else 'FAIL' end
 order by 1;

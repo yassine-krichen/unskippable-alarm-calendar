@@ -1,6 +1,7 @@
+import { applyModesToInstants, buildModeTimeline, type ModeTimeline } from './modes';
 import { isEventPassable } from './occurrences';
 import { dayNumberFromDateString, fromWallClock, localDateString, toWallClock } from './time-zone';
-import type { CompletionRow, EventRow, ExamDifficulty, ExamRow, Settings } from './types';
+import type { CompletionRow, EventRow, ExamDifficulty, ExamRow, ModeConfig, ModeSettings, Settings } from './types';
 
 // Roadmap v2, phase 4. Exams and their revision sessions are planned here, as pure functions; the
 // alarms themselves are ordinary one-off events (kind 'normal') that the app writes, so the schedule,
@@ -148,7 +149,7 @@ export function planCatchUp(
 /**
  * Where a revision session stands.
  *  - done: completed (a Done on any device);
- *  - skipped: a cheat day silenced it, or it was completed as skipped_cheat;
+ *  - skipped: a cheat day silenced it, a mode paused it (Sick, Vacation ...), or it was completed as skipped_cheat;
  *  - upcoming: not due yet;
  *  - due: due, and still inside the grace window (it can still ring);
  *  - missed: past the grace window with no completion.
@@ -200,8 +201,10 @@ export interface ExamProgressInput {
   events: readonly EventRow[];
   completions: readonly Pick<CompletionRow, 'event_id' | 'status'>[];
   cheatDays: readonly string[];
-  settings: Pick<Settings, 'timezone' | 'grace_minutes'>;
+  settings: Pick<Settings, 'timezone' | 'grace_minutes'> & Partial<ModeSettings>;
   now: Date;
+  /** A session a mode pauses counts as skipped, not missed, so it never earns a catch-up. */
+  modes?: ModeConfig;
 }
 
 /** The state of one session event against the completions and cheat days. */
@@ -209,15 +212,20 @@ export function sessionStateOf(
   session: EventRow,
   completions: readonly Pick<CompletionRow, 'event_id' | 'status'>[],
   cheatDays: ReadonlySet<string> | readonly string[],
-  settings: Pick<Settings, 'timezone' | 'grace_minutes'>,
-  now: Date
+  settings: Pick<Settings, 'timezone' | 'grace_minutes'> & Partial<ModeSettings>,
+  now: Date,
+  modes?: ModeTimeline
 ): SessionState {
-  const at = new Date(session.start_at);
+  const planned = new Date(session.start_at);
   const days = cheatDays instanceof Set ? cheatDays : new Set(cheatDays);
+  // A session is a one-off alarm, so a mode treats it like any other: it can be paused or moved.
+  const moded = applyModesToInstants(session, [planned], modes ?? buildModeTimeline(undefined, settings))[0];
+  const at = moded?.at ?? planned;
+  const paused = moded?.paused === true;
   return classifySession({
     at,
     completion: completions.find((completion) => completion.event_id === session.id),
-    silenced: isEventPassable(session) && days.has(localDateString(at, settings.timezone)),
+    silenced: paused || (isEventPassable(session) && days.has(localDateString(at, settings.timezone))),
     graceMinutes: settings.grace_minutes,
     now,
   });
@@ -226,9 +234,10 @@ export function sessionStateOf(
 /** How many of an exam's revision sessions are done, missed, skipped and still to come. */
 export function examProgress(input: ExamProgressInput): ExamProgress {
   const days = new Set(input.cheatDays);
+  const timeline = buildModeTimeline(input.modes, input.settings);
   const progress: ExamProgress = { total: 0, done: 0, missed: 0, skipped: 0, remaining: 0 };
   for (const session of sessionsOfExam(input.examId, input.events)) {
-    const state = sessionStateOf(session, input.completions, days, input.settings, input.now);
+    const state = sessionStateOf(session, input.completions, days, input.settings, input.now, timeline);
     progress.total += 1;
     if (state === 'done') progress.done += 1;
     else if (state === 'missed') progress.missed += 1;
@@ -277,8 +286,10 @@ export interface CatchUpScan {
    */
   completions: readonly Pick<CompletionRow, 'event_id' | 'status'>[];
   cheatDays: readonly string[];
-  settings: Pick<Settings, 'timezone' | 'grace_minutes'>;
+  settings: Pick<Settings, 'timezone' | 'grace_minutes'> & Partial<ModeSettings>;
   now: Date;
+  /** The modes: a session one of them pauses is skipped, never missed, so it gets no catch-up. */
+  modes?: ModeConfig;
   /** Missed session ids that already had a catch-up written this run of the app (or that do not need one). */
   skip?: ReadonlySet<string>;
 }
@@ -298,6 +309,7 @@ export function planCatchUps(scan: CatchUpScan): CatchUpPlan[] {
   );
   for (const id of scan.skip ?? []) hasCatchUp.add(id);
   const cheatDays = new Set(scan.cheatDays);
+  const timeline = buildModeTimeline(scan.modes, scan.settings);
 
   const plans: CatchUpPlan[] = [];
   for (const exam of scan.exams) {
@@ -309,7 +321,7 @@ export function planCatchUps(scan: CatchUpScan): CatchUpPlan[] {
       .map((event) => new Date(event.start_at));
     for (const session of sessions) {
       if (session.catch_up_of != null || hasCatchUp.has(session.id)) continue;
-      if (sessionStateOf(session, scan.completions, cheatDays, scan.settings, settled) !== 'missed') continue;
+      if (sessionStateOf(session, scan.completions, cheatDays, scan.settings, settled, timeline) !== 'missed') continue;
       const at = planCatchUp(exam, session, scan.now, scan.settings, hasCatchUp, avoid);
       if (at === null) continue;
       plans.push({ exam, missed: session, at });

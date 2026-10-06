@@ -184,6 +184,24 @@
 }
 
 /*
+ * A day under a mode (Sick, Vacation, Exam ...): a faint wash, so it reads as "a different kind of day" without
+ * competing with the cheat-day hatching, which can apply to the same day (this is a colour, that is an image).
+ */
+.mode-day {
+  background-color: color-mix(in oklab, var(--foreground) 5%, transparent);
+}
+
+/*
+ * An occurrence a mode pauses: dashed, greyed and struck through, so it reads as "will not ring" and is not
+ * mistaken for a cheat-day silence (which is greyed but solid). FullCalendar paints events with inline colours.
+ */
+.occurrence-paused {
+  opacity: 0.55;
+  filter: grayscale(1);
+  border-style: dashed !important;
+}
+
+/*
  * The five daily prayers: outlined instead of filled, with a heavier left edge, so they read as a
  * different kind of item from an ordinary alarm without introducing a colour. FullCalendar paints
  * events with its own variables and inline colours, hence the !important.

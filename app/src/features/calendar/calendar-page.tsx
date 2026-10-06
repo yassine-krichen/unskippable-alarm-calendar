@@ -19,6 +19,10 @@ import type { EventFormTarget } from '@/features/events/event-form-view';
 import { loadEvents, useEventsStore } from '@/features/events/events-store';
 import { useExamsStore } from '@/features/exams/exams-store';
 import { findRelationshipGroup } from '@/features/events/relationship-template';
+import { ModeChip } from '@/features/modes/mode-chip';
+import { ModeDialog } from '@/features/modes/mode-dialog';
+import { modesByDay } from '@/features/modes/mode-status';
+import { useModeTimeline } from '@/features/modes/use-modes';
 import { PassChip } from '@/features/passes/pass-chip';
 import { PassDialog } from '@/features/passes/pass-dialog';
 import { usePassesStore } from '@/features/passes/passes-store';
@@ -56,6 +60,7 @@ export function CalendarPage() {
 
   const [formTarget, setFormTarget] = useState<EventFormTarget | null>(null);
   const [passDialogOpen, setPassDialogOpen] = useState(false);
+  const [modeDialogOpen, setModeDialogOpen] = useState(false);
   const [anchorOverride, setAnchorOverride] = useState<string | null>(null);
 
   const tz = settings?.timezone ?? 'UTC';
@@ -66,17 +71,28 @@ export function CalendarPage() {
   // Week on desktop, Agenda on phones, unless the URL says otherwise.
   const view = parseCalendarView(searchParams.get('view')) ?? (isDesktop ? 'week' : 'agenda');
 
+  const modeTimeline = useModeTimeline();
   const cheatDaySet = useMemo(() => new Set(cheatDays), [cheatDays]);
   const range = useMemo(() => visibleDayRange(view, anchor, weekStartsOn), [view, anchor, weekStartsOn]);
   const { occurrences, skipped } = useMemo(() => {
     if (!settings) return { occurrences: [], skipped: null };
     const failed: string[] = [];
-    const expanded = expandOccurrences(events, rangeToInstants(range, tz), settings, cheatDays, (event) =>
-      failed.push(event.kind ?? 'normal')
+    const expanded = expandOccurrences(
+      events,
+      rangeToInstants(range, tz),
+      settings,
+      cheatDays,
+      (event) => failed.push(event.kind ?? 'normal'),
+      modeTimeline
     );
     return { occurrences: expanded, skipped: skippedNotice(failed) };
-  }, [events, range, tz, cheatDays, settings]);
+  }, [events, range, tz, cheatDays, settings, modeTimeline]);
   const calendarEvents = useMemo(() => occurrences.map(toCalendarEvent), [occurrences]);
+  // The days a mode covers most of, marked quietly in the grid and the agenda.
+  const modeDays = useMemo(
+    () => modesByDay(modeTimeline, range.start, range.end, tz),
+    [modeTimeline, range, tz]
+  );
 
   if (!settings) return null;
 
@@ -123,6 +139,7 @@ export function CalendarPage() {
         <AlarmClockIcon className="size-5" aria-hidden="true" />
         <span className="text-sm font-semibold tracking-tight">Alarm Calendar</span>
         <div className="ml-auto flex items-start gap-2">
+          <ModeChip onOpen={() => setModeDialogOpen(true)} />
           <PassChip onOpen={() => setPassDialogOpen(true)} />
           <Button className="hidden sm:inline-flex" onClick={() => openCreate()}>
             <PlusIcon data-icon="inline-start" />
@@ -204,6 +221,7 @@ export function CalendarPage() {
               weekStartsOn={weekStartsOn}
               events={calendarEvents}
               cheatDays={cheatDaySet}
+              modeDays={modeDays}
               onCreate={openCreate}
               onEdit={openEdit}
             />
@@ -216,6 +234,7 @@ export function CalendarPage() {
               weekStartsOn={weekStartsOn}
               events={calendarEvents}
               cheatDays={cheatDaySet}
+              modeDays={modeDays}
               onCreate={openCreate}
               onEdit={openEdit}
             />
@@ -229,6 +248,7 @@ export function CalendarPage() {
               events={events}
               occurrences={occurrences}
               cheatDays={cheatDaySet}
+              modeDays={modeDays}
               onEdit={openEdit}
               onCreate={() => openCreate()}
             />
@@ -247,6 +267,7 @@ export function CalendarPage() {
 
       <EventSheet target={formTarget} settings={settings} onClose={() => setFormTarget(null)} />
       <PassDialog open={passDialogOpen} onOpenChange={setPassDialogOpen} />
+      <ModeDialog open={modeDialogOpen} onOpenChange={setModeDialogOpen} />
     </Tabs>
   );
 }

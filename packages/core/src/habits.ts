@@ -5,8 +5,19 @@ import {
   prayerDayKey,
   type OccurrenceSettings,
 } from './occurrences';
+import { instantMs } from './instant';
+import {
+  MAX_SHIFT_MS,
+  applyModesToInstants,
+  buildModeTimeline,
+  type ModeTimeline,
+  type ModeTimelineSettings,
+} from './modes';
+import { nominalPeriodDays } from './period';
 import { localDateString } from './time-zone';
-import type { CompletionRow, EventRow, Settings } from './types';
+import type { CompletionRow, EventRow, ModeConfig, Settings } from './types';
+
+export { instantMs, nominalPeriodDays };
 
 // Formula and tiers are fixed in docs/roadmap-v2.md, phase 1. Keep the Kotlin mirror identical.
 
@@ -27,7 +38,11 @@ const CREDIT_LOST_PER_SNOOZE = 0.1;
 const MS_PER_MINUTE = 60_000;
 const MS_PER_DAY = 86_400_000;
 
-export type OccurrenceOutcome = 'done' | 'missed' | 'excused' | 'pending';
+/**
+ * 'paused' is an occurrence a mode skipped (roadmap v2, phase 5): it never rang and is left out of the score
+ * and the counts that matter, exactly like 'excused'. A completion still wins over it (done anyway is done).
+ */
+export type OccurrenceOutcome = 'done' | 'missed' | 'excused' | 'paused' | 'pending';
 
 export type HabitTier = 'unranked' | 'bronze' | 'silver' | 'gold' | 'platinum' | 'diamond';
 
@@ -51,7 +66,7 @@ export type HabitEvent = Pick<
 export type HabitCompletion = Pick<CompletionRow, 'event_id' | 'occurrence_at' | 'status' | 'snoozes_used'>;
 
 /** The zone and grace window, plus the prayer fields (a prayer is scored from its times in them). */
-export type HabitSettings = Pick<Settings, 'timezone' | 'grace_minutes'> & OccurrenceSettings;
+export type HabitSettings = Pick<Settings, 'timezone' | 'grace_minutes'> & OccurrenceSettings & ModeTimelineSettings;
 
 export interface HabitOccurrence {
   /** Scheduled instant of the occurrence. */
@@ -68,6 +83,8 @@ export interface HabitStats {
   done: number;
   missed: number;
   excused: number;
+  /** Skipped by a mode: left out of the score like an excused one. */
+  paused: number;
   pending: number;
   /** done + missed: the occurrences that count towards the score. */
   scored: number;
@@ -100,19 +117,6 @@ export interface HabitsReport {
   failed: HabitEvent[];
 }
 
-/**
- * Epoch milliseconds of a timestamp string, or NaN. Completions come back from Postgres as
- * '+00:00' with optional microseconds, from the desktop flusher as 'Z', and events may differ
- * again, so occurrences are matched by instant, never by string.
- */
-export function instantMs(timestamp: string): number {
-  // Postgres text output can use a space and a short offset ('+00'); both are valid ISO once fixed.
-  const iso = timestamp
-    .replace(' ', 'T')
-    .replace(/(\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?)([+-]\d{2})$/, '$1$2:00');
-  return Date.parse(iso);
-}
-
 /** Credit of one done occurrence: 1 minus 0.1 per snooze, never below 0.5. */
 export function doneCredit(snoozesUsed: number): number {
   return Math.max(HABIT_MIN_CREDIT, 1 - CREDIT_LOST_PER_SNOOZE * Math.max(0, snoozesUsed));
@@ -124,32 +128,6 @@ export function doneCredit(snoozesUsed: number): number {
  */
 export function recencyWeight(daysAgo: number, halfLifeDays: number = HABIT_WINDOW_DAYS / 2): number {
   return Math.pow(0.5, daysAgo / halfLifeDays);
-}
-
-/**
- * How often the habit nominally repeats, in days: hours / 24, days as is, weeks times 7 divided
- * by the number of chosen weekdays, months times 30, years times 365. Only a yardstick for the window.
- */
-export function nominalPeriodDays(
-  event: Pick<EventRow, 'repeat_unit' | 'repeat_interval' | 'repeat_weekdays'>
-): number {
-  const interval = event.repeat_interval;
-  switch (event.repeat_unit) {
-    case 'hour':
-      return interval / 24;
-    case 'day':
-      return interval;
-    case 'week': {
-      const weekdays = new Set(event.repeat_weekdays ?? []).size;
-      return (interval * 7) / Math.max(1, weekdays);
-    }
-    case 'month':
-      return interval * 30;
-    case 'year':
-      return interval * 365;
-    case 'none':
-      return 0;
-  }
 }
 
 /** max(28 days, 5 repeat periods), capped at 180 days. */
@@ -221,10 +199,13 @@ export interface ClassifyInput {
   cheatDays: ReadonlySet<string>;
   timezone: string;
   graceMinutes: number;
+  /** A mode skipped it (see applyModesToInstants): it never rang. */
+  paused?: boolean;
 }
 
 /**
- * Outcome of one occurrence. A done completion always wins. Then a cheat day (local date in the
+ * Outcome of one occurrence. A done completion always wins. Then a paused one (a mode skipped it) is
+ * 'paused', whatever else is true. Then a cheat day (local date in the
  * settings zone) or a skipped_cheat completion excuses it, but only for a passable event, since a
  * non-passable alarm rings through cheat days. Otherwise it is
  * pending until now is more than grace_minutes past it (exactly grace_minutes is still pending,
@@ -232,6 +213,7 @@ export interface ClassifyInput {
  */
 export function classifyOccurrence(input: ClassifyInput): OccurrenceOutcome {
   if (input.completion?.status === 'done') return 'done';
+  if (input.paused === true) return 'paused';
   if (input.passable) {
     if (input.completion?.status === 'skipped_cheat') return 'excused';
     if (input.cheatDays.has(localDateString(input.at, input.timezone))) return 'excused';
@@ -275,6 +257,28 @@ function completionsByPrayerDay(
 }
 
 /**
+ * The completion of a normal alarm's occurrence: at its own instant, at its original instant if a mode moved it,
+ * or at the instant a shift rule of the alarm would put it (ModeTimeline.matchInstants), so a Done pressed at a
+ * shifted time still counts once the mode is over. A done row wins over a skipped one.
+ */
+function completionNear(
+  event: HabitEvent,
+  completions: ReadonlyMap<string, HabitCompletion>,
+  atMs: number,
+  originalMs: number,
+  timeline: ModeTimeline
+): HabitCompletion | undefined {
+  const instants = new Set([...timeline.matchInstants(event, atMs), originalMs]);
+  let found: HabitCompletion | undefined;
+  for (const ms of instants) {
+    const completion = completions.get(completionKey(event.id, ms));
+    if (completion?.status === 'done') return completion;
+    found ??= completion;
+  }
+  return found;
+}
+
+/**
  * Stats of one recurring event over its window (28 days or more, see habitWindowDays) up to `now`,
  * but never before the event was created: occurrences earlier than created_at are not scored.
  * score = 100 * sum(w * credit) / sum(w * (done ? 1 : 2)), over done and missed occurrences only.
@@ -284,7 +288,9 @@ export function computeHabitStats(
   completions: ReadonlyMap<string, HabitCompletion>,
   cheatDays: ReadonlySet<string>,
   settings: HabitSettings,
-  now: Date
+  now: Date,
+  /** The modes in effect over the window; paused occurrences are left out of the score, shifted ones are scored where they rang. */
+  modes: ModeTimeline | undefined = undefined
 ): HabitStats {
   const windowDays = habitWindowDays(event);
   const windowStartMs = now.getTime() - windowDays * MS_PER_DAY;
@@ -297,21 +303,32 @@ export function computeHabitStats(
       : instantMs(settings.prayers_enabled_since);
   const floorMs = Math.max(windowStartMs, Number.isNaN(createdMs) ? -Infinity : createdMs, Number.isNaN(enabledMs) ? -Infinity : enabledMs);
   const from = new Date(floorMs);
+  const endMs = now.getTime() + 1;
+  const timeline = modes ?? buildModeTimeline(undefined, settings);
+  // A shift moves an occurrence up to 12 hours, so ask for that much more on both sides and keep what
+  // rings inside the range. Without modes (or for a prayer) nothing moves and the range is exact.
+  const slack = timeline.active && eventKindOf(event) === 'normal' ? MAX_SHIFT_MS : 0;
   // The range is half-open; +1 ms makes an occurrence exactly at `now` count.
-  const instants = eventOccurrencesBetween(event, from, new Date(now.getTime() + 1), settings);
+  const moded = applyModesToInstants(
+    event,
+    eventOccurrencesBetween(event, new Date(floorMs - slack), new Date(endMs + slack), settings),
+    timeline
+  ).filter((m) => m.at.getTime() >= floorMs && m.at.getTime() < endMs);
 
   // A prayer's completion is matched by prayer-day, not exact instant: an offset or location change after
   // "prayed" moves the alarm by minutes and must not turn that prayer into a miss.
   const prayerCompletions = eventKindOf(event) === 'normal' ? null : completionsByPrayerDay(event, completions, settings);
-  const counts = { done: 0, missed: 0, excused: 0, pending: 0 };
+  const counts = { done: 0, missed: 0, excused: 0, paused: 0, pending: 0 };
   const occurrences: HabitOccurrence[] = [];
   let earned = 0;
   let possible = 0;
 
-  for (const at of instants) {
+  for (const { at, original, paused } of moded) {
+    // A shifted occurrence is matched where it rang, or, for a Done pressed before the shift took effect,
+    // by its original instant.
     const completion =
       prayerCompletions === null
-        ? completions.get(completionKey(event.id, at.getTime()))
+        ? completionNear(event, completions, at.getTime(), original.getTime(), timeline)
         : prayerCompletions.get(prayerDayKey(event, at, settings) ?? '');
     const outcome = classifyOccurrence({
       passable: isEventPassable(event),
@@ -321,6 +338,7 @@ export function computeHabitStats(
       cheatDays,
       timezone: settings.timezone,
       graceMinutes: settings.grace_minutes,
+      paused,
     });
     const snoozesUsed = outcome === 'done' ? (completion?.snoozes_used ?? 0) : 0;
     counts[outcome] += 1;
@@ -366,15 +384,18 @@ export function computeHabitsReport(
   completions: readonly HabitCompletion[],
   cheatDays: readonly string[],
   settings: HabitSettings,
-  now: Date
+  now: Date,
+  /** The modes: paused occurrences are left out of every habit's score (roadmap v2, phase 5). */
+  modes?: ModeConfig
 ): HabitsReport {
   const index = indexCompletions(completions);
+  const timeline = buildModeTimeline(modes, settings);
   const cheatDaySet = new Set(cheatDays);
   const habits: HabitStats[] = [];
   const failed: HabitEvent[] = [];
   for (const event of events.filter(isHabit)) {
     try {
-      habits.push(computeHabitStats(event, index, cheatDaySet, settings, now));
+      habits.push(computeHabitStats(event, index, cheatDaySet, settings, now, timeline));
     } catch {
       // One unusable event must not take the whole Stats screen down.
       failed.push(event);

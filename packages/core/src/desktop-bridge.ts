@@ -65,6 +65,8 @@ export interface ScheduleDropped {
   cheatDays: number;
   /** Only a push in the old events-based format carries completions. */
   completions: number;
+  /** Mode, rule, activation and exam rows refused from the modes in `refillSource`; absent when none was. */
+  modeRows?: number;
 }
 
 export interface ScheduleResult {

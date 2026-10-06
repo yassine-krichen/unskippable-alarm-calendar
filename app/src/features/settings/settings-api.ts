@@ -6,7 +6,7 @@ import { fail, ok, type Result } from '@/lib/result';
 const PRAYER_COLUMNS =
   'prayers_enabled, prayers_enabled_since, latitude, longitude, location_label, fajr_angle, isha_angle, asr_factor, fajr_offset_min, dhuhr_offset_min, asr_offset_min, maghrib_offset_min, isha_offset_min, pre_prayer_minutes, prayer_max_snoozes, prayer_snooze_minutes';
 
-const SETTINGS_COLUMNS = `user_id, timezone, week_starts_on, refire_seconds, pass_cap, grace_minutes, ${PRAYER_COLUMNS}`;
+const SETTINGS_COLUMNS = `user_id, timezone, week_starts_on, refire_seconds, pass_cap, grace_minutes, exam_mode_days_before, ${PRAYER_COLUMNS}`;
 
 /**
  * The prayer settings a client edits directly. prayers_enabled and prayers_enabled_since are
@@ -15,7 +15,9 @@ const SETTINGS_COLUMNS = `user_id, timezone, week_starts_on, refire_seconds, pas
 export type PrayerSettingsPatch = Partial<Omit<PrayerSettings, 'prayers_enabled' | 'prayers_enabled_since'>>;
 
 /** The columns a client may write. pass_cap is the product's rule, not a preference. */
-export type SettingsPatch = Partial<Pick<Settings, 'timezone' | 'week_starts_on' | 'refire_seconds' | 'grace_minutes'>> &
+export type SettingsPatch = Partial<
+  Pick<Settings, 'timezone' | 'week_starts_on' | 'refire_seconds' | 'grace_minutes' | 'exam_mode_days_before'>
+> &
   PrayerSettingsPatch;
 
 const WRITABLE_COLUMNS = [
@@ -23,6 +25,7 @@ const WRITABLE_COLUMNS = [
   'week_starts_on',
   'refire_seconds',
   'grace_minutes',
+  'exam_mode_days_before',
   'latitude',
   'longitude',
   'location_label',
