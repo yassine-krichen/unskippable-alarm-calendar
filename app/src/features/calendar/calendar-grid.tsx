@@ -3,13 +3,15 @@ import dayGridPlugin from '@fullcalendar/react/daygrid';
 import interactionPlugin from '@fullcalendar/react/interaction';
 import classicTheme from '@fullcalendar/react/themes/classic';
 import timeGridPlugin from '@fullcalendar/react/timegrid';
-import type { ModeRow } from '@alarm-calendar/core';
+import type { ModeRow, StretchDay } from '@alarm-calendar/core';
 import { BellOffIcon, EyeOffIcon, MoonStarIcon, PauseIcon } from 'lucide-react';
 import { useEffect, useMemo } from 'react';
 
 import { Badge } from '@/components/ui/badge';
 import { CategoryIcon } from '@/features/events/category-icon';
 import type { AlarmCategory } from '@/features/events/category-colors';
+import { HolidayIcon } from '@/features/holidays/holiday-icon';
+import type { HolidayCalendarEvent } from '@/features/holidays/holiday-events';
 import { zonedDate } from '@/lib/zoned-time';
 
 import { slotFromClick, type EventSlot } from './new-event-slot';
@@ -29,6 +31,10 @@ interface CalendarGridProps {
   cheatDays: ReadonlySet<string>;
   /** The mode that covers most of each day, by 'yyyy-MM-dd'; a day with none is absent. */
   modeDays: ReadonlyMap<string, ModeRow>;
+  /** Holidays as all-day chips (display only: a click on one does nothing). */
+  holidayEvents: readonly HolidayCalendarEvent[];
+  /** The days inside a stretch such as Ramadan, tinted and numbered. */
+  stretchDays: ReadonlyMap<string, StretchDay>;
   onCreate: (slot: EventSlot) => void;
   onEdit: (eventId: string) => void;
 }
@@ -48,13 +54,23 @@ export function CalendarGrid({
   events,
   cheatDays,
   modeDays,
+  holidayEvents,
+  stretchDays,
   onCreate,
   onEdit,
 }: CalendarGridProps) {
   const controller = useCalendarController();
-  // A cheat day is hatched; a day under a mode is tinted. Both can apply to one day.
+  // A cheat day is hatched; a day under a mode is tinted; a day of Ramadan is washed green. Any can share a day.
   const dayClass = (day: string): string =>
-    [cheatDays.has(day) ? 'cheat-day' : '', modeDays.has(day) ? 'mode-day' : ''].filter((name) => name !== '').join(' ');
+    [cheatDays.has(day) ? 'cheat-day' : '', modeDays.has(day) ? 'mode-day' : '', stretchDays.has(day) ? 'stretch-day' : '']
+      .filter((name) => name !== '')
+      .join(' ');
+  // "Ramadan 12" under the date, so a day inside the stretch says where it is without a chip of its own.
+  const stretchLabel = (day: string): string | null => {
+    const stretch = stretchDays.get(day);
+    return stretch === undefined ? null : `${stretch.name} ${stretch.dayNumber}`;
+  };
+  const allEvents = useMemo(() => [...events, ...holidayEvents], [events, holidayEvents]);
   const plugins = useMemo(
     () => [classicTheme, dayGridPlugin, timeGridPlugin, interactionPlugin],
     []
@@ -77,7 +93,8 @@ export function CalendarGrid({
       headerToolbar={false}
       tableHeaderSticky
       height="100%"
-      allDaySlot={false}
+      // The all-day row exists for holidays only, so it appears when the visible days have one.
+      allDaySlot={holidayEvents.length > 0}
       nowIndicator
       scrollTime="07:00:00"
       slotDuration="00:30:00"
@@ -85,7 +102,7 @@ export function CalendarGrid({
       dayMaxEvents={3}
       eventTimeFormat={TIME_24H}
       slotHeaderFormat={TIME_24H}
-      events={events}
+      events={allEvents}
       // info.date is the real instant the day starts at in the calendar's zone.
       dayCellClass={(info) => dayClass(zonedDate(info.date, tz))}
       dayLaneClass={(info) => dayClass(zonedDate(info.date, tz))}
@@ -94,6 +111,9 @@ export function CalendarGrid({
         return (
           <span className="flex flex-col items-center gap-0.5">
             <span>{info.text}</span>
+            {stretchLabel(day) !== null ? (
+              <span className="text-[0.65rem] font-normal text-muted-foreground">{stretchLabel(day)}</span>
+            ) : null}
             {cheatDays.has(day) ? (
               <Badge variant="outline" className="h-4 px-1.5 text-[0.65rem]">
                 Cheat day
@@ -109,7 +129,7 @@ export function CalendarGrid({
       }}
       dayCellTopContent={(info) => {
         const day = zonedDate(info.date, tz);
-        return cheatDays.has(day) || modeDays.has(day) ? (
+        return cheatDays.has(day) || modeDays.has(day) || stretchLabel(day) !== null ? (
           <span className="flex min-w-0 items-center gap-1.5">
             {cheatDays.has(day) ? (
               <Badge variant="outline" className="h-4 px-1.5 text-[0.65rem]">
@@ -121,6 +141,9 @@ export function CalendarGrid({
                 <span className="truncate">{modeDays.get(day)?.name}</span>
               </Badge>
             ) : null}
+            {stretchLabel(day) !== null ? (
+              <span className="truncate text-[0.65rem] font-normal text-muted-foreground">{stretchLabel(day)}</span>
+            ) : null}
             <span>{info.dayNumberText}</span>
           </span>
         ) : (
@@ -128,6 +151,16 @@ export function CalendarGrid({
         );
       }}
       eventContent={(info) => {
+        if (info.event.extendedProps['holiday'] === true) {
+          const kind = info.event.extendedProps['kind'] === 'religious' ? 'religious' : 'public';
+          const publicHoliday = info.event.extendedProps['publicHoliday'] === true;
+          return (
+            <>
+              <HolidayIcon holiday={{ kind, publicHoliday }} className="mt-0.5 size-3" />
+              <span className={info.titleClass}>{info.event.title}</span>
+            </>
+          );
+        }
         const silenced = info.event.extendedProps['silenced'] === true;
         const paused = info.event.extendedProps['paused'] === true;
         const modeName: unknown = info.event.extendedProps['modeName'];
@@ -155,6 +188,7 @@ export function CalendarGrid({
       }}
       dateClick={(info) => onCreate(slotFromClick({ instant: info.date, allDay: info.allDay }, tz, new Date()))}
       eventClick={(info) => {
+        if (info.event.extendedProps['holiday'] === true) return;
         const eventId: unknown = info.event.extendedProps['eventId'];
         if (typeof eventId === 'string') onEdit(eventId);
       }}

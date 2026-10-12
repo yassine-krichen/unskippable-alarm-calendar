@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import { weekdayName } from '@/lib/zoned-time';
 
+import { holidayFormSchema } from './holiday-settings';
 import { prayerFormSchema } from './prayer-settings';
 
 export interface Option {
@@ -70,6 +71,8 @@ export const settingsFormSchema = z.object({
   graceMinutes: z.number().int().min(0, 'Can not be negative.'),
   // The Prayer times section edits its own fields in the same form, saved with the same button.
   ...prayerFormSchema.shape,
+  // The Holidays section does the same.
+  ...holidayFormSchema.shape,
 });
 
 export type SettingsFormValues = z.infer<typeof settingsFormSchema>;

@@ -120,6 +120,15 @@ Owner feedback after the first run of phases 0 to 5. Needs migration `2026100617
 - **Hiding alarms from the calendar.** `settings.show_prayers_in_calendar` (default false, Settings, Prayer times) and `events.show_in_calendar` (default true, a "Show in calendar" switch on the alarm, birthday and exam forms). Week, Month and Agenda leave hidden alarms out; a "Show hidden" toggle in the calendar toolbar (kept per device) brings them back faded with an eye-off icon. Presentation only: hidden alarms ring, can be snoozed and done, and count in habit scores.
 - **Fixed category colors.** Birthday / anniversary (rose), exam alarm (solid indigo), revision sessions (soft indigo tint) and catch-ups (the same tint, outlined) have fixed colors in CSS tokens for light and dark (`--cat-*` in `app/src/index.css`), outside the picker palette, applied on the calendar, Agenda and Exams screen. The color picker is not offered for them.
 
+## Feedback round 2 (2026-10-12): holidays
+
+Owner request: show Tunisian holidays on the calendar (any country if it can be chosen), and the Islamic ones. Needs migration `20261012090000_holidays` pushed (after `20261006173000`); the app selects the three new settings columns. Choices, sources and limits in `docs/decisions.md`.
+
+- Display only: never an alarm, not in the schedule list, not a habit. Week (an all-day row that appears when a holiday is in view), Month (cell chips) and Agenda (a note under the day heading; a quiet day with a holiday is listed).
+- Settings, "Holidays": a searchable country picker (None plus 207 countries, from `date-holidays`, loaded lazily so the main bundle stays small), an "Islamic holidays" switch, and a Hijri date adjustment of -2 to +2 days because Tunisia sights the moon locally.
+- Islamic holidays come from `Intl` (Umm al-Qura), checked against published tables for 1446 to 1449 AH. Ramadan is a faint green run with its first day chipped; Eid dates the country also gives off are merged into one "Public holiday" entry.
+- The Ramadan mode can fill its planned dates from the computed Ramadan.
+
 ## Deferred
 
 - Leaderboards and anything social.

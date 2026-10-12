@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { shouldAdoptDeviceTimeZone } from './device-timezone';
+import { holidayFormValues } from './holiday-settings';
 import { prayerFormValues } from './prayer-settings';
 import {
   GRACE_OPTIONS,
@@ -63,6 +64,7 @@ describe('settingsFormSchema', () => {
     refireSeconds: 120,
     graceMinutes: 30,
     ...prayerFormValues({ user_id: 'u1', timezone: 'Africa/Tunis', week_starts_on: 0, refire_seconds: 120, pass_cap: 2, grace_minutes: 30 }),
+    ...holidayFormValues({ user_id: 'u1', timezone: 'Africa/Tunis', week_starts_on: 0, refire_seconds: 120, pass_cap: 2, grace_minutes: 30 }),
   };
 
   it('mirrors the database checks', () => {

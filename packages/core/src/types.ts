@@ -1,3 +1,5 @@
+import type { HolidaySettings } from './holidays';
+
 export type RepeatUnit = 'none' | 'hour' | 'day' | 'week' | 'month' | 'year';
 
 export type CompletionStatus = 'done' | 'skipped_cheat';
@@ -143,8 +145,9 @@ export interface ModeSettings {
 /**
  * Optional prayer fields: the database always has them, but a cache or a push from before the
  * feature, and most test fixtures, do not. Absent means "prayers off" to the occurrence rules.
+ * The holiday fields (migration holidays) are display-only; absent means no holidays.
  */
-export interface Settings extends Partial<PrayerSettings>, Partial<ModeSettings> {
+export interface Settings extends Partial<PrayerSettings>, Partial<ModeSettings>, Partial<HolidaySettings> {
   user_id: string;
   /** IANA zone name. */
   timezone: string;

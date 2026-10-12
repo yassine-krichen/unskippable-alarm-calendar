@@ -19,6 +19,9 @@ files:
 extraResources:
   - from: ../app/dist
     to: app-dist
+  # The notice for the bundled holiday data (CC BY 3.0 requires the credit to travel with the app).
+  - from: ../THIRD_PARTY_NOTICES.md
+    to: THIRD_PARTY_NOTICES.md
 
 # Fuses are flipped in the packaged electron.exe, so nobody can run the app as a
 # plain Node interpreter (ELECTRON_RUN_AS_NODE), attach an inspector through CLI

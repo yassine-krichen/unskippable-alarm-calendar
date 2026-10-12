@@ -1,4 +1,4 @@
-import type { EventRow, ModeRow } from '@alarm-calendar/core';
+import type { CalendarHoliday, EventRow, ModeRow, StretchDay } from '@alarm-calendar/core';
 import { BellOffIcon, CalendarPlusIcon, EyeOffIcon, MoonStarIcon, PauseIcon } from 'lucide-react';
 import { useMemo } from 'react';
 
@@ -6,6 +6,8 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { CategoryIcon } from '@/features/events/category-icon';
 import { describeRepeat } from '@/features/events/repeat-presets';
+import { NOTE_CLASS } from '@/features/holidays/holiday-events';
+import { HolidayIcon } from '@/features/holidays/holiday-icon';
 import { addDays, formatDay, formatTimeInZone } from '@/lib/zoned-time';
 
 import { groupByDay, type Occurrence } from './calendar-events';
@@ -24,6 +26,9 @@ interface AgendaViewProps {
   cheatDays: ReadonlySet<string>;
   /** The mode that covers most of each day, by 'yyyy-MM-dd'. */
   modeDays: ReadonlyMap<string, ModeRow>;
+  /** Holidays by day (display only), and the days inside a stretch such as Ramadan. */
+  holidayDays: ReadonlyMap<string, readonly CalendarHoliday[]>;
+  stretchDays: ReadonlyMap<string, StretchDay>;
   onEdit: (eventId: string) => void;
   onCreate: () => void;
 }
@@ -39,6 +44,8 @@ export function AgendaView({
   hiddenCount,
   cheatDays,
   modeDays,
+  holidayDays,
+  stretchDays,
   onEdit,
   onCreate,
 }: AgendaViewProps) {
@@ -49,11 +56,16 @@ export function AgendaView({
   const listedDays: string[] = [];
   for (let offset = 0; offset < days; offset++) {
     const day = addDays(start, offset);
-    // Quiet days stay out of the list, except today and cheat days, which carry information.
-    if (groupsByDay.has(day) || day === today || cheatDays.has(day) || modeDays.has(day)) listedDays.push(day);
+    // Quiet days stay out of the list, except today, cheat days, mode days and holidays, which carry information.
+    if (groupsByDay.has(day) || day === today || cheatDays.has(day) || modeDays.has(day) || holidayDays.has(day)) {
+      listedDays.push(day);
+    }
   }
 
-  if (occurrences.length === 0 && !listedDays.some((day) => cheatDays.has(day) || modeDays.has(day))) {
+  if (
+    occurrences.length === 0 &&
+    !listedDays.some((day) => cheatDays.has(day) || modeDays.has(day) || holidayDays.has(day))
+  ) {
     return (
       <div className="flex flex-col items-start gap-3 px-4 py-10 sm:px-6">
         <h2 className="text-base font-medium">Nothing rings in this period</h2>
@@ -75,6 +87,8 @@ export function AgendaView({
         const group = groupsByDay.get(day);
         const cheat = cheatDays.has(day);
         const dayMode = modeDays.get(day);
+        const dayHolidays = holidayDays.get(day) ?? [];
+        const stretch = stretchDays.get(day);
         return (
           <li key={day} className="flex flex-col gap-1">
             <div className={`flex items-center gap-2 rounded-md px-2 py-1.5 ${cheat ? 'cheat-day' : ''} ${dayMode ? 'mode-day' : ''}`}>
@@ -84,7 +98,28 @@ export function AgendaView({
               </h2>
               {cheat ? <Badge variant="outline">Cheat day</Badge> : null}
               {dayMode ? <Badge variant="secondary">{dayMode.name}</Badge> : null}
+              {stretch ? (
+                <span className="text-xs text-muted-foreground tabular-nums">
+                  {stretch.name}, day {stretch.dayNumber} of {stretch.totalDays}
+                </span>
+              ) : null}
             </div>
+            {dayHolidays.length > 0 ? (
+              <ul className="flex flex-wrap gap-1.5 px-2" aria-label="Holidays">
+                {dayHolidays.map((holiday) => (
+                  <li
+                    key={holiday.id}
+                    className={`inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-xs ${NOTE_CLASS[holiday.kind]}`}
+                  >
+                    <HolidayIcon holiday={holiday} className="size-3.5" />
+                    <span>{holiday.name}</span>
+                    {holiday.kind === 'religious' && holiday.publicHoliday ? (
+                      <span className="font-medium">Public holiday</span>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
             {group ? (
               <ul className="flex flex-col">
                 {group.occurrences.map((occurrence) => {

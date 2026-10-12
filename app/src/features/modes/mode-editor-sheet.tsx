@@ -1,5 +1,5 @@
-import type { ModeBehavior, ModeRow } from '@alarm-calendar/core';
-import { Trash2Icon, XIcon } from 'lucide-react';
+import { normalizeHijriOffset, ramadanOnOrAfter, type ModeBehavior, type ModeRow } from '@alarm-calendar/core';
+import { MosqueIcon, Trash2Icon, XIcon } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 
@@ -392,6 +392,10 @@ function RangesSection({ mode }: { mode: ModeRow }) {
   );
   if (settings === null) return null;
   const weekStart = pickerWeekStart(settings.week_starts_on);
+  // The Ramadan mode can fill the dates in from the Hijri calendar (with the Settings adjustment). It only fills the
+  // two pickers: the person still reviews them and adds, because the sighted start can differ by a day.
+  const ramadan =
+    mode.builtin_key === 'ramadan' ? ramadanOnOrAfter(today, normalizeHijriOffset(settings.hijri_offset_days)) : null;
 
   async function onAdd(): Promise<void> {
     const range = buildRange({ modeId: mode.id, firstDay, lastDay }, tz);
@@ -460,6 +464,25 @@ function RangesSection({ mode }: { mode: ModeRow }) {
           <DatePicker id="range-last" value={lastDay} onChange={setLastDay} weekStartsOn={weekStart} />
         </Field>
       </div>
+      {ramadan !== null ? (
+        <div className="flex flex-col items-start gap-1">
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={() => {
+              setFirstDay(ramadan.start);
+              setLastDay(ramadan.end);
+            }}
+          >
+            <MosqueIcon data-icon="inline-start" />
+            Use Ramadan {ramadan.hijriYear} dates
+          </Button>
+          <FieldDescription>
+            Fills in {formatDay(ramadan.start)} to {formatDay(ramadan.end, { year: true })} from the Hijri calendar.
+            Check it against the announced start, and change the adjustment in Settings if it is a day off.
+          </FieldDescription>
+        </div>
+      ) : null}
       <Button type="button" variant="outline" disabled={saving} onClick={() => void onAdd()}>
         Add these dates
       </Button>

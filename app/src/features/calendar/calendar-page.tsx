@@ -22,6 +22,8 @@ import type { EventFormTarget } from '@/features/events/event-form-view';
 import { loadEvents, useEventsStore } from '@/features/events/events-store';
 import { useExamsStore } from '@/features/exams/exams-store';
 import { findRelationshipGroup } from '@/features/events/relationship-template';
+import { toHolidayCalendarEvents } from '@/features/holidays/holiday-events';
+import { useHolidays } from '@/features/holidays/use-holidays';
 import { ModeChip } from '@/features/modes/mode-chip';
 import { ModeDialog } from '@/features/modes/mode-dialog';
 import { modesByDay } from '@/features/modes/mode-status';
@@ -104,6 +106,9 @@ export function CalendarPage() {
   const hiddenInRange = showHidden ? 0 : hiddenAlarmCount(allOccurrences);
   const offerShowHidden = useMemo(() => (settings ? hasHiddenAlarms(events, settings) : false), [events, settings]);
   const calendarEvents = useMemo(() => occurrences.map(toCalendarEvent), [occurrences]);
+  // Holidays are display only: they never reach the alarm schedule, the habits or the pass logic.
+  const holidays = useHolidays(range.start, range.end);
+  const holidayEvents = useMemo(() => toHolidayCalendarEvents(holidays.holidays), [holidays.holidays]);
   // The days a mode covers most of, marked quietly in the grid and the agenda.
   const modeDays = useMemo(
     () => modesByDay(modeTimeline, range.start, range.end, tz),
@@ -224,6 +229,12 @@ export function CalendarPage() {
         </p>
       ) : null}
 
+      {holidays.publicFailed ? (
+        <p role="status" className="shrink-0 px-4 pb-2 text-sm text-destructive sm:px-6">
+          Public holidays couldn't be loaded. Reload the app to try again.
+        </p>
+      ) : null}
+
       {eventsStatus === 'error' ? (
         <div className="px-4 sm:px-6">
           <Alert variant="destructive">
@@ -249,6 +260,8 @@ export function CalendarPage() {
               events={calendarEvents}
               cheatDays={cheatDaySet}
               modeDays={modeDays}
+              holidayEvents={holidayEvents}
+              stretchDays={holidays.stretches}
               onCreate={openCreate}
               onEdit={openEdit}
             />
@@ -262,6 +275,8 @@ export function CalendarPage() {
               events={calendarEvents}
               cheatDays={cheatDaySet}
               modeDays={modeDays}
+              holidayEvents={holidayEvents}
+              stretchDays={holidays.stretches}
               onCreate={openCreate}
               onEdit={openEdit}
             />
@@ -277,6 +292,8 @@ export function CalendarPage() {
               hiddenCount={hiddenInRange}
               cheatDays={cheatDaySet}
               modeDays={modeDays}
+              holidayDays={holidays.byDay}
+              stretchDays={holidays.stretches}
               onEdit={openEdit}
               onCreate={() => openCreate()}
             />

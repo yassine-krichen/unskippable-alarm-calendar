@@ -1,0 +1,34 @@
+{
+  "source": "Umm al-Qura calendar of Saudi Arabia. Primary: R.H. van Gent, 'The Umm al-Qura Calendar of Saudi Arabia', table of the principal days (https://webspace.science.uu.nl/~gent0113/islam/ummalqura_principal.htm), 1 Muharram, 12 Rabi' al-awwal, 1 Ramadan, 1 Shawwal and 10 Dhu al-Hijjah. Secondary, read from published Umm al-Qura tables: ummalquracalendar.org/umm-al-qura-calendar-2026/ (1447 AH: 27 Ramadan, 9 Dhu al-Hijjah, 1 Muharram 1448 and 10 Muharram 1448) and hijria.com/en/gregorian-hijri-calendar/2027/ (1448 AH: 27 Rajab, 27 Ramadan, 9 Dhu al-Hijjah, 10 Muharram 1449, 27 Rajab 1449). Fetched 2026-10-12.",
+  "note": "These are the astronomical Umm al-Qura dates. Countries that sight the moon locally (Tunisia) can be a day off; that is what hijri_offset_days corrects.",
+  "holidays": [
+    { "hijriYear": 1446, "id": "islamic-new-year", "day": "2024-07-07", "source": "van Gent" },
+    { "hijriYear": 1446, "id": "mawlid", "day": "2024-09-15", "source": "van Gent" },
+    { "hijriYear": 1446, "id": "ramadan", "day": "2025-03-01", "source": "van Gent" },
+    { "hijriYear": 1446, "id": "eid-al-fitr", "day": "2025-03-30", "source": "van Gent" },
+    { "hijriYear": 1446, "id": "eid-al-adha", "day": "2025-06-06", "source": "van Gent" },
+    { "hijriYear": 1447, "id": "islamic-new-year", "day": "2025-06-26", "source": "van Gent" },
+    { "hijriYear": 1447, "id": "mawlid", "day": "2025-09-04", "source": "van Gent" },
+    { "hijriYear": 1447, "id": "ramadan", "day": "2026-02-18", "source": "van Gent" },
+    { "hijriYear": 1447, "id": "laylat-al-qadr", "day": "2026-03-16", "source": "ummalquracalendar.org" },
+    { "hijriYear": 1447, "id": "eid-al-fitr", "day": "2026-03-20", "source": "van Gent" },
+    { "hijriYear": 1447, "id": "arafah", "day": "2026-05-26", "source": "ummalquracalendar.org" },
+    { "hijriYear": 1447, "id": "eid-al-adha", "day": "2026-05-27", "source": "van Gent" },
+    { "hijriYear": 1448, "id": "islamic-new-year", "day": "2026-06-16", "source": "van Gent" },
+    { "hijriYear": 1448, "id": "ashura", "day": "2026-06-25", "source": "ummalquracalendar.org" },
+    { "hijriYear": 1448, "id": "mawlid", "day": "2026-08-25", "source": "van Gent" },
+    { "hijriYear": 1448, "id": "isra-miraj", "day": "2027-01-05", "source": "hijria.com" },
+    { "hijriYear": 1448, "id": "ramadan", "day": "2027-02-08", "source": "van Gent" },
+    { "hijriYear": 1448, "id": "laylat-al-qadr", "day": "2027-03-06", "source": "hijria.com" },
+    { "hijriYear": 1448, "id": "eid-al-fitr", "day": "2027-03-09", "source": "van Gent" },
+    { "hijriYear": 1448, "id": "arafah", "day": "2027-05-15", "source": "hijria.com" },
+    { "hijriYear": 1448, "id": "eid-al-adha", "day": "2027-05-16", "source": "van Gent" },
+    { "hijriYear": 1449, "id": "islamic-new-year", "day": "2027-06-06", "source": "van Gent" },
+    { "hijriYear": 1449, "id": "ashura", "day": "2027-06-15", "source": "hijria.com" },
+    { "hijriYear": 1449, "id": "mawlid", "day": "2027-08-14", "source": "van Gent" }
+  ],
+  "ramadanRuns": [
+    { "hijriYear": 1447, "start": "2026-02-18", "end": "2026-03-19", "days": 30, "source": "ummalquracalendar.org (Ramadan 1447: February 18 to March 19, 30 days)" },
+    { "hijriYear": 1448, "start": "2027-02-08", "end": "2027-03-08", "days": 29, "source": "van Gent start 2027-02-08 and 1 Shawwal 2027-03-09; ayyamtools.com gives 29 days" }
+  ]
+}

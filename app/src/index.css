@@ -241,6 +241,73 @@
   color: var(--cat-exam-on-solid) !important;
 }
 
+/*
+ * Holidays (display only, they never ring): a country's public holidays in amber, Islamic holidays in green. They are
+ * flat tinted chips with a thin outline and no heavy edge, which is what sets them apart from the alarm blocks, the
+ * rose and indigo category chips and the outlined prayers; the flag and mosque icons carry the meaning without colour.
+ * Contrast (WCAG, computed for both themes): ink on the chip fill 9.0:1 or more, accent edges and icons against the
+ * page 3.7:1 or more and against the chip fill 3.3:1 or more. Ramadan also washes each of its days with --hol-stretch.
+ */
+:root {
+  --hol-public-accent: oklch(0.62 0.13 75);
+  --hol-public-soft: oklch(0.965 0.04 85);
+  --hol-public-ink: oklch(0.38 0.08 70);
+  --hol-religious-accent: oklch(0.58 0.12 165);
+  --hol-religious-soft: oklch(0.96 0.03 165);
+  --hol-religious-ink: oklch(0.37 0.08 165);
+  --hol-stretch: color-mix(in oklab, var(--hol-religious-accent) 7%, transparent);
+}
+.dark {
+  --hol-public-accent: oklch(0.78 0.13 80);
+  --hol-public-soft: oklch(0.3 0.05 75);
+  --hol-public-ink: oklch(0.93 0.05 85);
+  --hol-religious-accent: oklch(0.74 0.12 165);
+  --hol-religious-soft: oklch(0.29 0.045 165);
+  --hol-religious-ink: oklch(0.93 0.04 165);
+  --hol-stretch: color-mix(in oklab, var(--hol-religious-accent) 9%, transparent);
+}
+/* FullCalendar paints events with its own variables and inline colours, hence the !important (as for .cat-*). */
+.holiday-public,
+.holiday-religious {
+  border-width: 1px !important;
+  border-style: solid !important;
+}
+.holiday-public {
+  --fc-classic-event: var(--hol-public-soft);
+  --fc-classic-event-contrast: var(--hol-public-ink);
+  background-color: var(--hol-public-soft) !important;
+  color: var(--hol-public-ink) !important;
+  border-color: var(--hol-public-accent) !important;
+}
+.holiday-public * {
+  color: var(--hol-public-ink) !important;
+}
+.holiday-religious {
+  --fc-classic-event: var(--hol-religious-soft);
+  --fc-classic-event-contrast: var(--hol-religious-ink);
+  background-color: var(--hol-religious-soft) !important;
+  color: var(--hol-religious-ink) !important;
+  border-color: var(--hol-religious-accent) !important;
+}
+.holiday-religious * {
+  color: var(--hol-religious-ink) !important;
+}
+/* A day inside Ramadan: a faint green wash, a colour like .mode-day (which can share the day) and not an image. */
+.stretch-day {
+  background-color: var(--hol-stretch);
+}
+/* The icon and the note of a holiday in the Agenda, tinted with the same tokens as its chip. */
+.holiday-note-public {
+  color: var(--hol-public-ink);
+  background-color: var(--hol-public-soft);
+  border: 1px solid var(--hol-public-accent);
+}
+.holiday-note-religious {
+  color: var(--hol-religious-ink);
+  background-color: var(--hol-religious-soft);
+  border: 1px solid var(--hol-religious-accent);
+}
+
 /* An alarm hidden from the calendar, shown because "Show hidden" is on: faded, so it reads as "not normally here". */
 .occurrence-hidden {
   opacity: 0.55;

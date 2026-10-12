@@ -199,6 +199,8 @@ Unique `(event_id, occurrence_at)`. Writes are upserts so offline flushes are id
 
 `exam_mode_days_before` (roadmap-v2 phase 5, default 10, 0 to 60, 0 = Exam mode does not start by itself).
 
+Holiday columns (display only, owner feedback round 2): `holiday_country` (ISO 3166-1 alpha-2 or null, check `^[A-Z]{2}$`), `islamic_holidays` (boolean, default false), `hijri_offset_days` (smallint, -2 to 2, default 0; shifts every computed Hijri date to follow the local moon sighting). Existing `Africa/Tunis` rows are migrated to TN with Islamic holidays on.
+
 Prayer columns (roadmap-v2 phase 3b), all with defaults for Ariana, Tunis: `prayers_enabled` (false), `prayers_enabled_since`, `latitude` (36.8625, range -65 to 65) / `longitude` (10.1956), `location_label`, `fajr_angle` / `isha_angle` (18, range 10 to 22), `asr_factor` (1 or 2), `fajr_offset_min` ... `isha_offset_min` (-60 to 60), `pre_prayer_minutes` (15, 0 to 120, 0 = no reminders), `prayer_max_snoozes` (0, 0 to 10), `prayer_snooze_minutes` (5, 1 to 120). The RPC `set_prayers_enabled(boolean)` switches them on (creating or re-activating the 10 rows) or off (deactivating them) in one transaction.
 
 **modes** (roadmap-v2 phase 5; RLS own rows, in the realtime publication, `updated_at` trigger)
@@ -327,7 +329,7 @@ Dark by default with a light toggle.
 Screens:
 1. **Calendar** (main). Tabs: **Week**, **Month**, **Agenda** (list, today first). Week is the default on desktop, Agenda is the default on phone widths. Click an empty slot to create an event, click an event to edit. Prev, next, Today buttons. Pass chip in the header.
 2. **Event form** as a Sheet (side sheet on desktop, bottom sheet on mobile). Section 4.
-3. **Settings:** timezone, week start, refire interval, grace window, sound picker (3 bundled sounds), permissions status panel (Android: exact alarm, full-screen intent, battery optimization, notifications), a link to Modes, sign out.
+3. **Settings:** timezone, week start, refire interval, grace window, sound picker (3 bundled sounds), a Holidays section (country, Islamic holidays switch, Hijri date adjustment of -2 to +2 days; the calendar shows them as all-day chips and Agenda notes, they never ring), permissions status panel (Android: exact alarm, full-screen intent, battery optimization, notifications), a link to Modes, sign out.
 3a. **Modes** (roadmap-v2 phase 5): a mode chip in the calendar header (outlined for Normal, filled while a mode is on) opens a dialog to switch the mode (starting now or since this morning; lasting until switched off or until the end of a day). The Modes screen lists the modes and opens an editor sheet: default behavior, a keep / pause / shift / shorten rule per repeating alarm, planned date ranges, and for Exam mode the days before an exam. Paused alarms are greyed, dashed and struck through with the mode's name; days under a mode are tinted and labelled.
 4. **Alarm screen** (see 9 and 10). Not part of the normal navigation.
 

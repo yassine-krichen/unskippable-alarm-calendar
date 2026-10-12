@@ -586,3 +586,53 @@ mirror (step 10) and the app code must follow these.
   The category color wins over `events.color`; the form shows "... alarms have a fixed color" instead of the picker (the template and exam forms never had one).
   Week and Month share the `.cat-*` classes; the month dot takes the accent through FullCalendar's per-event color (a CSS variable string). Prayer styling, cheat-day,
   paused and hidden treatments stack on top.
+- **Holidays (owner request, 2026-10-12).** Display only: Tunisia's public holidays (or any country's, picked in Settings) and Islamic holidays on Week, Month
+  and Agenda. They never ring, are not in the schedule list or the engines, are not habits and are not in the pass logic; nothing in `packages/core`'s
+  occurrence rules reads them. Migration `20261012090000_holidays` adds `settings.holiday_country` (ISO alpha-2 or null), `islamic_holidays` (bool, default
+  false) and `hijri_offset_days` (smallint, -2 to 2, default 0), granted for insert and update by column; existing `Africa/Tunis` rows start as TN with Islamic
+  holidays on. `security_checks.sql` checks the grants, NOT NULL, the defaults and both value checks. There is no per-holiday editing and no toolbar toggle: the
+  three settings are the switch (country None and Islamic off draws nothing).
+  - **Country holidays: `date-holidays` 3.37.0** (ISC code, data CC-BY-3.0, so attribution applies; actively maintained, last release 2026-09-20; 207 countries; works
+    offline, the data is in the package). Tunisia is covered with its four Hijri-dated holidays (1 Muharram, 12 Rabi' al-awwal, 1 Shawwal, 10 Dhu al-Hijjah)
+    plus the fixed ones. Nager.Date was rejected (a web API, no offline mode). The library and its world dataset are about 1.4 MB minified (238 KB gzipped, of which
+    725 KB minified is moment-timezone data it pulls in), so `country-holidays.ts` loads it with a dynamic `import()`: it is its own chunk, fetched only when a country is
+    set or the Settings country list is opened, and the main bundle grew by about 15 KB for all the holiday code. Only `type: 'public'` is kept (the library also
+    lists observances, bank and school days) and only nationwide days (no states or regions). Names come out in English, then French (the owner reads both;
+    Tunisia's own national holidays have French and Arabic names only), then the country's own language. CC BY 3.0 attribution ("Public holiday data: date-holidays by commenthol, CC BY 3.0, https://github.com/commenthol/date-holidays") is in the README,
+    under the Settings country picker, and in `THIRD_PARTY_NOTICES.md` at the repo root (the library, its parser and their bundled dependencies with licenses), which
+    `electron-builder.yml` copies to `resources/THIRD_PARTY_NOTICES.md` in the installer.
+  - **Islamic holidays: `Intl`, no dependency** (`packages/core/src/holidays.ts`). `Intl.DateTimeFormat('en-u-ca-islamic-umalqura')` in UTC on the civil day, falling back
+    to `islamic-civil`, and to "no Islamic holidays" when neither resolves (a runtime without the calendar silently formats Gregorian, so `resolvedOptions().calendar`
+    is checked). Node 24 (ICU 78) and Chromium (so Electron 44 and the web build, checked in Chromium) have it. Holidays: Islamic New Year (1 Muharram), Ashura (10 Muharram),
+    Mawlid (12 Rabi' al-awwal), Isra and Mi'raj (27 Rajab), Ramadan (1 Ramadan, the whole month as a run), Laylat al-Qadr (27 Ramadan, labelled "likely"), Eid al-Fitr (1 Shawwal,
+    one day), Day of Arafah (9 Dhu al-Hijjah), Eid al-Adha (10 Dhu al-Hijjah). Hijri days start at sunset, the calendar day here is the civil one, so Laylat al-Qadr
+    (the night of the 27th, which begins on the evening of the 26th) is shown on the 27th as most printed calendars do.
+  - **Verification.** The computed dates match R.H. van Gent's published Umm al-Qura table (Utrecht University, webspace.science.uu.nl/~gent0113/islam/ummalqura_principal.htm)
+    for 1 Muharram, 12 Rabi' al-awwal, 1 Ramadan, 1 Shawwal and 10 Dhu al-Hijjah in 1446 to 1449 AH, and the other days against ummalquracalendar.org and hijria.com
+    (`packages/core/test-vectors/islamic-holidays.json`, 24 dates and both Ramadan lengths: 30 days in 1447 AH, 29 in 1448 AH). These are the astronomical Saudi dates.
+  - **The adjustment.** Tunisia, like most countries, starts months by local moon sighting, so Eid can be a day off Umm al-Qura. `hijri_offset_days` shifts every Hijri-derived date:
+    the date shown for day D is the computed Hijri date of D minus the offset (so +1 moves 1 Muharram one civil day later). `date-holidays` has no such option and its own Hijri
+    table is fixed, so the app shifts the library's answer for every holiday whose rule is Hijri-dated (`parseHijriRule` reads '10 Dhu al-Hijjah', '1 Shawwal P3D', ...); a
+    "if Sunday then next Monday" substitute rule is not re-applied after the shift (it only matters to countries whose weekend is not Friday and Saturday). The Settings
+    stepper shows the next Ramadan start live ("Mon, Feb 8, 2027 (1448 AH)") so it can be checked against the announced date before saving.
+  - **Merging.** A country holiday that is the same Hijri day as an Islamic one (the Eids, Islamic New Year, Mawlid, ... all count) becomes one entry: religious style, tagged "Public
+    holiday" (flag beside the mosque), on the computed day, as long as the country's own span (Eid al-Fitr is 3 days in the UAE). They merge when within two days of each other: the
+    library's own Hijri table matches the runtime's from 2024 to 2029 (a test walks Tunisia's six years) and differs by a day on a few dates from 2030, which would otherwise show twice.
+    With Islamic holidays off, a country's Hijri-dated holidays still show, as plain public holidays, with the adjustment applied.
+  - **Calendar.** `useHolidays(range)` merges the computed Islamic holidays with the lazily loaded country list (the last list stays on screen while paging to another year; a failed load shows
+    one line and the Islamic ones still show). Holidays are all-day FullCalendar events, so Week gets an all-day row only when the visible days have one (it was off before), Month gets chips
+    in the cell, and a multi-day holiday is one bar. A click on one opens nothing. Ramadan is a chip on its first day ("Ramadan begins") and each of its days gets a faint green wash
+    (`.stretch-day`, a colour like `.mode-day`, which can share the day) and "Ramadan 12" beside the date, so it does not take a row in every week. The Agenda lists a holiday's day even
+    when nothing rings (like cheat and mode days), as a tinted note under the day heading with the icon, and says "Ramadan, day 12 of 30" on the days inside the run.
+  - **Colors and icons.** New tokens `--hol-public-*` (amber, hue 75 to 85) and `--hol-religious-*` (green, hue 165) in `index.css`, light and dark, outside the picker palette and the `--cat-*` family:
+    a flat tinted chip with a thin outline (the categories have a heavy left edge, the prayers are outlined in the foreground colour). A flag icon for a public holiday, a mosque for an Islamic
+    one, both for a merged one (the prayers keep the moon and star). Contrast (WCAG, computed from the oklch values): ink on the chip fill 9.2 (public) / 9.0 (religious) in light, 11.2 / 11.4 in dark;
+    accent edge and icon against the page 3.7 / 4.0 in light, 9.8 / 9.1 in dark, against the chip fill 3.4 / 3.6 in light, 6.8 / 6.3 in dark.
+  - **Settings.** A "Holidays" section: a searchable shadcn combobox of "None" plus the 207 countries (the list loads the first time it opens; until then it holds None and the chosen country,
+    named through `Intl.DisplayNames`), an "Islamic holidays" switch (disabled with a note when the runtime has no Hijri calendar), and the stepper, which only appears when something Hijri-dated shows.
+    All three save with the page's Save button through the existing `updateSettings` UPDATE (never an upsert), and `realtime-handlers.ts` reads them from a settings change.
+  - **Electron.** `desktop-payloads.ts` declares the three fields optional with `.catch(undefined)` (a malformed value reads as absent and never rejects a push); main never uses them.
+  - **Modes.** The Ramadan mode's Planned dates has a "Use Ramadan 1448 dates" button that fills the two date pickers from the Hijri calendar (with the adjustment); the person still reviews and adds.
+    It names the Hijri year instead of "this year" because the next Ramadan is often in the following calendar year.
+  - **Known limits.** Eid al-Fitr and Eid al-Adha are one day (Tunisia gives more days off; the library lists one for Tunisia and the owner asked for one). Regional holidays are not shown. The
+    library's data is community-maintained and licensed CC-BY-3.0. Public holiday dates that depend on a decree (Tunisia sometimes moves a bridge day) are not in it.

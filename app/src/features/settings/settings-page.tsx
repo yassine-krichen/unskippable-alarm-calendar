@@ -25,6 +25,8 @@ import { signOut } from '@/features/auth/auth-api';
 import { useAuthStore } from '@/features/auth/auth-store';
 import { detectPlatform } from '@/lib/platform';
 
+import { holidayFormToPatch, holidayFormValues } from './holiday-settings';
+import { HolidaySettingsSection } from './holiday-settings-section';
 import { prayerFormToPatch, prayerFormValues } from './prayer-settings';
 import { PrayerSettingsSection } from './prayer-settings-section';
 import {
@@ -86,6 +88,7 @@ export function SettingsPage() {
           refireSeconds: settings.refire_seconds,
           graceMinutes: settings.grace_minutes,
           ...prayerFormValues(settings),
+          ...holidayFormValues(settings),
         }
       : undefined,
     mode: 'onTouched',
@@ -112,6 +115,7 @@ export function SettingsPage() {
       refire_seconds: values.refireSeconds,
       grace_minutes: values.graceMinutes,
       ...prayerFormToPatch(values),
+      ...holidayFormToPatch(values),
     });
     if (result.error !== null) {
       toast.error("Couldn't save your settings. Your changes are still here, try again.");
@@ -332,6 +336,10 @@ export function SettingsPage() {
         <Separator />
 
         <PrayerSettingsSection form={form} settings={settings} />
+
+        <Separator />
+
+        <HolidaySettingsSection form={form} timezone={settings.timezone} />
 
         <Separator />
 

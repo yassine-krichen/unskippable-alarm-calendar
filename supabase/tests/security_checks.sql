@@ -266,4 +266,42 @@ select format('%s.%s is NOT NULL boolean defaulting to %s', tbl, col, expected_d
    from pg_attribute a join pg_attrdef d on d.adrelid = a.attrelid and d.adnum = a.attnum
    where a.attrelid = ('public.' || tbl)::regclass and a.attname = col) then 'PASS' else 'FAIL' end
 from (values ('settings', 'show_prayers_in_calendar', 'false'), ('events', 'show_in_calendar', 'true')) as c(tbl, col, expected_default)
+union all
+-- Holidays (holidays migration): the three display columns are client-writable by authenticated and not by anon.
+select format('%s can %s settings.%s', role, priv, col), expected::text,
+  has_column_privilege(role, 'public.settings', col, priv)::text,
+  case when has_column_privilege(role, 'public.settings', col, priv) = expected then 'PASS' else 'FAIL' end
+from (values ('holiday_country'), ('islamic_holidays'), ('hijri_offset_days')) as c(col)
+cross join (values
+  ('authenticated', 'INSERT', true), ('authenticated', 'UPDATE', true), ('authenticated', 'SELECT', true),
+  ('anon', 'INSERT', false), ('anon', 'UPDATE', false), ('anon', 'SELECT', false)
+) as g(role, priv, expected)
+union all
+-- Their shapes: the country is nullable (none) with no default, the switch and the adjustment are NOT NULL with the
+-- defaults the app relies on (no Islamic holidays, no shift).
+select format('settings.%s is %s', col, shape), 'true',
+  (select (a.atttypid = typ::regtype and a.attnotnull = not_null and coalesce(pg_get_expr(d.adbin, d.adrelid), '') = expected_default)::text
+   from pg_attribute a left join pg_attrdef d on d.adrelid = a.attrelid and d.adnum = a.attnum
+   where a.attrelid = 'public.settings'::regclass and a.attname = col),
+  case when (select (a.atttypid = typ::regtype and a.attnotnull = not_null and coalesce(pg_get_expr(d.adbin, d.adrelid), '') = expected_default)
+   from pg_attribute a left join pg_attrdef d on d.adrelid = a.attrelid and d.adnum = a.attnum
+   where a.attrelid = 'public.settings'::regclass and a.attname = col) then 'PASS' else 'FAIL' end
+from (values
+  ('holiday_country', 'text', false, '', 'nullable text with no default'),
+  ('islamic_holidays', 'boolean', true, 'false', 'NOT NULL boolean defaulting to false'),
+  ('hijri_offset_days', 'smallint', true, '0', 'NOT NULL smallint defaulting to 0')
+) as c(col, typ, not_null, expected_default, shape)
+union all
+-- The value checks the database enforces, so a client cannot store an unknown country shape or a shift of a week.
+select 'settings.holiday_country is limited to two capital letters', 'true',
+  exists (select 1 from pg_constraint where conrelid = 'public.settings'::regclass and contype = 'c'
+    and pg_get_constraintdef(oid) like '%holiday_country%' and pg_get_constraintdef(oid) like '%[A-Z]{2}%')::text,
+  case when exists (select 1 from pg_constraint where conrelid = 'public.settings'::regclass and contype = 'c'
+    and pg_get_constraintdef(oid) like '%holiday_country%' and pg_get_constraintdef(oid) like '%[A-Z]{2}%') then 'PASS' else 'FAIL' end
+union all
+select 'settings.hijri_offset_days is limited to -2..2', 'true',
+  exists (select 1 from pg_constraint where conrelid = 'public.settings'::regclass and contype = 'c'
+    and pg_get_constraintdef(oid) like '%hijri_offset_days%' and pg_get_constraintdef(oid) like '%-2%' and pg_get_constraintdef(oid) like '%2)%')::text,
+  case when exists (select 1 from pg_constraint where conrelid = 'public.settings'::regclass and contype = 'c'
+    and pg_get_constraintdef(oid) like '%hijri_offset_days%' and pg_get_constraintdef(oid) like '%-2%' and pg_get_constraintdef(oid) like '%2)%') then 'PASS' else 'FAIL' end
 order by 1;

@@ -120,6 +120,11 @@ const settingsSchema = z.object({
   // Whether the calendar draws the prayers: never read here (the prayers ring either way). A malformed value
   // reads as absent and must not reject the push, which would stop every alarm from being updated.
   show_prayers_in_calendar: z.boolean().optional().catch(undefined),
+  // Holidays are drawn by the calendar only and never read here. They are declared so a malformed value reads as
+  // absent instead of rejecting the push, which would stop every alarm from being updated.
+  holiday_country: z.string().nullable().optional().catch(undefined),
+  islamic_holidays: z.boolean().optional().catch(undefined),
+  hijri_offset_days: z.number().optional().catch(undefined),
   // Exam mode's automatic window (absent in a push from before modes).
   exam_mode_days_before: smallInt(0, 60).optional(),
 });

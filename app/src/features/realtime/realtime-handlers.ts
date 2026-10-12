@@ -2,6 +2,7 @@ import type {
   CompletionRow,
   EventRow,
   ExamRow,
+  HolidaySettings,
   ModeActivationRow,
   ModeRow,
   ModeRuleRow,
@@ -164,6 +165,19 @@ function prayerFieldsOf(row: Record<string, unknown>): Partial<PrayerSettings> {
   return fields as Partial<PrayerSettings>;
 }
 
+/** The holiday columns a payload carries, with the right types; a column that is absent is left out. */
+function holidayFieldsOf(row: Record<string, unknown>): Partial<HolidaySettings> {
+  const fields: Partial<HolidaySettings> = {};
+  if (row.holiday_country === null || typeof row.holiday_country === 'string') {
+    if ('holiday_country' in row) fields.holiday_country = row.holiday_country;
+  }
+  if (typeof row.islamic_holidays === 'boolean') fields.islamic_holidays = row.islamic_holidays;
+  if (row.hijri_offset_days !== undefined && row.hijri_offset_days !== null) {
+    fields.hijri_offset_days = Number(row.hijri_offset_days);
+  }
+  return fields;
+}
+
 /** settings: one row per user, so any insert or update is the new truth. */
 export function handleSettingsChange(payload: ChangePayload): void {
   if (payload.eventType === 'DELETE') return;
@@ -180,6 +194,7 @@ export function handleSettingsChange(payload: ChangePayload): void {
       ? {}
       : { exam_mode_days_before: Number(row.exam_mode_days_before) }),
     ...prayerFieldsOf(row),
+    ...holidayFieldsOf(row),
   };
   useSettingsStore.getState().setSettings(next);
 }

@@ -4,8 +4,8 @@ How each item is verified. "Automated" names the test files (`pnpm -r test`); "M
 someone runs by hand. Android items are blocked until the `android/` project exists (no Android SDK
 on the development machine); nothing in that column has been run.
 
-Status as of the v2 feedback round (2026-10-06): automated suites green (core 412, app 494, electron 239 tests), both
-builds pass, `supabase/tests/security_checks.sql` 320 rows PASS against PGlite. Roadmap v2 phases 0 to 5 and the first
+Status as of the holidays round (2026-10-12): automated suites green (core 479, app 528, electron 243 tests), both
+builds pass, `supabase/tests/security_checks.sql` 343 rows PASS against PGlite. Roadmap v2 phases 0 to 5 and the first
 owner feedback round are covered by the second table below; nothing in it needs Android.
 
 | # | Spec item | Windows / web verification | Android | Status |
@@ -25,7 +25,7 @@ owner feedback round are covered by the second table below; nothing in it needs 
 ## Roadmap v2 (desktop and web)
 
 Same conventions as above. "Manual" steps need the migrations pushed (`supabase db push`, in order:
-`20261006010617`, `20261006010618`, `20261006042009`, `20261006050221`, `20261006153533`, `20261006173000`).
+`20261006010617`, `20261006010618`, `20261006042009`, `20261006050221`, `20261006153533`, `20261006173000`, `20261012090000`).
 
 | # | Feature | Verification | Status |
 | --- | --- | --- | --- |
@@ -41,6 +41,7 @@ Same conventions as above. "Manual" steps need the migrations pushed (`supabase 
 | v2-4 | Exams: exam alarm, revision sessions, catch-up of a missed one, Exams screen | Automated: `exams.test.ts`, `exams-modes.test.ts`, `app/src/features/exams/*.test.ts` | Done |
 | v2-4a | Birthdays, the exam alarm, revision sessions and catch-ups have fixed colors (light and dark) outside the picker palette; picker not offered for them | Automated: `category-colors.test.ts` (mapping, tokens in both themes, none a picker color). Contrast checked by script, both themes: text on its fill 7.7:1 or more, accent edges 4.3:1 or more against the page. Visual pass done in a throwaway harness (Week and Month, light and dark) | Done |
 | v2-5 | Modes: manual switch, ranges, Exam mode auto-window, per-alarm keep / skip / shift / shorten | Automated: `modes.test.ts`, `schedule-modes.test.ts`, `habits-modes.test.ts`, `exams-modes.test.ts`, `app/src/features/modes/*.test.ts`, `electron/src/schedule-modes.test.ts` | Done |
+| v2-6 | Holidays (display only): a country's public holidays and Islamic holidays on Week (all-day row), Month and Agenda; Settings country picker, Islamic switch and Hijri adjustment; never rings | Automated: `packages/core/src/holidays.test.ts` over `test-vectors/islamic-holidays.json` (Umm al-Qura dates for 1446 to 1449 AH from van Gent's published table and two calendar sites, offsets, merging), `app/src/features/holidays/*.test.ts` (library, Tunisia, merge agreement 2024 to 2029), `app/src/features/settings/holiday-settings.test.ts`, `electron/src/desktop-payloads-holidays.test.ts`, security checks for the three columns. Manual: with the migration pushed, Settings, Holidays, pick Tunisia and switch Islamic on: the week of 12 October 2026 shows the Evacuation Day flag chip on the 15th, February 2027 shows Ramadan from the 8th with the green wash, and 9 March shows Eid al-Fitr tagged Public holiday; compare the Eid date with the announced one and use the adjustment if it is a day off | Done |
 | v2-db | Migrations and RLS for all of the above | Manual, repeatable: `supabase db query --linked -f supabase/tests/security_checks.sql` (every row PASS) | Done against PGlite; run on the live project after pushing |
 
 ## Windows packaging checks (build-order step 7)
@@ -51,6 +52,7 @@ Run after `task package`, without running the installer (a packaged first run re
 - `npx @electron/fuses read --app "electron/release/win-unpacked/Alarm Calendar.exe"`: RunAsNode,
   EnableNodeOptionsEnvironmentVariable, EnableNodeCliInspectArguments disabled;
   OnlyLoadAppFromAsar, EnableEmbeddedAsarIntegrityValidation enabled.
+- `electron/release/win-unpacked/resources/THIRD_PARTY_NOTICES.md` exists (the holiday data credit, CC BY 3.0).
 - `electron/release/win-unpacked/resources/app-dist/` contains `index.html` and `sounds/{bell,chime,pulse}.wav`;
   `app.asar` contains `dist/main.cjs`, both preloads and `dist/tray.png`.
 - The secret scan from item 11 over `electron/release/win-unpacked`.

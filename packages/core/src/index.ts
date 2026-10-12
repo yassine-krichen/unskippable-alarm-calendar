@@ -7,6 +7,7 @@ export * from './wallet';
 export * from './habits';
 export * from './exams';
 export * from './modes';
+export * from './holidays';
 export { instantMs } from './instant';
 export * from './schedule';
 export {
