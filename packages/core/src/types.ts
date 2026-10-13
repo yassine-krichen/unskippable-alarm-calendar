@@ -313,8 +313,15 @@ export interface AlarmAdapter {
    * done on any device does not ring again when the device wakes inside the grace window.
    */
   setSchedule(payload: SchedulePayload): Promise<void>;
-  /** Completions made while the app was closed or offline. */
-  drainCompletions(): Promise<CompletionRow[]>;
+  /**
+   * Completions made on this device that the app has not saved yet (while it was closed or offline), without
+   * removing them. The app upserts them idempotently (keyed by event and occurrence) and only then calls
+   * `ackCompletions`, so a failed or interrupted upsert loses nothing and the next call returns them again.
+   * Empty where main saves completions itself (desktop) or the app writes them straight away.
+   */
+  peekCompletions(): Promise<CompletionRow[]>;
+  /** Forgets completions (by their row `id`) the server has accepted. Unknown ids are ignored. */
+  ackCompletions(ids: string[]): Promise<void>;
   /**
    * Occurrence ids (`<event id>@<instant>`) the person marked Done on this device that have not reached
    * the server yet. The app checks it before treating a revision session as missed. Empty where the app

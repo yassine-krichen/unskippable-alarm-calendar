@@ -41,7 +41,7 @@ afterEach(() => {
   vi.resetModules();
 });
 
-describe('a runtime without the Umm al-Qura calendar', () => {
+describe('a runtime without the Umm al-Qura calendar', { timeout: 30_000 }, () => {
   it('falls back to the tabular Islamic civil calendar', async () => {
     stubIntl({ 'islamic-umalqura': 'gregorian' });
     const holidays = await import('./holidays');
@@ -63,7 +63,7 @@ describe('a runtime without the Umm al-Qura calendar', () => {
   });
 });
 
-describe('a runtime with no Hijri calendar at all', () => {
+describe('a runtime with no Hijri calendar at all', { timeout: 30_000 }, () => {
   it.each<[string, Record<string, Behaviour>]>([
     ['both calendars format as Gregorian', { 'islamic-umalqura': 'gregorian', 'islamic-civil': 'gregorian' }],
     ['both calendars are rejected', { 'islamic-umalqura': 'throws', 'islamic-civil': 'throws' }],

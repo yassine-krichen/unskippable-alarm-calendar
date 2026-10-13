@@ -6,7 +6,6 @@ import { useSearchParams } from 'react-router';
 import { Button } from '@/components/ui/button';
 
 import { CUSTOM_SOUND_ID, DEFAULT_SOUND_ID, soundUrl } from './alarm-sounds';
-import { shortSnoozeLabel } from './snooze-label';
 
 type LoadState =
   | { kind: 'loading' }
@@ -176,7 +175,7 @@ export function AlarmScreen() {
                 className="h-14 w-full gap-3 rounded-2xl text-lg font-semibold"
               >
                 <AlarmClockIcon className="size-5" />
-                {shortSnoozeLabel(state.view.snoozeLabel)}
+                {state.view.snoozeLabel}
               </Button>
             ) : null}
           </div>

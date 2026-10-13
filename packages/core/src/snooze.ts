@@ -31,7 +31,7 @@ export function canSnooze(event: SnoozeRules, snoozesUsed: number): boolean {
 export function snoozeUi(event: SnoozeRules, snoozesUsed: number): SnoozeUi {
   if (canSnooze(event, snoozesUsed)) {
     const left = snoozesLeft(event, snoozesUsed);
-    return { label: `Snooze ${event.snooze_minutes} min (${left} left)`, notice: null };
+    return { label: `Snooze ${event.snooze_minutes} min · ${left} left`, notice: null };
   }
   // With max_snoozes = 0 no snooze was ever offered, so there is nothing to explain.
   const notice = event.max_snoozes > 0 ? 'No snoozes left, do it now' : null;

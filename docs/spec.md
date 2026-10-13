@@ -34,7 +34,8 @@ The UI talks to the platform through one interface, implemented twice (`Electron
 ```ts
 interface AlarmAdapter {
   setSchedule(payload: SchedulePayload): Promise<void>   // the precomputed schedule, see below
-  drainCompletions(): Promise<CompletionRow[]>   // completions made while the app was closed or offline
+  peekCompletions(): Promise<CompletionRow[]>   // completions made on this device and not saved yet (app closed or offline); removes nothing
+  ackCompletions(ids: string[]): Promise<void>   // forget the ones the server accepted (by row id)
   getPendingDoneOccurrences(): Promise<string[]>   // Done presses not yet saved to the server (desktop); [] elsewhere
   getPermissionStatus(): Promise<PermissionStatus>
   openPermissionSettings(): Promise<void>
@@ -274,7 +275,7 @@ Per occurrence, state: `pending -> ringing -> (snoozed -> ringing)* -> done`.
 1. At `occurrence_at`, unless it falls on a cheat day and the event is `passable`, start ringing.
 2. Ringing means: sound looping at full alarm volume, full-screen UI with the event title, the time, and big buttons.
 3. **Done** writes a completion (`status = done`, `snoozes_used`), stops the sound, schedules the next occurrence.
-4. **Snooze** is shown only if `snoozes_used < max_snoozes`. The label shows what is left: "Snooze 5 min (2 left)". Pressing it stops the sound and re-rings after `snooze_minutes`, `snoozes_used += 1`. At the limit the button disappears and the screen shows "No snoozes left, do it now". With `max_snoozes = 0` the button never appears.
+4. **Snooze** is shown only if `snoozes_used < max_snoozes`. The label shows what is left: "Snooze 5 min · 2 left" (core, the desktop and Android all use this text). Pressing it stops the sound and re-rings after `snooze_minutes`, `snoozes_used += 1`. At the limit the button disappears and the screen shows "No snoozes left, do it now". With `max_snoozes = 0` the button never appears.
 5. **No other way out.** If the window or activity is closed, killed, or swiped away without Done or Snooze, it re-rings after `refire_seconds` (default 120) and keeps doing so.
 6. Missed alarms: if the device was off or asleep and comes back within `grace_minutes` of an uncompleted occurrence, ring immediately. Older than that, ignore (no completion row needed in v1).
 7. If another occurrence of the same event comes due while one is still ringing, drop the new one.
@@ -354,11 +355,46 @@ Components:
 - **AlarmService:** foreground service, notification channel with importance HIGH and a **full-screen intent** pointing to AlarmActivity. Plays the sound looping on `AudioAttributes.USAGE_ALARM` at the alarm stream volume, holds a partial wake lock while ringing.
 - **AlarmActivity:** native screen, `setShowWhenLocked(true)`, `setTurnScreenOn(true)`, keeps the screen on. Shows title, time, Done, and Snooze (with remaining count, hidden when none left). Style it dark and clean to match the app: big type, large rounded buttons. Back button is disabled. If it is dismissed without a choice, AlarmService schedules a re-fire after `refire_seconds`.
 - **BootReceiver:** `BOOT_COMPLETED` and `MY_PACKAGE_REPLACED` reschedule from local storage. Also reschedule on time or timezone change broadcasts.
-- **Offline completions:** Done writes to a local queue. The plugin's `drainCompletions()` returns and clears it, and the JS side upserts to Supabase.
+- **Offline completions:** Done writes to a local queue. The plugin's `peekCompletions()` returns it without removing anything, the JS side upserts to Supabase (idempotent on event and occurrence) and then calls `ackCompletions(ids)`, so a failed or interrupted upsert loses nothing.
 - **Permissions and manifest:** `SCHEDULE_EXACT_ALARM` (and `USE_EXACT_ALARM` if it fits the target policy), `USE_FULL_SCREEN_INTENT`, `POST_NOTIFICATIONS`, `FOREGROUND_SERVICE` plus the proper foreground service type, `WAKE_LOCK`, `RECEIVE_BOOT_COMPLETED`, `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`.
 - **Permission flow:** on first launch and on every launch after, `getPermissionStatus()` checks exact alarm, full-screen intent (revocable on Android 14+), notifications, and battery optimization. If anything is missing, show a blocking shadcn Dialog explaining why with a button that deep-links to the right settings screen via `openPermissionSettings()`.
 
 Target a recent `targetSdk`. Test on a real device, not only the emulator.
+
+**As built (build-order step 3, stage 1: the native engine; the app wiring is step 6).** The section above is the plan; what exists
+in `android/` differs in these places (reasons in `docs/decisions.md`, "Android alarm engine"):
+
+- Capacitor 8.5.3 in `app/` (`app/capacitor.config.ts`: `appId` `com.yassine.alarmcalendar`, `webDir` `dist-android`, `android.path`
+  `../android`). The phone's web bundle is built into `app/dist-android`, never into `app/dist` (the Electron input). Gradle 8.14.3,
+  AGP 8.13.0, Kotlin 2.3.21, `compileSdk` and `targetSdk` 36 (what Capacitor 8 ships), `minSdk` 24, built with JDK 21.
+- The plugin is a local Kotlin class (`AlarmEnginePlugin`, registered in `MainActivity`), not an npm package. Its methods take and
+  return JSON objects: `setSchedule({ payload })` -> `{ accepted, dropped: { occurrences, eventInfo } }` (rejects when the envelope is
+  unusable), `peekCompletions()` -> `{ completions }`, `ackCompletions({ ids })` -> `{ acked }`, `getPendingDoneOccurrences()` -> `{ ids }`, `getPermissionStatus()` ->
+  core's `PermissionStatus` plus `details` (manufacturer, sdk, and the Xiaomi autostart, lock screen and background pop-up switches as
+  `granted` / `denied` / `unknown`), `openPermissionSettings({ kind })` with `kind` one of `exactAlarm`, `fullScreenIntent`,
+  `notifications`, `batteryOptimization`, `autostart`, `lockScreen`, `backgroundPopup` (anything else, or a screen that does not exist
+  on this phone, falls back to the app's own settings page). `AlarmAdapter.openPermissionSettings()` takes no argument, so the
+  `CapacitorAlarmAdapter` of step 6 maps it onto this `kind`.
+- Storage is two JSON files in device-protected app-private storage (`schedule.json`, `state.json`, so alarms ring after a reboot before the first
+  unlock), each written atomically (temp file, fsync, rename), not Room or SharedPreferences: the schedule is replaced whole, the state is small, nothing is queried, and it adds no dependency.
+- The decision logic is a port of `electron/src/scheduler.ts` (`android/app/src/main/java/com/yassine/alarmcalendar/engine/`, plain
+  Kotlin with no Android classes so it runs in JVM tests). 13 scenarios in `packages/core/test-vectors/alarm-engine.json` run against
+  both engines.
+- Only the soonest due instant is scheduled, with `setAlarmClock`. Every ring goes through an alarm-clock alarm, also "ring now" after
+  a reboot (an alarm in the past), because that is what allows the foreground service to start from the background.
+- `AlarmService` is a foreground service of type `systemExempted` (the type for apps holding `USE_EXACT_ALARM` or
+  `SCHEDULE_EXACT_ALARM`), with `mediaPlayback` declared as the fallback. Permissions: `USE_EXACT_ALARM` (an alarm clock app gets it at
+  install, not revocable) and `SCHEDULE_EXACT_ALARM` with `maxSdkVersion` 32, `USE_FULL_SCREEN_INTENT`, `POST_NOTIFICATIONS`,
+  `FOREGROUND_SERVICE` and its two type permissions, `WAKE_LOCK`, `VIBRATE`, `RECEIVE_BOOT_COMPLETED`,
+  `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`.
+- A ringing alarm stays reachable: the notification is re-posted every 30 s and when swiped away, the app opening shows the alarm screen, and
+  without the notification permission it still rings (the screen then depends on the phone allowing a background launch).
+- The alarm screen shows the oldest ringing alarm; Done is labelled "Prayed" for a prayer. Home and the power button only hide it
+  (the sound belongs to the service and goes on); the screen being destroyed without a choice starts the re-fire.
+- The engine cannot expand recurrences, so under 7 days of horizon it posts "Open Alarm Calendar to keep your alarms scheduled" (at most
+  once a day), checked by a coarse alarm that survives Doze.
+- Debug builds only: `DebugSeedReceiver` (adb broadcasts SEED, CLEAR, DUMP, CLOSE_SCREEN, PERMS, protected by the DUMP permission), see
+  `docs/acceptance.md`.
 
 ## 11. Out of scope for v1
 
@@ -371,7 +407,7 @@ iOS, Google sign-in, magic-link redirects, Google Calendar import, categories or
 3. **Android alarm engine with hardcoded events.** Scheduler, service, activity, boot receiver, snooze limit. This is the riskiest part, prove it first. Checkpoint: alarm fires with the screen off and the app swiped away, snooze limit works, re-fire works after a swipe, survives reboot.
 4. **Electron alarm engine with hardcoded events.** Scheduler, alarm window, tray, autostart, resume handling. Checkpoint: same behaviors as above on PC.
 5. **React app:** auth, event form, Week / Month / Agenda views, settings, pass chip and dialog. Run in the browser first against Supabase.
-6. **Wire the adapters** (`setSchedule`, `drainCompletions`, permissions) on both platforms, replace the hardcoded events with synced ones, add realtime subscription and local cache.
+6. **Wire the adapters** (`setSchedule`, `peekCompletions` and `ackCompletions`, permissions) on both platforms, replace the hardcoded events with synced ones, add realtime subscription and local cache.
 7. **Polish and README:** permission flow copy, exclusive-fullscreen note, build commands for the Electron installer and the Android APK.
 
 ## 13. Acceptance checklist

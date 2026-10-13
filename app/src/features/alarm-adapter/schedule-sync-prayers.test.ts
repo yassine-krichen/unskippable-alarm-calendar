@@ -61,7 +61,8 @@ function fakeAdapter() {
       pushes.push(payload);
       return Promise.resolve();
     },
-    drainCompletions: () => Promise.resolve([]),
+    peekCompletions: () => Promise.resolve([]),
+    ackCompletions: () => Promise.resolve(),
     getPendingDoneOccurrences: () => Promise.resolve([]),
     getPermissionStatus: () => Promise.reject(new Error('unused')),
     openPermissionSettings: () => Promise.resolve(),

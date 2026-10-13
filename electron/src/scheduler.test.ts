@@ -215,9 +215,9 @@ describe('AlarmScheduler', () => {
         expect(h.rings).toHaveLength(used + 2);
       }
       expect(labels).toEqual([
-        'Snooze 5 min (3 left)',
-        'Snooze 5 min (2 left)',
-        'Snooze 5 min (1 left)',
+        'Snooze 5 min · 3 left',
+        'Snooze 5 min · 2 left',
+        'Snooze 5 min · 1 left',
       ]);
 
       const last = ringingView(h.rings);
@@ -281,7 +281,7 @@ describe('AlarmScheduler', () => {
       expect(h.rings).toHaveLength(2);
       h.clock.advance(SECOND);
       expect(h.rings).toHaveLength(3);
-      expect(ringingView(h.rings).snoozeLabel).toBe('Snooze 1 min (1 left)');
+      expect(ringingView(h.rings).snoozeLabel).toBe('Snooze 1 min · 1 left');
 
       // And again, until a choice is made.
       h.scheduler.windowClosed(ringingView(h.rings).occurrenceId);
@@ -368,7 +368,7 @@ describe('AlarmScheduler', () => {
       second.scheduler.start();
       expect(second.rings).toHaveLength(1);
       // The snooze already used survives the restart.
-      expect(second.rings[0]?.snoozeLabel).toBe('Snooze 5 min (2 left)');
+      expect(second.rings[0]?.snoozeLabel).toBe('Snooze 5 min · 2 left');
     });
 
     it('keeps a snoozed alarm waiting across a restart when its wake time is ahead', () => {
@@ -658,7 +658,7 @@ describe('AlarmScheduler', () => {
       h.push([makeEvent({ id: EVENT_A, title: 'Renamed', max_snoozes: 1, snooze_minutes: 9 })], [], SETTINGS);
       expect(h.scheduler.getAlarm(view.occurrenceId)).toMatchObject({
         title: 'Renamed',
-        snoozeLabel: 'Snooze 9 min (1 left)',
+        snoozeLabel: 'Snooze 9 min · 1 left',
       });
     });
 

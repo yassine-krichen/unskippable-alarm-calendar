@@ -317,7 +317,7 @@ describe('parity with the per-event scheduler', { timeout: 30_000 }, () => {
     expectSameBehaviour(result, 200);
     const labels = new Set(result.next.rings.map((ring) => ring.snoozeLabel));
     expect(labels).toEqual(
-      new Set(['Snooze 5 min (3 left)', 'Snooze 5 min (2 left)', 'Snooze 5 min (1 left)', null])
+      new Set(['Snooze 5 min · 3 left', 'Snooze 5 min · 2 left', 'Snooze 5 min · 1 left', null])
     );
   });
 

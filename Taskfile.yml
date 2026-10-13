@@ -6,6 +6,11 @@ version: '3'
 
 vars:
   PORT: '3021'
+  # Android: Gradle needs a JDK it supports (17 to 21). The machine default java is newer, so tasks pin 21.
+  ANDROID_SDK: 'C:\Users\user\AppData\Local\Android\Sdk'
+  JDK21: 'C:\Program Files\Microsoft\jdk-21.0.12.101-hotspot'
+  # Pass DEVICE=<serial> (adb devices) when more than one device or emulator is attached.
+  DEVICE: ''
 
 tasks:
   install:
@@ -59,3 +64,43 @@ tasks:
     cmds:
       - pnpm --filter app build
       - pnpm --filter @alarm-calendar/electron package
+
+  android:web:
+    desc: Build the React bundle for the phone into app/dist-android (never app/dist, the Electron input) and copy it into android/ (reads app/.env like any build)
+    cmds:
+      - pnpm --filter app exec vite build --outDir dist-android --emptyOutDir
+      - pnpm --filter app exec cap sync android
+
+  android:test:
+    desc: Run the Kotlin engine unit tests on the JVM (no device), including the shared vectors in packages/core/test-vectors/alarm-engine.json
+    dir: android
+    env:
+      JAVA_HOME: '{{.JDK21}}'
+      ANDROID_HOME: '{{.ANDROID_SDK}}'
+    cmds:
+      - ./gradlew.bat :app:testDebugUnitTest --console=plain
+
+  android:build:
+    desc: Build the web bundle and the debug APK (android/app/build/outputs/apk/debug/app-debug.apk)
+    deps: [android:web]
+    dir: android
+    env:
+      JAVA_HOME: '{{.JDK21}}'
+      ANDROID_HOME: '{{.ANDROID_SDK}}'
+    cmds:
+      - ./gradlew.bat :app:assembleDebug --console=plain
+
+  android:install:
+    desc: Build and install the debug APK on the connected device (task android:install DEVICE=<serial> when several are attached). HyperOS needs Developer options, Install via USB, switched on
+    deps: [android:build]
+    env:
+      ANDROID_SERIAL: '{{.DEVICE}}'
+    cmds:
+      - '"{{.ANDROID_SDK}}\platform-tools\adb.exe" install -r android/app/build/outputs/apk/debug/app-debug.apk'
+
+  android:logcat:
+    desc: Follow the alarm engine log of the connected device (tag AlarmEngine plus crashes)
+    env:
+      ANDROID_SERIAL: '{{.DEVICE}}'
+    cmds:
+      - '"{{.ANDROID_SDK}}\platform-tools\adb.exe" logcat -v time AlarmEngine:I AndroidRuntime:E *:S'

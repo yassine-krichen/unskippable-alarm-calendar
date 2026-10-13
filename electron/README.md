@@ -82,7 +82,7 @@ loader for the shared React app (`app/`). See `docs/spec.md` sections 6 and 9.
 - **Completions: main is the only flush owner.** Done writes a pending row into the cache; the
   `CompletionFlusher` upserts it (`on_conflict=event_id,occurrence_at`, `ignoreDuplicates`: the first completion wins, a duplicate counts as success) as soon as it can,
   retries every 60 s and whenever a session arrives, and removes a row only after the server accepted
-  it. The React app does not upsert on desktop: `ElectronAlarmAdapter.drainCompletions()` returns
+  it. The React app does not upsert on desktop: `ElectronAlarmAdapter.peekCompletions()` returns
   nothing, so nothing is written twice. A row the server refuses for good (RLS, deleted event) is
   dropped with a log line; rows of another account stay queued for that account.
 - **Session.** The renderer hands main its access token (never the refresh token), expiry, user id,

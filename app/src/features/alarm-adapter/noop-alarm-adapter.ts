@@ -16,8 +16,12 @@ export class NoopAlarmAdapter implements AlarmAdapter {
     return Promise.resolve();
   }
 
-  drainCompletions(): Promise<[]> {
+  peekCompletions(): Promise<[]> {
     return Promise.resolve([]);
+  }
+
+  ackCompletions(): Promise<void> {
+    return Promise.resolve();
   }
 
   getPendingDoneOccurrences(): Promise<[]> {

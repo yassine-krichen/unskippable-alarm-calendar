@@ -657,7 +657,11 @@ function snoozeRules(state: OccurrenceState): { max_snoozes: number; snooze_minu
   return { max_snoozes: state.maxSnoozes, snooze_minutes: state.snoozeMinutes };
 }
 
-/** The grace window the list can serve (core's look-back caps it; an older cache may hold more). */
+// A timer or an alarm is never delivered at the exact millisecond, so even grace_minutes = 0 must ring an
+// occurrence that is a moment late (the Android engine has the same floor, and shared vectors pin both).
+export const DELIVERY_TOLERANCE_MINUTES = 1;
+
+/** The grace window the list can serve (core's look-back caps it; an older cache may hold more), never under the delivery tolerance. */
 function graceMinutesOf(settings: { grace_minutes: number }): number {
-  return Math.min(settings.grace_minutes, MAX_LOOKBACK_MINUTES);
+  return Math.max(Math.min(settings.grace_minutes, MAX_LOOKBACK_MINUTES), DELIVERY_TOLERANCE_MINUTES);
 }

@@ -10,7 +10,7 @@ import type { CacheData } from './cache';
  * wins (keyed by event_id + occurrence_at, so a retry or a second device never
  * duplicates or overwrites) and
  * removes each one only after the server accepted it. The React app does not
- * upsert them (its adapter's drainCompletions returns nothing on desktop), so
+ * upsert them (its adapter's peekCompletions returns nothing on desktop), so
  * there is exactly one writer.
  *
  * The session lives in memory only. After a restart the renderer (which holds

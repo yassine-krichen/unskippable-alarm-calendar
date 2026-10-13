@@ -2,7 +2,7 @@
 
 Agreed with the owner on 2026-10-06, based on the concept doc "smart-calendar-concept.md". Single user, no leaderboards. Every reminder is a normal alarm (no softer "nudge" level). Pre-prayer and birthday-prep reminders are separate alarms.
 
-Each phase ends with tests green, a code review, and a commit. Android work stays blocked until the SDK and a real device are available. The phase that changes the adapter contract (phase 3) keeps the Android side simple on purpose.
+Each phase ends with tests green, a code review, and a commit. Android work waited for the SDK and a real device; the SDK is there since 2026-10-13 and the native engine (spec build-order step 3, stage 1) is built against the precomputed schedule, verified on an emulator, with the phone check and the app wiring (step 6) still to do. The phase that changes the adapter contract (phase 3) keeps the Android side simple on purpose.
 
 ## Phase 0: alarm pop-up polish
 

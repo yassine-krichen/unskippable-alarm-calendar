@@ -8,10 +8,13 @@ coverage/
 !.env.example
 *.log
 .DS_Store
-# android
+# android (the web bundle for the phone is app/dist-android; the native project has its own .gitignore too)
+dist-android/
 android/.gradle/
+android/build/
 android/local.properties
 android/app/build/
+*.apk
 *.keystore
 *.jks
 # supabase cli

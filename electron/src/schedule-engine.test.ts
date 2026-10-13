@@ -296,7 +296,7 @@ describe('a version 1 cache from before the precomputed schedule', () => {
     expect(engine.rings[0]).toMatchObject({
       title: 'Take medication',
       occurrenceAt: rungAt,
-      snoozeLabel: 'Snooze 5 min (2 left)',
+      snoozeLabel: 'Snooze 5 min · 2 left',
     });
     // And tomorrow's occurrence is in the refilled list: Done now, then the next day rings.
     engine.scheduler.done(engine.rings[0]!.occurrenceId);

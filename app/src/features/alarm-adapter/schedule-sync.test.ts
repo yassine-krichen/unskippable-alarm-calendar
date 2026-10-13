@@ -60,7 +60,8 @@ function fakeAdapter() {
       pushes.push(payload);
       return Promise.resolve();
     },
-    drainCompletions: () => Promise.resolve([]),
+    peekCompletions: () => Promise.resolve([]),
+    ackCompletions: () => Promise.resolve(),
     getPendingDoneOccurrences: () => Promise.resolve([]),
     getPermissionStatus: () => Promise.reject(new Error('unused')),
     openPermissionSettings: () => Promise.resolve(),
@@ -266,7 +267,8 @@ describe('startScheduleSync', () => {
         attempts++;
         return attempts === 1 ? Promise.reject(new Error('bridge down')) : Promise.resolve();
       },
-      drainCompletions: () => Promise.resolve([]),
+      peekCompletions: () => Promise.resolve([]),
+      ackCompletions: () => Promise.resolve(),
       getPendingDoneOccurrences: () => Promise.resolve([]),
       getPermissionStatus: () => Promise.reject(new Error('unused')),
       openPermissionSettings: () => Promise.resolve(),
@@ -324,7 +326,8 @@ describe('startScheduleSync', () => {
         attempts++;
         return attempts === 1 ? Promise.reject(new Error('bridge down')) : Promise.resolve();
       },
-      drainCompletions: () => Promise.resolve([]),
+      peekCompletions: () => Promise.resolve([]),
+      ackCompletions: () => Promise.resolve(),
       getPendingDoneOccurrences: () => Promise.resolve([]),
       getPermissionStatus: () => Promise.reject(new Error('unused')),
       openPermissionSettings: () => Promise.resolve(),

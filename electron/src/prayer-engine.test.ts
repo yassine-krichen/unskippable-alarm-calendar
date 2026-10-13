@@ -135,7 +135,7 @@ describe('prayer alarms in the scheduler', () => {
     h.scheduler.start();
     h.runTo(at('dhuhr'));
     const dhuhr = h.rings.find((view) => view.occurrenceId.startsWith(prayerId('prayer', 'dhuhr')))!;
-    expect(dhuhr.snoozeLabel).toBe('Snooze 10 min (2 left)');
+    expect(dhuhr.snoozeLabel).toBe('Snooze 10 min · 2 left');
   });
 
   it('plays the prayer sound for the prayer and the normal sound for the reminder', () => {

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Alarm clock glyph for the status bar; white on transparent as notification icons must be. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M12,4a8,8 0,1 0,0 16a8,8 0,0 0,0 -16zM12,6.2a5.8,5.8 0,1 1,0 11.6a5.8,5.8 0,0 1,0 -11.6zM11.2,8.5v4l3,1.8l0.7,-1.2l-2.4,-1.4v-3.2z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M3.2,6.6l3.4,-3l1,1.2l-3.4,3zM20.8,6.6l-3.4,-3l-1,1.2l3.4,3z" />
+</vector>

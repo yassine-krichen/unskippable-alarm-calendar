@@ -38,8 +38,13 @@ export class ElectronAlarmAdapter implements AlarmAdapter {
    * electron/src/completion-flusher.ts), so handing them out here as well would write twice.
    * Kept because the interface is shared with Android, where the app does the upsert.
    */
-  drainCompletions(): Promise<CompletionRow[]> {
+  peekCompletions(): Promise<CompletionRow[]> {
     return this.bridge.drainCompletions();
+  }
+
+  /** Nothing to acknowledge: main's flusher owns the queue and removes what the server accepted. */
+  ackCompletions(): Promise<void> {
+    return Promise.resolve();
   }
 
   getPendingDoneOccurrences(): Promise<string[]> {

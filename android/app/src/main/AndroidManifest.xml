@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Permissions -->
+
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!--
+      Exact alarms. This is an alarm clock app, so USE_EXACT_ALARM (Android 13+) is granted at install and cannot be
+      revoked. SCHEDULE_EXACT_ALARM covers Android 12 only, where it is on by default; from 14 it is denied by default
+      and USE_EXACT_ALARM is what applies.
+    -->
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SYSTEM_EXEMPTED" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
+    <!-- allowBackup is off: the schedule holds alarm titles and notes that must not leave the phone in a cloud backup. -->
+    <application
+        android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/AppTheme">
+
+        <activity
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation|density"
+            android:name=".MainActivity"
+            android:label="@string/title_activity_main"
+            android:theme="@style/AppTheme.NoActionBarLaunch"
+            android:launchMode="singleTask"
+            android:exported="true">
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+        </activity>
+
+        <!--
+          The alarm screen. Its own task and out of recents, so it never mixes with the app and cannot be swiped
+          off the recents list; shown over the lock screen and turns the screen on. Back is swallowed in code.
+        -->
+        <activity
+            android:name=".alarm.AlarmActivity"
+            android:exported="false"
+            android:theme="@style/AlarmTheme"
+            android:launchMode="singleTask"
+            android:taskAffinity=""
+            android:excludeFromRecents="true"
+            android:directBootAware="true"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|screenLayout|uiMode|density|locale|navigation" />
+
+        <!--
+          Rings while an alarm is on. systemExempted is the foreground service type for apps holding
+          USE_EXACT_ALARM / SCHEDULE_EXACT_ALARM; mediaPlayback (looping sound) is declared as the fallback.
+        -->
+        <service
+            android:name=".alarm.AlarmService"
+            android:exported="false"
+            android:directBootAware="true"
+            android:foregroundServiceType="systemExempted|mediaPlayback" />
+
+        <!-- The receivers, the service and the alarm screen run in direct boot, before the first unlock (the engine files are in device-protected storage). -->
+        <receiver android:name=".alarm.AlarmReceiver" android:exported="false" android:directBootAware="true" />
+
+        <receiver android:name=".alarm.HorizonCheckReceiver" android:exported="false" android:directBootAware="true" />
+
+        <!-- Rebuilds the next alarm from local storage; harmless if a stray app sends one of these actions. -->
+        <receiver android:name=".alarm.BootReceiver" android:exported="true" android:directBootAware="true">
+            <intent-filter>
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED" />
+            </intent-filter>
+        </receiver>
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths"></meta-data>
+        </provider>
+    </application>
+
+</manifest>

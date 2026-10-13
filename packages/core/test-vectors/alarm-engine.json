@@ -1,0 +1,1122 @@
+{
+  "description": "Alarm engine scenarios shared by electron/src/engine-vectors.test.ts and android/app/src/test/java/com/yassine/alarmcalendar/engine/SharedVectorsTest.kt. Time is a fake clock starting at `start`; the list is pushed at `start` and again for a step with `push`. Events A, B and C stand for the uuids under `events`. A step sets the clock to `at` (running every wake-up on the way, like timers or AlarmManager would), pushes a new list if it has `push`, performs `action` (done, snooze or close, for `event`), then checks `ringing` (alarms on screen, compared as a set) and `pending` (completions made here and not drained: event, occurrence instant, snoozes used). `snoozesLeft` is the number of snoozes still offered, `snoozeLabel` the exact button text (null when there is no button) and `noticeShown` whether 'No snoozes left, do it now' is shown.",
+  "events": {
+    "A": "11111111-1111-4111-8111-111111111111",
+    "B": "22222222-2222-4222-8222-222222222222",
+    "C": "33333333-3333-4333-8333-333333333333"
+  },
+  "scenarios": [
+    {
+      "name": "rings at its time and Done ends it",
+      "note": "The basic life of one alarm.",
+      "start": "2026-03-02T09:00:00.000Z",
+      "settings": {
+        "grace_minutes": 30,
+        "refire_seconds": 120
+      },
+      "info": {
+        "A": {
+          "title": "Take medication",
+          "maxSnoozes": 2,
+          "snoozeMinutes": 5
+        }
+      },
+      "occurrences": [
+        {
+          "event": "A",
+          "at": "2026-03-02T09:01:00.000Z"
+        }
+      ],
+      "steps": [
+        {
+          "at": "2026-03-02T09:00:59.000Z",
+          "ringing": []
+        },
+        {
+          "at": "2026-03-02T09:01:00.000Z",
+          "ringing": [
+            {
+              "event": "A",
+              "at": "2026-03-02T09:01:00.000Z",
+              "title": "Take medication",
+              "snoozesLeft": 2,
+              "snoozeLabel": "Snooze 5 min · 2 left",
+              "noticeShown": false
+            }
+          ]
+        },
+        {
+          "at": "2026-03-02T09:01:30.000Z",
+          "action": "done",
+          "event": "A",
+          "ringing": [],
+          "pending": [
+            {
+              "event": "A",
+              "at": "2026-03-02T09:01:00.000Z",
+              "snoozesUsed": 0
+            }
+          ]
+        },
+        {
+          "at": "2026-03-02T09:30:00.000Z",
+          "ringing": []
+        }
+      ]
+    },
+    {
+      "name": "snooze limit: the button counts down, then only Done is left",
+      "note": "max 2 snoozes of 1 minute; a snooze past the limit changes nothing.",
+      "start": "2026-03-02T09:00:00.000Z",
+      "settings": {
+        "grace_minutes": 30,
+        "refire_seconds": 120
+      },
+      "info": {
+        "A": {
+          "title": "Stretch",
+          "maxSnoozes": 2,
+          "snoozeMinutes": 1
+        }
+      },
+      "occurrences": [
+        {
+          "event": "A",
+          "at": "2026-03-02T09:01:00.000Z"
+        }
+      ],
+      "steps": [
+        {
+          "at": "2026-03-02T09:01:00.000Z",
+          "ringing": [
+            {
+              "event": "A",
+              "at": "2026-03-02T09:01:00.000Z",
+              "title": "Stretch",
+              "snoozesLeft": 2,
+              "snoozeLabel": "Snooze 1 min · 2 left",
+              "noticeShown": false
+            }
+          ]
+        },
+        {
+          "at": "2026-03-02T09:01:10.000Z",
+          "action": "snooze",
+          "event": "A",
+          "ringing": []
+        },
+        {
+          "at": "2026-03-02T09:02:09.999Z",
+          "ringing": []
+        },
+        {
+          "at": "2026-03-02T09:02:10.000Z",
+          "ringing": [
+            {
+              "event": "A",
+              "at": "2026-03-02T09:01:00.000Z",
+              "title": "Stretch",
+              "snoozesLeft": 1,
+              "snoozeLabel": "Snooze 1 min · 1 left",
+              "noticeShown": false
+            }
+          ]
+        },
+        {
+          "at": "2026-03-02T09:02:20.000Z",
+          "action": "snooze",
+          "event": "A",
+          "ringing": []
+        },
+        {
+          "at": "2026-03-02T09:03:20.000Z",
+          "ringing": [
+            {
+              "event": "A",
+              "at": "2026-03-02T09:01:00.000Z",
+              "title": "Stretch",
+              "snoozesLeft": 0,
+              "snoozeLabel": null,
+              "noticeShown": true
+            }
+          ]
+        },
+        {
+          "at": "2026-03-02T09:03:30.000Z",
+          "action": "snooze",
+          "event": "A",
+          "ringing": [
+            {
+              "event": "A",
+              "at": "2026-03-02T09:01:00.000Z",
+              "title": "Stretch",
+              "snoozesLeft": 0,
+              "snoozeLabel": null,
+              "noticeShown": true
+            }
+          ]
+        },
+        {
+          "at": "2026-03-02T09:03:40.000Z",
+          "action": "done",
+          "event": "A",
+          "ringing": [],
+          "pending": [
+            {
+              "event": "A",
+              "at": "2026-03-02T09:01:00.000Z",
+              "snoozesUsed": 2
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "max_snoozes 0 never offers a snooze and shows no notice",
+      "note": "Nothing was ever offered, so there is nothing to explain.",
+      "start": "2026-03-02T09:00:00.000Z",
+      "settings": {
+        "grace_minutes": 30,
+        "refire_seconds": 120
+      },
+      "info": {
+        "A": {
+          "title": "Pills",
+          "maxSnoozes": 0,
+          "snoozeMinutes": 5
+        }
+      },
+      "occurrences": [
+        {
+          "event": "A",
+          "at": "2026-03-02T09:01:00.000Z"
+        }
+      ],
+      "steps": [
+        {
+          "at": "2026-03-02T09:01:00.000Z",
+          "ringing": [
+            {
+              "event": "A",
+              "at": "2026-03-02T09:01:00.000Z",
+              "title": "Pills",
+              "snoozesLeft": 0,
+              "snoozeLabel": null,
+              "noticeShown": false
+            }
+          ]
+        },
+        {
+          "at": "2026-03-02T09:01:05.000Z",
+          "action": "snooze",
+          "event": "A",
+          "ringing": [
+            {
+              "event": "A",
+              "at": "2026-03-02T09:01:00.000Z",
+              "title": "Pills",
+              "snoozesLeft": 0,
+              "snoozeLabel": null,
+              "noticeShown": false
+            }
+          ]
+        },
+        {
+          "at": "2026-03-02T09:01:10.000Z",
+          "action": "done",
+          "event": "A",
+          "ringing": [],
+          "pending": [
+            {
+              "event": "A",
+              "at": "2026-03-02T09:01:00.000Z",
+              "snoozesUsed": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "closed without a choice rings again after refire_seconds, and keeps doing so",
+      "note": "refire_seconds 120.",
+      "start": "2026-03-02T09:00:00.000Z",
+      "settings": {
+        "grace_minutes": 30,
+        "refire_seconds": 120
+      },
+      "info": {
+        "A": {
+          "title": "Water",
+          "maxSnoozes": 2,
+          "snoozeMinutes": 5
+        }
+      },
+      "occurrences": [
+        {
+          "event": "A",
+          "at": "2026-03-02T09:01:00.000Z"
+        }
+      ],
+      "steps": [
+        {
+          "at": "2026-03-02T09:01:00.000Z",
+          "ringing": [
+            {
+              "event": "A",
+              "at": "2026-03-02T09:01:00.000Z",
+              "title": "Water",
+              "snoozesLeft": 2,
+              "snoozeLabel": "Snooze 5 min · 2 left",
+              "noticeShown": false
+            }
+          ]
+        },
+        {
+          "at": "2026-03-02T09:01:30.000Z",
+          "action": "close",
+          "event": "A",
+          "ringing": []
+        },
+        {
+          "at": "2026-03-02T09:03:29.999Z",
+          "ringing": []
+        },
+        {
+          "at": "2026-03-02T09:03:30.000Z",
+          "ringing": [
+            {
+              "event": "A",
+              "at": "2026-03-02T09:01:00.000Z",
+              "title": "Water",
+              "snoozesLeft": 2,
+              "snoozeLabel": "Snooze 5 min · 2 left",
+              "noticeShown": false
+            }
+          ]
+        },
+        {
+          "at": "2026-03-02T09:03:40.000Z",
+          "action": "close",
+          "event": "A",
+          "ringing": []
+        },
+        {
+          "at": "2026-03-02T09:05:39.000Z",
+          "ringing": []
+        },
+        {
+          "at": "2026-03-02T09:05:40.000Z",
+          "ringing": [
+            {
+              "event": "A",
+              "at": "2026-03-02T09:01:00.000Z",
+              "title": "Water",
+              "snoozesLeft": 2,
+              "snoozeLabel": "Snooze 5 min · 2 left",
+              "noticeShown": false
+            }
+          ]
+        },
+        {
+          "at": "2026-03-02T09:06:00.000Z",
+          "action": "done",
+          "event": "A",
+          "ringing": [],
+          "pending": [
+            {
+              "event": "A",
+              "at": "2026-03-02T09:01:00.000Z",
+              "snoozesUsed": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "coming back inside the grace window rings, older does not (inclusive at the edge)",
+      "note": "The list is pushed at 09:00 with grace 30: 08:20 is 40 min late, 08:30 exactly 30, 08:50 is 10.",
+      "start": "2026-03-02T09:00:00.000Z",
+      "settings": {
+        "grace_minutes": 30,
+        "refire_seconds": 120
+      },
+      "info": {
+        "A": {
+          "title": "Too old",
+          "maxSnoozes": 2,
+          "snoozeMinutes": 5
+        },
+        "B": {
+          "title": "Recent",
+          "maxSnoozes": 2,
+          "snoozeMinutes": 5
+        },
+        "C": {
+          "title": "On the edge",
+          "maxSnoozes": 2,
+          "snoozeMinutes": 5
+        }
+      },
+      "occurrences": [
+        {
+          "event": "A",
+          "at": "2026-03-02T08:20:00.000Z"
+        },
+        {
+          "event": "B",
+          "at": "2026-03-02T08:50:00.000Z"
+        },
+        {
+          "event": "C",
+          "at": "2026-03-02T08:30:00.000Z"
+        }
+      ],
+      "steps": [
+        {
+          "at": "2026-03-02T09:00:00.000Z",
+          "ringing": [
+            {
+              "event": "B",
+              "at": "2026-03-02T08:50:00.000Z",
+              "title": "Recent",
+              "snoozesLeft": 2,
+              "snoozeLabel": "Snooze 5 min · 2 left",
+              "noticeShown": false
+            },
+            {
+              "event": "C",
+              "at": "2026-03-02T08:30:00.000Z",
+              "title": "On the edge",
+              "snoozesLeft": 2,
+              "snoozeLabel": "Snooze 5 min · 2 left",
+              "noticeShown": false
+            }
+          ]
+        },
+        {
+          "at": "2026-03-02T09:00:01.000Z",
+          "action": "done",
+          "event": "B",
+          "ringing": [
+            {
+              "event": "C",
+              "at": "2026-03-02T08:30:00.000Z",
+              "title": "On the edge",
+              "snoozesLeft": 2,
+              "snoozeLabel": "Snooze 5 min · 2 left",
+              "noticeShown": false
+            }
+          ],
+          "pending": [
+            {
+              "event": "B",
+              "at": "2026-03-02T08:50:00.000Z",
+              "snoozesUsed": 0
+            }
+          ]
+        },
+        {
+          "at": "2026-03-02T09:00:02.000Z",
+          "ringing": [
+            {
+              "event": "C",
+              "at": "2026-03-02T08:30:00.000Z",
+              "title": "On the edge",
+              "snoozesLeft": 2,
+              "snoozeLabel": "Snooze 5 min · 2 left",
+              "noticeShown": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "of several missed occurrences of one event only the latest rings",
+      "note": "Two are inside the window; the earlier one is never rung.",
+      "start": "2026-03-02T09:00:00.000Z",
+      "settings": {
+        "grace_minutes": 30,
+        "refire_seconds": 120
+      },
+      "info": {
+        "A": {
+          "title": "Hourly",
+          "maxSnoozes": 2,
+          "snoozeMinutes": 5
+        }
+      },
+      "occurrences": [
+        {
+          "event": "A",
+          "at": "2026-03-02T08:40:00.000Z"
+        },
+        {
+          "event": "A",
+          "at": "2026-03-02T08:55:00.000Z"
+        }
+      ],
+      "steps": [
+        {
+          "at": "2026-03-02T09:00:00.000Z",
+          "ringing": [
+            {
+              "event": "A",
+              "at": "2026-03-02T08:55:00.000Z",
+              "title": "Hourly",
+              "snoozesLeft": 2,
+              "snoozeLabel": "Snooze 5 min · 2 left",
+              "noticeShown": false
+            }
+          ]
+        },
+        {
+          "at": "2026-03-02T09:00:05.000Z",
+          "action": "done",
+          "event": "A",
+          "ringing": [],
+          "pending": [
+            {
+              "event": "A",
+              "at": "2026-03-02T08:55:00.000Z",
+              "snoozesUsed": 0
+            }
+          ]
+        },
+        {
+          "at": "2026-03-02T09:30:00.000Z",
+          "ringing": []
+        }
+      ]
+    },
+    {
+      "name": "a new occurrence of an event that is still ringing is dropped",
+      "note": "09:05 comes due while 09:01 is on screen; it is not rung after Done either.",
+      "start": "2026-03-02T09:00:00.000Z",
+      "settings": {
+        "grace_minutes": 30,
+        "refire_seconds": 120
+      },
+      "info": {
+        "A": {
+          "title": "Repeat",
+          "maxSnoozes": 2,
+          "snoozeMinutes": 5
+        }
+      },
+      "occurrences": [
+        {
+          "event": "A",
+          "at": "2026-03-02T09:01:00.000Z"
+        },
+        {
+          "event": "A",
+          "at": "2026-03-02T09:05:00.000Z"
+        }
+      ],
+      "steps": [
+        {
+          "at": "2026-03-02T09:01:00.000Z",
+          "ringing": [
+            {
+              "event": "A",
+              "at": "2026-03-02T09:01:00.000Z",
+              "title": "Repeat",
+              "snoozesLeft": 2,
+              "snoozeLabel": "Snooze 5 min · 2 left",
+              "noticeShown": false
+            }
+          ]
+        },
+        {
+          "at": "2026-03-02T09:06:00.000Z",
+          "ringing": [
+            {
+              "event": "A",
+              "at": "2026-03-02T09:01:00.000Z",
+              "title": "Repeat",
+              "snoozesLeft": 2,
+              "snoozeLabel": "Snooze 5 min · 2 left",
+              "noticeShown": false
+            }
+          ]
+        },
+        {
+          "at": "2026-03-02T09:07:00.000Z",
+          "action": "done",
+          "event": "A",
+          "ringing": [],
+          "pending": [
+            {
+              "event": "A",
+              "at": "2026-03-02T09:01:00.000Z",
+              "snoozesUsed": 0
+            }
+          ]
+        },
+        {
+          "at": "2026-03-02T09:10:00.000Z",
+          "ringing": []
+        }
+      ]
+    },
+    {
+      "name": "silenced and completed occurrences never ring",
+      "note": "A cheat day silences, a completion on another device completes.",
+      "start": "2026-03-02T09:00:00.000Z",
+      "settings": {
+        "grace_minutes": 30,
+        "refire_seconds": 120
+      },
+      "info": {
+        "A": {
+          "title": "Silenced",
+          "maxSnoozes": 2,
+          "snoozeMinutes": 5
+        },
+        "B": {
+          "title": "Completed",
+          "maxSnoozes": 2,
+          "snoozeMinutes": 5
+        },
+        "C": {
+          "title": "Normal",
+          "maxSnoozes": 2,
+          "snoozeMinutes": 5
+        }
+      },
+      "occurrences": [
+        {
+          "event": "A",
+          "at": "2026-03-02T09:01:00.000Z",
+          "silenced": true
+        },
+        {
+          "event": "B",
+          "at": "2026-03-02T09:02:00.000Z",
+          "completed": true
+        },
+        {
+          "event": "C",
+          "at": "2026-03-02T09:03:00.000Z"
+        }
+      ],
+      "steps": [
+        {
+          "at": "2026-03-02T09:02:30.000Z",
+          "ringing": []
+        },
+        {
+          "at": "2026-03-02T09:05:00.000Z",
+          "ringing": [
+            {
+              "event": "C",
+              "at": "2026-03-02T09:03:00.000Z",
+              "title": "Normal",
+              "snoozesLeft": 2,
+              "snoozeLabel": "Snooze 5 min · 2 left",
+              "noticeShown": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a Done survives a later push that no longer flags it",
+      "note": "The push at 09:03 lists the same occurrence with completed false; it must not ring again.",
+      "start": "2026-03-02T09:00:00.000Z",
+      "settings": {
+        "grace_minutes": 30,
+        "refire_seconds": 120
+      },
+      "info": {
+        "A": {
+          "title": "Done once",
+          "maxSnoozes": 2,
+          "snoozeMinutes": 5
+        }
+      },
+      "occurrences": [
+        {
+          "event": "A",
+          "at": "2026-03-02T09:01:00.000Z"
+        }
+      ],
+      "steps": [
+        {
+          "at": "2026-03-02T09:01:00.000Z",
+          "ringing": [
+            {
+              "event": "A",
+              "at": "2026-03-02T09:01:00.000Z",
+              "title": "Done once",
+              "snoozesLeft": 2,
+              "snoozeLabel": "Snooze 5 min · 2 left",
+              "noticeShown": false
+            }
+          ]
+        },
+        {
+          "at": "2026-03-02T09:02:00.000Z",
+          "action": "done",
+          "event": "A",
+          "ringing": [],
+          "pending": [
+            {
+              "event": "A",
+              "at": "2026-03-02T09:01:00.000Z",
+              "snoozesUsed": 0
+            }
+          ]
+        },
+        {
+          "at": "2026-03-02T09:03:00.000Z",
+          "push": {
+            "info": {
+              "A": {
+                "title": "Done once",
+                "maxSnoozes": 2,
+                "snoozeMinutes": 5
+              }
+            },
+            "occurrences": [
+              {
+                "event": "A",
+                "at": "2026-03-02T09:01:00.000Z",
+                "completed": false
+              }
+            ]
+          },
+          "ringing": []
+        },
+        {
+          "at": "2026-03-02T09:10:00.000Z",
+          "ringing": []
+        }
+      ]
+    },
+    {
+      "name": "deleting an event dismisses its alarm; an occurrence leaving the list does not end a snooze",
+      "note": "B is snoozed, then a push drops B's occurrences but keeps its info: it still wakes.",
+      "start": "2026-03-02T09:00:00.000Z",
+      "settings": {
+        "grace_minutes": 30,
+        "refire_seconds": 120
+      },
+      "info": {
+        "A": {
+          "title": "Deleted later",
+          "maxSnoozes": 2,
+          "snoozeMinutes": 5
+        },
+        "B": {
+          "title": "Snoozed",
+          "maxSnoozes": 1,
+          "snoozeMinutes": 5
+        }
+      },
+      "occurrences": [
+        {
+          "event": "A",
+          "at": "2026-03-02T09:01:00.000Z"
+        },
+        {
+          "event": "B",
+          "at": "2026-03-02T09:01:00.000Z"
+        }
+      ],
+      "steps": [
+        {
+          "at": "2026-03-02T09:01:00.000Z",
+          "ringing": [
+            {
+              "event": "A",
+              "at": "2026-03-02T09:01:00.000Z",
+              "title": "Deleted later",
+              "snoozesLeft": 2,
+              "snoozeLabel": "Snooze 5 min · 2 left",
+              "noticeShown": false
+            },
+            {
+              "event": "B",
+              "at": "2026-03-02T09:01:00.000Z",
+              "title": "Snoozed",
+              "snoozesLeft": 1,
+              "snoozeLabel": "Snooze 5 min · 1 left",
+              "noticeShown": false
+            }
+          ]
+        },
+        {
+          "at": "2026-03-02T09:02:00.000Z",
+          "push": {
+            "info": {
+              "B": {
+                "title": "Snoozed",
+                "maxSnoozes": 1,
+                "snoozeMinutes": 5
+              }
+            },
+            "occurrences": [
+              {
+                "event": "B",
+                "at": "2026-03-02T09:01:00.000Z"
+              }
+            ]
+          },
+          "ringing": [
+            {
+              "event": "B",
+              "at": "2026-03-02T09:01:00.000Z",
+              "title": "Snoozed",
+              "snoozesLeft": 1,
+              "snoozeLabel": "Snooze 5 min · 1 left",
+              "noticeShown": false
+            }
+          ]
+        },
+        {
+          "at": "2026-03-02T09:03:00.000Z",
+          "action": "snooze",
+          "event": "B",
+          "ringing": []
+        },
+        {
+          "at": "2026-03-02T09:04:00.000Z",
+          "push": {
+            "info": {
+              "B": {
+                "title": "Snoozed",
+                "maxSnoozes": 1,
+                "snoozeMinutes": 5
+              }
+            },
+            "occurrences": []
+          },
+          "ringing": []
+        },
+        {
+          "at": "2026-03-02T09:07:59.000Z",
+          "ringing": []
+        },
+        {
+          "at": "2026-03-02T09:08:00.000Z",
+          "ringing": [
+            {
+              "event": "B",
+              "at": "2026-03-02T09:01:00.000Z",
+              "title": "Snoozed",
+              "snoozesLeft": 0,
+              "snoozeLabel": null,
+              "noticeShown": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "pre-prayer text: previous one logged",
+      "note": "B is done before A rings, so A shows its plain label.",
+      "start": "2026-03-02T09:00:00.000Z",
+      "settings": {
+        "grace_minutes": 30,
+        "refire_seconds": 120
+      },
+      "info": {
+        "A": {
+          "title": "A",
+          "maxSnoozes": 2,
+          "snoozeMinutes": 5
+        },
+        "B": {
+          "title": "B",
+          "maxSnoozes": 2,
+          "snoozeMinutes": 5
+        }
+      },
+      "occurrences": [
+        {
+          "event": "B",
+          "at": "2026-03-02T09:00:30.000Z"
+        },
+        {
+          "event": "A",
+          "at": "2026-03-02T09:05:00.000Z",
+          "label": "A in 15 min",
+          "labelIfUnlogged": {
+            "id": "B@2026-03-02T09:00:30.000Z",
+            "label": "You haven't logged B"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "at": "2026-03-02T09:00:30.000Z",
+          "ringing": [
+            {
+              "event": "B",
+              "at": "2026-03-02T09:00:30.000Z",
+              "title": "B",
+              "snoozesLeft": 2,
+              "snoozeLabel": "Snooze 5 min · 2 left",
+              "noticeShown": false
+            }
+          ]
+        },
+        {
+          "at": "2026-03-02T09:01:00.000Z",
+          "action": "done",
+          "event": "B",
+          "ringing": [],
+          "pending": [
+            {
+              "event": "B",
+              "at": "2026-03-02T09:00:30.000Z",
+              "snoozesUsed": 0
+            }
+          ]
+        },
+        {
+          "at": "2026-03-02T09:05:00.000Z",
+          "ringing": [
+            {
+              "event": "A",
+              "at": "2026-03-02T09:05:00.000Z",
+              "title": "A in 15 min",
+              "snoozesLeft": 2,
+              "snoozeLabel": "Snooze 5 min · 2 left",
+              "noticeShown": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "pre-prayer text: previous one not logged",
+      "note": "B is still ringing when A rings, so A shows the alternative text, decided at ring time.",
+      "start": "2026-03-02T09:00:00.000Z",
+      "settings": {
+        "grace_minutes": 30,
+        "refire_seconds": 120
+      },
+      "info": {
+        "A": {
+          "title": "A",
+          "maxSnoozes": 2,
+          "snoozeMinutes": 5
+        },
+        "B": {
+          "title": "B",
+          "maxSnoozes": 2,
+          "snoozeMinutes": 5
+        }
+      },
+      "occurrences": [
+        {
+          "event": "B",
+          "at": "2026-03-02T09:00:30.000Z"
+        },
+        {
+          "event": "A",
+          "at": "2026-03-02T09:05:00.000Z",
+          "label": "A in 15 min",
+          "labelIfUnlogged": {
+            "id": "B@2026-03-02T09:00:30.000Z",
+            "label": "You haven't logged B"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "at": "2026-03-02T09:00:30.000Z",
+          "ringing": [
+            {
+              "event": "B",
+              "at": "2026-03-02T09:00:30.000Z",
+              "title": "B",
+              "snoozesLeft": 2,
+              "snoozeLabel": "Snooze 5 min · 2 left",
+              "noticeShown": false
+            }
+          ]
+        },
+        {
+          "at": "2026-03-02T09:05:00.000Z",
+          "ringing": [
+            {
+              "event": "A",
+              "at": "2026-03-02T09:05:00.000Z",
+              "title": "You haven't logged B",
+              "snoozesLeft": 2,
+              "snoozeLabel": "Snooze 5 min · 2 left",
+              "noticeShown": false
+            },
+            {
+              "event": "B",
+              "at": "2026-03-02T09:00:30.000Z",
+              "title": "B",
+              "snoozesLeft": 2,
+              "snoozeLabel": "Snooze 5 min · 2 left",
+              "noticeShown": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a shifted occurrence is done if it was done at the time it had before the shift",
+      "note": "A is done at 09:00:30; a later list moves it to 09:10 with originalAt 09:00:30.",
+      "start": "2026-03-02T09:00:00.000Z",
+      "settings": {
+        "grace_minutes": 30,
+        "refire_seconds": 120
+      },
+      "info": {
+        "A": {
+          "title": "Shifted",
+          "maxSnoozes": 2,
+          "snoozeMinutes": 5
+        }
+      },
+      "occurrences": [
+        {
+          "event": "A",
+          "at": "2026-03-02T09:00:30.000Z"
+        }
+      ],
+      "steps": [
+        {
+          "at": "2026-03-02T09:00:30.000Z",
+          "ringing": [
+            {
+              "event": "A",
+              "at": "2026-03-02T09:00:30.000Z",
+              "title": "Shifted",
+              "snoozesLeft": 2,
+              "snoozeLabel": "Snooze 5 min · 2 left",
+              "noticeShown": false
+            }
+          ]
+        },
+        {
+          "at": "2026-03-02T09:01:00.000Z",
+          "action": "done",
+          "event": "A",
+          "ringing": [],
+          "pending": [
+            {
+              "event": "A",
+              "at": "2026-03-02T09:00:30.000Z",
+              "snoozesUsed": 0
+            }
+          ]
+        },
+        {
+          "at": "2026-03-02T09:02:00.000Z",
+          "push": {
+            "info": {
+              "A": {
+                "title": "Shifted",
+                "maxSnoozes": 2,
+                "snoozeMinutes": 5
+              }
+            },
+            "occurrences": [
+              {
+                "event": "A",
+                "at": "2026-03-02T09:10:00.000Z",
+                "originalAt": "2026-03-02T09:00:30.000Z"
+              }
+            ]
+          },
+          "ringing": []
+        },
+        {
+          "at": "2026-03-02T09:11:00.000Z",
+          "ringing": []
+        }
+      ]
+    },
+    {
+      "name": "grace 0: an occurrence delivered 1 second late still rings (delivery tolerance)",
+      "note": "The list is pushed at 09:00:00 with grace_minutes 0 and the occurrence at 08:59:59.",
+      "start": "2026-03-02T09:00:00.000Z",
+      "settings": {
+        "grace_minutes": 0,
+        "refire_seconds": 120
+      },
+      "info": {
+        "A": {
+          "title": "On time",
+          "maxSnoozes": 2,
+          "snoozeMinutes": 5
+        }
+      },
+      "occurrences": [
+        {
+          "event": "A",
+          "at": "2026-03-02T08:59:59.000Z"
+        }
+      ],
+      "steps": [
+        {
+          "at": "2026-03-02T09:00:00.000Z",
+          "ringing": [
+            {
+              "event": "A",
+              "at": "2026-03-02T08:59:59.000Z",
+              "title": "On time",
+              "snoozesLeft": 2,
+              "snoozeLabel": "Snooze 5 min · 2 left",
+              "noticeShown": false
+            }
+          ]
+        },
+        {
+          "at": "2026-03-02T09:00:01.000Z",
+          "action": "done",
+          "event": "A",
+          "ringing": [],
+          "pending": [
+            {
+              "event": "A",
+              "at": "2026-03-02T08:59:59.000Z",
+              "snoozesUsed": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "grace 0: 61 seconds late is skipped",
+      "note": "Beyond the 60 second tolerance and with no grace window the occurrence is gone, and never rings later.",
+      "start": "2026-03-02T09:00:00.000Z",
+      "settings": {
+        "grace_minutes": 0,
+        "refire_seconds": 120
+      },
+      "info": {
+        "A": {
+          "title": "Too late",
+          "maxSnoozes": 2,
+          "snoozeMinutes": 5
+        }
+      },
+      "occurrences": [
+        {
+          "event": "A",
+          "at": "2026-03-02T08:58:59.000Z"
+        }
+      ],
+      "steps": [
+        {
+          "at": "2026-03-02T09:00:00.000Z",
+          "ringing": []
+        },
+        {
+          "at": "2026-03-02T09:10:00.000Z",
+          "ringing": []
+        }
+      ]
+    }
+  ]
+}

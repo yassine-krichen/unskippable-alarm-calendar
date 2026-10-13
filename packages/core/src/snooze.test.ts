@@ -34,12 +34,12 @@ describe('snooze limit', () => {
 
 describe('snooze button text', () => {
   it('shows the snooze length and how many snoozes remain', () => {
-    expect(snoozeUi(threeSnoozes, 1)).toEqual({ label: 'Snooze 5 min (2 left)', notice: null });
+    expect(snoozeUi(threeSnoozes, 1)).toEqual({ label: 'Snooze 5 min · 2 left', notice: null });
   });
 
   it('shows 1 left on the last available snooze', () => {
     expect(snoozeUi({ max_snoozes: 3, snooze_minutes: 10 }, 2).label).toBe(
-      'Snooze 10 min (1 left)'
+      'Snooze 10 min · 1 left'
     );
   });
 

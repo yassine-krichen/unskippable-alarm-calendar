@@ -73,10 +73,12 @@ describe('ElectronAlarmAdapter', () => {
     );
   });
 
-  it('drains whatever the bridge hands back', async () => {
+  it('peeks at whatever the bridge hands back, and acknowledging is a no-op', async () => {
     const row = { id: 'c1' } as CompletionRow;
     const { bridge } = fakeBridge([row]);
-    expect(await new ElectronAlarmAdapter(bridge).drainCompletions()).toEqual([row]);
+    const adapter = new ElectronAlarmAdapter(bridge);
+    expect(await adapter.peekCompletions()).toEqual([row]);
+    await expect(adapter.ackCompletions()).resolves.toBeUndefined();
   });
 
   it('hands on the occurrences marked Done on this device that main has not flushed yet', async () => {
@@ -125,9 +127,10 @@ describe('createAlarmAdapter', () => {
 });
 
 describe('NoopAlarmAdapter', () => {
-  it('accepts a schedule and drains nothing', async () => {
+  it('accepts a schedule and has no completions to hand out', async () => {
     const adapter = new NoopAlarmAdapter();
     await expect(adapter.setSchedule()).resolves.toBeUndefined();
-    expect(await adapter.drainCompletions()).toEqual([]);
+    expect(await adapter.peekCompletions()).toEqual([]);
+    await expect(adapter.ackCompletions()).resolves.toBeUndefined();
   });
 });

@@ -76,7 +76,7 @@ mirror (step 10) and the app code must follow these.
 
 - **Desktop adapter (build-order step 6).** The Electron main process is the single flush
   owner for completions (`electron/src/completion-flusher.ts`); the app never upserts them on
-  desktop, and `ElectronAlarmAdapter.drainCompletions()` returns nothing. Android keeps the
+  desktop, and `ElectronAlarmAdapter.peekCompletions()` (then called `drainCompletions`) returns nothing. Android keeps the
   spec's drain-then-upsert flow in JS. Main receives the access token only, not the refresh
   token: two clients refreshing one rotating refresh token get the session revoked, so only the
   renderer refreshes and pushes each new access token. The token lives in main's memory (the
@@ -150,8 +150,8 @@ mirror (step 10) and the app code must follow these.
   minimizable, maximizable or resizable, re-fronted on minimize, hide, blur and every evaluation, re-opened
   after `refire_seconds`, taskbar flash, no close button. The panel has no drag
   region, so it stays centered. Extra simultaneous alarms cascade by 36 px (five slots, then wrap). The
-  alarm screen stacks Done above Snooze, both full width, and shortens core's label "Snooze 5 min (2 left)"
-  to "Snooze 5 min · 2 left" in the app (`snooze-label.ts`); core's `snoozeUi` is unchanged. The old
+  alarm screen stacks Done above Snooze, both full width, and shows the label "Snooze 5 min · 2 left"
+  (core's `snoozeUi` first said "(2 left)" and the app shortened it; since the Android engine, core says the short form itself and `snooze-label.ts` is gone). The old
   button was off-center because the button component's `has-data-[icon=inline-start]:pl-2` overrode the
   large left padding while the right padding stayed, so the alarm buttons no longer use `data-icon`.
 
@@ -636,3 +636,106 @@ mirror (step 10) and the app code must follow these.
     It names the Hijri year instead of "this year" because the next Ramadan is often in the following calendar year.
   - **Known limits.** Eid al-Fitr and Eid al-Adha are one day (Tunisia gives more days off; the library lists one for Tunisia and the owner asked for one). Regional holidays are not shown. The
     library's data is community-maintained and licensed CC-BY-3.0. Public holiday dates that depend on a decree (Tunisia sometimes moves a bridge day) are not in it.
+
+- **Android alarm engine (build-order step 3, stage 1; 2026-10-13).** The native side of the v2 contract, in `android/`: a local Kotlin Capacitor
+  plugin (`AlarmEngine`), a pure engine ported from `electron/src/scheduler.ts`, and the Android parts around it (receivers, service, alarm
+  screen). The app is not wired to it yet (stage 2, step 6); a debug build is driven by adb broadcasts and, for the plugin, over the WebView's
+  DevTools port.
+  - **Versions.** Capacitor 8.5.3 (`@capacitor/core`, `@capacitor/android`, `@capacitor/cli`, pinned exactly in `app/package.json`; the latest
+    stable on npm today and the generator of the `android/` project), Gradle 8.14.3 (wrapper), AGP 8.13.0, Kotlin 2.3.21 (Kotlin 2.4 exists; 2.3.x is
+    the line AGP 8.13 was released against and 2.4 was not tried), `compileSdk` and `targetSdk` 36 (Capacitor 8's own values; the SDK has 36.1 and
+    37 installed but nothing needs them), `minSdk` 24 (Capacitor 8's default). Gradle must run on JDK 17 to 21; the machine default `java` is 26, so
+    the Taskfile tasks pin the installed JDK 21 through `JAVA_HOME`. The only new test dependency is `org.json:json` (the real implementation, because
+    Android's is a stub on the JVM). Capacitor adds three packages and about 400 lines to `pnpm-lock.yaml`; none is imported by the app yet, so the desktop
+    bundle is unchanged.
+  - **Two web builds.** `app/dist` is the Electron input and is never written for the phone: `task android:web` builds into `app/dist-android`
+    (gitignored) and `cap sync` copies it into `android/app/src/main/assets/public` (gitignored by the generated `.gitignore`). The service plays the web
+    app's own `sounds/{bell,chime,pulse}.wav` from there, so nothing is stored twice; if the files are missing it falls back to the system alarm tone, and
+    `custom` (the desktop's own prayer file) plays the bell on Android for now.
+  - **Foreground service type: `systemExempted`, `mediaPlayback` as the fallback.** Android 14 requires a type. `systemExempted` is the one the
+    platform documents for apps holding `SCHEDULE_EXACT_ALARM` or `USE_EXACT_ALARM`, it has no timeout, and Android 15 does not restrict it from a
+    `BOOT_COMPLETED` receiver, while it does restrict `mediaPlayback` there. If a platform refuses `systemExempted` (it throws when the app lacks the
+    permission) the service retries with `mediaPlayback`, because a silent alarm is the worse failure; both types and both permissions are declared.
+    Verified on the Android 17 emulator: `types=0x400` (systemExempted), `getFgsAllowStart=ALARM_MANAGER_ALARM_CLOCK`.
+  - **Exact alarms: `USE_EXACT_ALARM`, plus `SCHEDULE_EXACT_ALARM` only up to Android 12.** `setAlarmClock` needs one of them from Android 12 (it throws
+    `SecurityException` otherwise), and from Android 14 `SCHEDULE_EXACT_ALARM` is denied by default for new installs. This is an alarm clock app, so
+    `USE_EXACT_ALARM` (Android 13+) applies: granted at install, not revocable, no settings screen. The Play policy declaration it implies does not apply to
+    a sideloaded app. `canScheduleExactAlarms()` is still checked, `openPermissionSettings('exactAlarm')` opens the request screen, and if scheduling ever
+    throws the engine falls back to an inexact alarm that survives Doze instead of none.
+  - **Full-screen intent.** `USE_FULL_SCREEN_INTENT` is declared. From Android 14 it can be revoked: `NotificationManager.canUseFullScreenIntent()` is the
+    status and `ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT` the screen. It is granted on the emulator (API 37); on HyperOS it is unverified (see below).
+  - **One alarm outstanding, and every ring comes from it.** The engine schedules only the soonest of: an occurrence in the list not yet handled and not older
+    than the grace window, a snooze wake-up, a re-fire. `AlarmReceiver` evaluates and reschedules. A boot, an update, a clock or zone change only reschedules;
+    something due inside the grace window then has a trigger time in the past, so the alarm fires at once and the receiver rings it. This keeps one path to
+    the foreground service (an alarm-clock alarm exempts it from the background-start rule; `dumpsys` shows `ALARM_MANAGER_ALARM_CLOCK`) and avoids starting
+    a `mediaPlayback` service from a boot receiver. Creating the engine in a new process also sets the alarm again (idempotent), which is what rings an
+    alarm again after the process was killed while it rang: the system restarts the sticky service, the engine has made the alarm due, and the alarm wakes it.
+  - **Storage.** `schedule.json` (the list without `refillSource`, rewritten by a push) and `state.json` (ringing and snoozed alarms with their own copy of
+    text and snooze rules, `handledThrough`, pending and known completions, the last horizon notice), temp file, fsync, rename. A file that cannot be read is
+    renamed to `*.corrupt-<time>` and the engine starts without it, like electron's two files. Room was rejected: nothing is queried and the list is replaced
+    whole. The files are in device-protected storage (`createDeviceProtectedStorageContext`), the receivers, the service and the alarm screen are
+    `directBootAware` and `LOCKED_BOOT_COMPLETED` is handled, so after a reboot the alarms ring before the first unlock (review change). The decision that
+    follows from it: the whole schedule, including alarm titles and notes, is readable by the app while the phone is locked and sits in the device-protected area;
+    that is accepted because it is the owner's own phone and an alarm clock that stays silent after an overnight restart is the worse failure. Files of the first
+    build (credential-protected `filesDir`) are moved over once, as soon as the user is unlocked (`StorageMigration`). Verified on the Android 17 emulator
+    with a PIN: reboot, user state `RUNNING_LOCKED`, `LOCKED_BOOT_COMPLETED` rebuilt the alarm, it rang over the secure lock screen without any unlock.
+  - **Payload validation repairs towards ringing; electron drops.** The bounds are electron's zod schemas. An unusable envelope (version, timestamps, settings
+    without a user id, more than 5000 occurrences or event infos) rejects the push and keeps the previous schedule. Otherwise rows are handled one at a time:
+    an occurrence whose id, event or instant is unusable, a duplicate, an info that is not an object or not keyed by an event id, and occurrences of events
+    without info are dropped and counted (`dropped` in the result). An event info that is merely out of range is repaired instead of dropped (blank title
+    becomes "Alarm", `maxSnoozes` clamped to 0 to 10 and 0 when unreadable, `snoozeMinutes` at least 1), and `silenced` or `completed` that is not a boolean reads
+    as false, so nothing a bad row says can silence or complete an alarm. Electron drops such an event with all its occurrences; here there is no refill source
+    to recover from.
+  - **Completion matching is by exact instant.** An occurrence is done if its list flag, the known completions (anything flagged in any push, plus every Done
+    made here, kept 7 days) or the pending ones say so, at its instant or, for a shifted one, at `originalAt`. Not ported: the prayer-day match
+    (`prayerDayKey` needs the prayer times) and the shift-rule match instants of `ModeTimeline.matchInstants` (needs the modes). Both are applied by core
+    when it builds the list, so a push that follows a change carries them; between pushes a Done made on this phone is matched exactly, which is the normal case.
+  - **`peekCompletions` + `ackCompletions(ids)` instead of a draining read (review change).** The first design returned and forgot the rows, so an upsert
+    that failed or was interrupted lost them. Now the plugin returns the pending rows without removing anything and the app acknowledges by row id after the
+    server accepted them; the unacknowledged rows survive a restart. The adapter interface in core says the same (`peekCompletions(): Promise<CompletionRow[]>`,
+    `ackCompletions(ids): Promise<void>`); the desktop adapter returns nothing and ignores the ack because main's flusher owns that queue, and `DesktopApi` is
+    unchanged. A completion is known (never rings again) from the moment of Done, acknowledged or not.
+  - **The alarm screen and the sound belong to different components.** The service owns the sound (so it outlives the screen), the activity is the UI. The
+    activity is in its own task, out of recents, shown over the lock screen, back swallowed (a registered back callback on Android 13+ and `onBackPressed`
+    before; lint flags the legacy method for apps targeting 36). Home or the power button leave the sound on and the ongoing notification up. A destroyed
+    activity without a choice (swiped away, killed) silences the sound and re-fires after `refire_seconds`, the spec's rule. With several alarms ringing the
+    oldest is shown and the others queue ("+N more ringing").
+  - **An unlocked phone in use gets the heads-up notification, not the screen.** The full-screen intent starts the activity only when the device is locked or
+    the screen is off; otherwise Android shows the notification as a heads-up banner and the sound plays until Done or Snooze. The service also tries to start the
+    activity itself, which a phone that grants "Display pop-up windows while running in the background" (HyperOS) allows. Seen on the emulator.
+  - **Doze.** The alarm carries `FLAG_WAKE_FROM_IDLE` and the engine's other wake-up (the horizon check) is `setAndAllowWhileIdle`. Deep Doze cannot even be entered
+    while an alarm-clock alarm is within the hour (`cmd deviceidle force-idle deep` answers "Unable to go deep idle" until the alarm is further away).
+  - **Horizon.** The engine cannot expand recurrences, so when under 7 days of list remain (or it has run out) it posts one notification a day, "Open Alarm
+    Calendar to keep your alarms scheduled", checked by a coarse alarm. A periodic job that could re-push without the app was rejected: nothing outside the
+    WebView can build the list. Stage 2 should re-push on every launch and focus, as the desktop app does.
+  - **Time and zone changes.** `TIME_SET` and `TIMEZONE_CHANGED` reschedule, and inside the grace window an occurrence that became due rings. A clock set back
+    leaves the per-event watermarks in the future, so occurrences between the new and the old time are skipped until it catches up (electron behaves the same).
+  - **Permission panel.** The four platform checks are exact. HyperOS adds three switches the platform cannot show: autostart, "display on lock screen" and "display
+    pop-up windows while running in the background". They are read through MIUI's own app-ops (10008, 10020, 10021) by reflection and reported `unknown` when the
+    OS does not answer; `unknown` must not be shown as denied. Their screens: `com.miui.securitycenter` `AutoStartManagementActivity` and
+    `PermissionsEditorActivity` (action `miui.intent.action.APP_PERM_EDITOR`), both present on HyperOS 3.0 (checked with `cmd package resolve-activity`);
+    battery "No restrictions" has no known screen on that build (`com.miui.powerkeeper` `HiddenAppsConfigActivity` is gone), so it opens the system's
+    `IGNORE_BATTERY_OPTIMIZATION_SETTINGS`, then the app page. The first request for notifications uses the system dialog, later ones the settings page.
+  - **Known limits.** The alarm stream volume is not forced up (a muted alarm stream is silent); the sound is not the user's custom prayer file; a
+    dismissal by swiping needs the activity to be in recents, which it deliberately is not, so that path is exercised by the destroy callback (debug
+    `CLOSE_SCREEN`) and not by a swipe.
+  - **A late delivery still rings (review fix, both engines).** With `grace_minutes = 0` an alarm delivered even a moment late was skipped, because the
+    window was `late <= 0`. The ring window is now never under 60 seconds in the Kotlin engine (`DELIVERY_TOLERANCE_MS`) and in electron's scheduler
+    (`DELIVERY_TOLERANCE_MINUTES = 1`, applied in `graceMinutesOf`, so it also covers the look-back of the due scan): an occurrence 1 s late rings at grace 0,
+    one 61 s late is skipped. Two shared vectors pin it for both engines. Core's `shouldRingMissedOccurrence` is unchanged.
+  - **The snooze label is one text everywhere (review change).** `snoozeUi` in core now returns "Snooze 5 min · 2 left"; the desktop's own shortening
+    function was removed and the shared vectors assert the exact string for both engines.
+  - **A ringing alarm must always be reachable (review fix).** Opening the app (`MainActivity.onResume`) goes to the alarm screen when anything rings; the ringing
+    notification has a delete intent that puts it back; the service re-posts it, renews its wake lock and tries to bring the screen up every 30 s while anything
+    rings. A `MediaPlayer` wake mode (`PARTIAL_WAKE_LOCK`) is set as well. With `POST_NOTIFICATIONS` denied the alarm still rings (the foreground service and
+    the sound do not need it), but without the notification there is no full-screen intent, so on a phone that does not allow a background activity start the
+    screen does not come up on its own (seen on the emulator: sound and service, screen stays off, tick every 30 s). Stage 2's permission dialog must therefore
+    block until notifications and the full-screen intent are granted.
+  - **Foreground start failures and damaged state.** If neither foreground type is accepted the service stops itself and a retry alarm is set in about 10 s (never
+    later than something the engine wants sooner). A snoozed alarm with no wake-up time (a damaged file) is treated as ringing and due now. If one push carries an
+    event info that is unusable but keyed by an event id, that event's ringing and snoozed alarms are kept, not dismissed.
+  - **Test status.** JVM: 69 tests (`task android:test`), 15 of them the shared vectors, which also run against the real electron scheduler
+    (`electron/src/engine-vectors.test.ts`). Android 17 emulator (not the owner's phone): ring before the first unlock after a reboot with a PIN set, app opened while ringing shows the alarm screen, a swiped-away notification comes back, ring with notifications denied (no screen, see above), ring with the screen off, snooze limit, no-snooze alarm, re-fire after
+    the screen was destroyed, app process killed, process killed while ringing, reboot, time change, bridge round trip. Not done: the HyperOS phone, whose
+    installer refused the debug APK (`INSTALL_FAILED_USER_RESTRICTED`; Developer options, "Install via USB" and "USB debugging (Security settings)" are off, which also
+    blocks `adb shell input`).
