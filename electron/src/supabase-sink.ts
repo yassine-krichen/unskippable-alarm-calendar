@@ -4,14 +4,16 @@ import type { CompletionRow, DesktopSession } from '@alarm-calendar/core';
 
 import type { CompletionSink, UpsertOutcome } from './completion-flusher';
 
-// 401 is an expired token (the renderer refreshes and pushes a new one); the rest are retryable by nature.
-const TRANSIENT_STATUSES = new Set([401, 408, 425, 429]);
+// Only these mean the server will never take this row: 42501 insufficient privilege (RLS), 23503 foreign key
+// violation (the event is gone), 23505 unique violation. A 409 is the same family. Everything else, any 4xx
+// included (a 400, PGRST204 after schema drift, an expired token), may pass after an update or a new session, so
+// the row stays queued: losing a completion is worse than retrying one.
+const PERMANENT_CODES = new Set(['42501', '23503', '23505']);
 
-export function classifyUpsertFailure(status: number, message: string): UpsertOutcome {
-  if (status === 0 || status >= 500 || TRANSIENT_STATUSES.has(status)) {
-    return { kind: 'transient', reason: `${status} ${message}` };
-  }
-  return { kind: 'rejected', reason: `${status} ${message}` };
+export function classifyUpsertFailure(status: number, message: string, code = ''): UpsertOutcome {
+  const reason = `${status} ${code} ${message}`.replace(/\s+/g, ' ');
+  if (status === 409 || PERMANENT_CODES.has(code)) return { kind: 'rejected', reason };
+  return { kind: 'transient', reason };
 }
 
 /**
@@ -47,7 +49,7 @@ export class SupabaseCompletionSink implements CompletionSink {
         // First completion wins (decisions.md): ON CONFLICT DO NOTHING. A duplicate is a success.
         .upsert(row, { onConflict: 'event_id,occurrence_at', ignoreDuplicates: true });
       if (error === null) return { kind: 'ok' };
-      return classifyUpsertFailure(status, error.message);
+      return classifyUpsertFailure(status, error.message, error.code);
     } catch (error) {
       return { kind: 'transient', reason: String(error) };
     }

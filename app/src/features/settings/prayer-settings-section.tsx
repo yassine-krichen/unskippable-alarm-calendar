@@ -44,8 +44,10 @@ export function PrayerSettingsSection({ form, settings }: PrayerSettingsSectionP
   const [switching, setSwitching] = useState(false);
   const values = useWatch({ control: form.control });
   const desktop = detectPlatform() === 'electron' ? window.desktopApi : undefined;
-  // The desktop shell denies every web permission request, so its location button could never work.
-  const canLocate = desktop === undefined && typeof navigator !== 'undefined' && 'geolocation' in navigator;
+  // The desktop shell denies every web permission request, and the Android app declares no location permission,
+  // so the button could never work in either.
+  const canLocate =
+    desktop === undefined && detectPlatform() === 'web' && typeof navigator !== 'undefined' && 'geolocation' in navigator;
 
   // Cheap (five astronomical calculations), and `values` re-renders this on every edit.
   const preview = prayerPreview(form.getValues(), settings.timezone);

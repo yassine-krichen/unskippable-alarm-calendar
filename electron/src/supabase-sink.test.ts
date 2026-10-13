@@ -5,7 +5,7 @@ import type { CompletionRow, DesktopSession } from '@alarm-calendar/core';
 const created = vi.hoisted(() => ({
   clients: [] as Array<{ accessToken: () => Promise<string | null> }>,
   upserts: [] as Array<{ table: string; row: unknown; options: unknown }>,
-  result: { error: null, status: 201 } as { error: { message: string } | null; status: number },
+  result: { error: null, status: 201 } as { error: { message: string; code?: string } | null; status: number },
 }));
 
 vi.mock('@supabase/supabase-js', () => ({
@@ -79,8 +79,14 @@ describe('SupabaseCompletionSink', () => {
   });
 
   it('classifies a refused write instead of throwing', async () => {
-    created.result = { error: { message: 'new row violates row-level security policy' }, status: 403 };
+    created.result = { error: { message: 'new row violates row-level security policy', code: '42501' }, status: 403 };
     const outcome = await new SupabaseCompletionSink().upsert(session('aaa.bbb.ccc'), row);
     expect(outcome.kind).toBe('rejected');
+  });
+
+  it('keeps a row whose refusal is not a known permanent one, such as schema drift', async () => {
+    created.result = { error: { message: 'Could not find the column', code: 'PGRST204' }, status: 400 };
+    const outcome = await new SupabaseCompletionSink().upsert(session('aaa.bbb.ccc'), row);
+    expect(outcome.kind).toBe('transient');
   });
 });

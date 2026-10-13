@@ -29,6 +29,7 @@ import { ModeDialog } from '@/features/modes/mode-dialog';
 import { modesByDay } from '@/features/modes/mode-status';
 import { useModeTimeline } from '@/features/modes/use-modes';
 import { PassChip } from '@/features/passes/pass-chip';
+import { PermissionChip } from '@/features/permissions/permission-chip';
 import { PassDialog } from '@/features/passes/pass-dialog';
 import { usePassesStore } from '@/features/passes/passes-store';
 import { useSettingsStore } from '@/features/settings/settings-store';
@@ -158,7 +159,7 @@ export function CalendarPage() {
     >
       <header className="flex shrink-0 items-center gap-2 border-b px-4 py-2 pt-[max(0.5rem,env(safe-area-inset-top))] sm:px-6">
         <AlarmClockIcon className="size-5" aria-hidden="true" />
-        <span className="text-sm font-semibold tracking-tight">Alarm Calendar</span>
+        <span className="hidden text-sm font-semibold tracking-tight sm:inline">Alarm Calendar</span>
         <div className="ml-auto flex items-start gap-2">
           <ModeChip onOpen={() => setModeDialogOpen(true)} />
           <PassChip onOpen={() => setPassDialogOpen(true)} />
@@ -177,6 +178,8 @@ export function CalendarPage() {
           </Button>
         </div>
       </header>
+
+      <PermissionChip />
 
       <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 sm:px-6">
         <div className="flex items-center gap-1">

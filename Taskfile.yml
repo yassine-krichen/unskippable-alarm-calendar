@@ -66,9 +66,9 @@ tasks:
       - pnpm --filter @alarm-calendar/electron package
 
   android:web:
-    desc: Build the React bundle for the phone into app/dist-android (never app/dist, the Electron input) and copy it into android/ (reads app/.env like any build)
+    desc: Build the React bundle for the phone into app/dist-android (never app/dist, the Electron input) and copy it into android/. Vite's mode "android" reads the real Supabase URL and key from app/.env (and an optional app/.env.android) at build time, nothing is printed
     cmds:
-      - pnpm --filter app exec vite build --outDir dist-android --emptyOutDir
+      - pnpm --filter app exec vite build --mode android --outDir dist-android --emptyOutDir
       - pnpm --filter app exec cap sync android
 
   android:test:
@@ -78,7 +78,7 @@ tasks:
       JAVA_HOME: '{{.JDK21}}'
       ANDROID_HOME: '{{.ANDROID_SDK}}'
     cmds:
-      - ./gradlew.bat :app:testDebugUnitTest --console=plain
+      - cmd /c '.\gradlew.bat' :app:testDebugUnitTest --console=plain
 
   android:build:
     desc: Build the web bundle and the debug APK (android/app/build/outputs/apk/debug/app-debug.apk)
@@ -88,15 +88,23 @@ tasks:
       JAVA_HOME: '{{.JDK21}}'
       ANDROID_HOME: '{{.ANDROID_SDK}}'
     cmds:
-      - ./gradlew.bat :app:assembleDebug --console=plain
+      - cmd /c '.\gradlew.bat' :app:assembleDebug --console=plain
 
   android:install:
-    desc: Build and install the debug APK on the connected device (task android:install DEVICE=<serial> when several are attached). HyperOS needs Developer options, Install via USB, switched on
+    desc: Build (with the real app/.env) and install the debug APK on the connected device. With several attached (a phone and an emulator) pass DEVICE=<serial> from adb devices. HyperOS needs Developer options, Install via USB, switched on
     deps: [android:build]
     env:
       ANDROID_SERIAL: '{{.DEVICE}}'
     cmds:
       - '"{{.ANDROID_SDK}}\platform-tools\adb.exe" install -r android/app/build/outputs/apk/debug/app-debug.apk'
+
+  android:run:
+    desc: android:install, then start the app on the device (pass DEVICE=<serial> when several are attached)
+    env:
+      ANDROID_SERIAL: '{{.DEVICE}}'
+    cmds:
+      - task: android:install
+      - '"{{.ANDROID_SDK}}\platform-tools\adb.exe" shell am start -n com.yassine.alarmcalendar/.MainActivity'
 
   android:logcat:
     desc: Follow the alarm engine log of the connected device (tag AlarmEngine plus crashes)

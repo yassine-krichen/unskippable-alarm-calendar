@@ -29,6 +29,13 @@ async function start(): Promise<void> {
     throw error;
   }
 
+  // Emulator verification only. Both conditions are build-time constants and the second is the dummy project of
+  // docs/android.md, so a bundle built for the real project has none of this even if the flag leaks in.
+  if (import.meta.env.VITE_ALARM_DEBUG === '1' && import.meta.env.VITE_SUPABASE_URL === 'https://example.supabase.co') {
+    const { installAlarmDebugHooks } = await import('@/features/alarm-adapter/debug-hooks');
+    installAlarmDebugHooks();
+  }
+
   const { App } = await import('./app');
   root.render(
     <StrictMode>

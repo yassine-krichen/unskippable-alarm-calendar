@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 
+import { startCompletionSync } from '@/features/alarm-adapter/completion-sync';
 import { getAlarmAdapter } from '@/features/alarm-adapter/create-alarm-adapter';
 import { startScheduleSync } from '@/features/alarm-adapter/schedule-sync';
 import { startSessionSync } from '@/features/alarm-adapter/session-sync';
@@ -26,6 +27,20 @@ export function useDesktopSession(): void {
     const env = parseEnv(import.meta.env);
     return startSessionSync(bridge, { url: env.VITE_SUPABASE_URL, publishableKey: env.VITE_SUPABASE_PUBLISHABLE_KEY });
   }, []);
+}
+
+/**
+ * Android only: moves the completions made on the alarm screen (also while the app was closed) to
+ * Supabase. Needs only the session, not the first data load, so a Done made offline is uploaded
+ * as soon as the phone has network again even when the calendar itself could not load.
+ */
+export function useCompletionSync(): void {
+  const userId = useAuthStore((state) => state.session?.user.id ?? null);
+
+  useEffect(() => {
+    if (userId === null || detectPlatform() !== 'android') return;
+    return startCompletionSync();
+  }, [userId]);
 }
 
 /**

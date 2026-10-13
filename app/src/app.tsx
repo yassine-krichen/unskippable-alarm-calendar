@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { useAndroidBackButton, useSystemBarsStyle } from '@/features/android-shell/android-shell';
+import { useBootStatusStore } from '@/features/android-shell/boot-status';
 import { signOut } from '@/features/auth/auth-api';
 import { AuthScreen } from '@/features/auth/auth-screen';
 import { startAuthListener, useAuthStore } from '@/features/auth/auth-store';
@@ -17,13 +19,14 @@ import { ExamsPage } from '@/features/exams/exams-page';
 import { StatsPage } from '@/features/habits/stats-page';
 import { resetModes } from '@/features/modes/modes-store';
 import { ModesPage } from '@/features/modes/modes-page';
+import { PermissionDialog, usePermissionChecks } from '@/features/permissions/permission-dialog';
 import { resetHabitCompletions } from '@/features/habits/habits-store';
 import { usePassesStore } from '@/features/passes/passes-store';
 import { SettingsPage } from '@/features/settings/settings-page';
 import { useSettingsStore } from '@/features/settings/settings-store';
 
-import { useAppData } from './app-data';
-import { useDesktopSession, useLiveSync } from './use-live-sync';
+import { useAppData, type BootStatus } from './app-data';
+import { useCompletionSync, useDesktopSession, useLiveSync } from './use-live-sync';
 
 /** Drops the previous user's data so a different account never briefly sees it. */
 function resetAppData(): void {
@@ -41,6 +44,8 @@ export function App() {
 
   useEffect(() => startAuthListener(), []);
   useDesktopSession();
+  useSystemBarsStyle();
+  useAndroidBackButton();
   useEffect(() => {
     if (status === 'signed-out') resetAppData();
   }, [status]);
@@ -58,7 +63,22 @@ export function App() {
 function SignedInApp() {
   const { status, error, retry } = useAppData();
   useLiveSync(status === 'ready');
+  useCompletionSync();
+  usePermissionChecks();
+  useEffect(() => {
+    useBootStatusStore.setState({ bootStatus: status });
+    return () => useBootStatusStore.setState({ bootStatus: null });
+  }, [status]);
 
+  return (
+    <>
+      <SignedInScreens status={status} error={error} retry={retry} />
+      <PermissionDialog />
+    </>
+  );
+}
+
+function SignedInScreens({ status, error, retry }: { status: BootStatus; error: string | null; retry: () => void }) {
   if (status === 'loading') return <BootSkeleton />;
 
   if (status === 'error') {

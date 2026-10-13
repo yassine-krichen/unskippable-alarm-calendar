@@ -1,12 +1,11 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { ArrowLeftIcon, LogOutIcon, MoonIcon, ShieldAlertIcon, SlidersHorizontalIcon, SunIcon } from 'lucide-react';
+import { ArrowLeftIcon, LogOutIcon, MoonIcon, SlidersHorizontalIcon, SunIcon } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router';
 import { toast } from 'sonner';
 
 import { useTheme } from '@/components/theme-provider';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import {
   Combobox,
@@ -23,6 +22,7 @@ import { Switch } from '@/components/ui/switch';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { signOut } from '@/features/auth/auth-api';
 import { useAuthStore } from '@/features/auth/auth-store';
+import { PermissionsPanel } from '@/features/permissions/permissions-panel';
 import { detectPlatform } from '@/lib/platform';
 
 import { holidayFormToPatch, holidayFormValues } from './holiday-settings';
@@ -412,15 +412,7 @@ export function SettingsPage() {
             <Separator />
             <FieldSet>
               <FieldLegend>Permissions</FieldLegend>
-              {/* Placeholder: statuses come from AlarmAdapter.getPermissionStatus in the adapters step. */}
-              <Alert>
-                <ShieldAlertIcon />
-                <AlertTitle>Alarm permissions</AlertTitle>
-                <AlertDescription>
-                  Exact alarms, full-screen alerts, notifications and battery optimization show here once the
-                  Android app is connected.
-                </AlertDescription>
-              </Alert>
+              <PermissionsPanel />
             </FieldSet>
           </>
         ) : null}

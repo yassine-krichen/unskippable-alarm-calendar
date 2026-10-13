@@ -3,6 +3,7 @@ package com.yassine.alarmcalendar.alarm
 import android.content.Context
 import android.content.Intent
 import androidx.core.content.ContextCompat
+import com.yassine.alarmcalendar.engine.EngineCore
 
 /**
  * What happens after anything that can change the engine: schedule the next wake-up, make the foreground service
@@ -53,6 +54,12 @@ object AlarmController {
         val runtime = AlarmHost.runtime(context)
         if (runtime.takeHorizonNotice()) {
             Notifications.horizonNotice(context, runtime.horizonEndMs(), runtime.settings()?.timezone ?: "UTC")
+        } else {
+            // The app pushed a longer list (opening it from this very notice does): the notice is stale, take it down.
+            val horizonEnd = runtime.horizonEndMs()
+            if (horizonEnd != null && horizonEnd - System.currentTimeMillis() >= EngineCore.HORIZON_WARNING_MS) {
+                Notifications.clearHorizonNotice(context)
+            }
         }
         AlarmScheduler.scheduleHorizonCheck(context, runtime.nextHorizonCheckAt())
     }

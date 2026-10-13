@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
 import { useAuthStore } from '@/features/auth/auth-store';
+import { subscribeAppResume } from '@/lib/app-resume';
 
 import { bootstrap, refreshAll } from './bootstrap';
 
@@ -55,7 +56,10 @@ export function useAppData(): { status: BootStatus; error: string | null; retry:
     }
     window.addEventListener('focus', refreshIfStale);
     document.addEventListener('visibilitychange', onVisibilityChange);
+    // The Android WebView does not reliably report either of those when the app is brought back.
+    const stopResume = subscribeAppResume(refreshIfStale);
     return () => {
+      stopResume();
       window.removeEventListener('focus', refreshIfStale);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };

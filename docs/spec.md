@@ -396,6 +396,8 @@ in `android/` differs in these places (reasons in `docs/decisions.md`, "Android 
 - Debug builds only: `DebugSeedReceiver` (adb broadcasts SEED, CLEAR, DUMP, CLOSE_SCREEN, PERMS, protected by the DUMP permission), see
   `docs/acceptance.md`.
 
+**As built, stage 2 (the app wiring, 2026-10-13).** `CapacitorAlarmAdapter` (`app/src/features/alarm-adapter/`) drives the plugin: it pushes the schedule on first load, on every data change, on resume and daily, and uploads completions by peek, upsert, ack (launch, resume, network back, every minute while open). The permission flow (blocking dialog, Settings panel, warning chip), the back button, safe areas and the Android-only hiding of desktop settings are in `app/src/features/permissions/` and `app/src/features/android-shell/`. Build, test and decisions: `docs/android.md` and `docs/decisions.md` ("Android app wiring").
+
 ## 11. Out of scope for v1
 
 iOS, Google sign-in, magic-link redirects, Google Calendar import, categories or tags beyond color, shared calendars, cross-device dismiss, widgets, streak statistics, "Nth weekday of the month" rules, editing a single occurrence of a series, spending passes offline, push notifications.

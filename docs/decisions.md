@@ -739,3 +739,48 @@ mirror (step 10) and the app code must follow these.
     the screen was destroyed, app process killed, process killed while ringing, reboot, time change, bridge round trip. Not done: the HyperOS phone, whose
     installer refused the debug APK (`INSTALL_FAILED_USER_RESTRICTED`; Developer options, "Install via USB" and "USB debugging (Security settings)" are off, which also
     blocks `adb shell input`).
+
+- **Android app wiring (build-order step 6, Android half; 2026-10-13).** The app now talks to the engine; how to build and test it is in `docs/android.md`.
+  - **One new dependency: `@capacitor/app` 8.1.2** (pinned exactly like the other Capacitor packages; peer `@capacitor/core >=8`). It is the only way to get the activity's
+    `resume` and the hardware `backButton` event: the WebView's own `focus` and `visibilitychange` are not reliable there. `registerPlugin` and `SystemBars` come from `@capacitor/core`
+    (no new package). The desktop bundle carries a few kB more of Capacitor core; every Android call is behind a platform check.
+  - **`CapacitorAlarmAdapter` sends the payload without `refillSource`** (every event row, desktop only). `openPermissionSettings()` takes an optional `kind` that the core interface does not have; the
+    permissions UI uses it, a call without one opens the app's own settings page. The adapter is chosen when the platform is `android` and `Capacitor.isNativePlatform()`; a page that only
+    looks like Android gets the no-op adapter and a console warning.
+  - **Completion upload copies the desktop rules** (`completion-flush.ts`): peek, upsert one row at a time with `onConflict: 'event_id,occurrence_at', ignoreDuplicates: true` (first completion wins),
+    acknowledge exactly the rows the server answered for. Only Postgres 42501 (RLS), 23503 (the event is gone), 23505 and a 409 are permanent: the row is logged, acknowledged (forgotten) so it cannot block the rows behind it, and the person gets one
+    toast per session. Every other failure, any 4xx included (a 400, PGRST204 after schema drift, an expired token), is transient: the run stops and the row stays, because losing a completion is
+    worse than retrying one. `electron/src/supabase-sink.ts` uses the same rule (review change; it first treated every 4xx as permanent), and only logs. Rows of another user stay in the engine
+    (logged once per session), and a run stops before its next upload if the signed-in user changed since it started.
+    It runs from the session alone, not behind `useLiveSync`'s `ready` gate, so a Done made offline is uploaded when the network returns even if the calendar itself could not load.
+  - **No local cache of the app's data on the phone.** The spec's step 6 mentions one; the engine's stored schedule is the offline copy that matters (it rings with no app and no network), and
+    the app cannot build a new schedule from data it does not have. A launch without network pushes nothing and the engine keeps ringing from the 60 days it holds; the "open the app to
+    extend" notice covers the rest. The schedule is pushed as soon as the first load finishes, which is also when the calendar appears. A cache would be a separate decision (what to persist,
+    how to keep it private on the device).
+  - **Re-push triggers.** First load, every store change (already the case), `resume`, window focus, and once a day while open. A resume or focus with unchanged inputs and a list under an hour old
+    pushes nothing (the existing rule). `AlarmController.updateHorizon` now cancels the "extend your alarms" notification once a pushed list reaches 7 days or more, so the notice does not outlive
+    the fix.
+  - **Permission dialog.** Required: notifications and full-screen alarms (see the engine entry: without them an alarm can ring with no screen on a phone that blocks background starts). While one is
+    missing the dialog cannot be closed (no X, no outside click; Escape and the back button are ignored). Optional: exact alarms, battery, and on Xiaomi autostart, lock screen and background
+    pop-up. "Remind me later" holds until the next launch or for an hour, not until the next resume: the alarm screen's Done returns to the app, and asking about the battery after every alarm would be
+    nagging (a deviation from "every launch/resume" for the optional ones only; a missing required permission blocks on every resume). A red chip under the calendar header stays while an optional one is
+    denied. A HyperOS switch the OS answers `unknown` for is "Check manually": listed in the dialog and in Settings, never counted as denied, never a reason to open the dialog or show the chip. Exact
+    alarms are optional because `USE_EXACT_ALARM` is granted at install on Android 13+ and the engine falls back to an inexact alarm if scheduling ever throws.
+  - **Back button.** One handler, mounted at the top of the app (`App`), so it covers loading, the sign-in screen and the load error too: an open overlay first; the sign-in screen minimizes the app; session restore, first
+    data load and its error do nothing, so a stray press never closes the activity under a half-started session; then, on the app's screens: it asks the topmost open overlay (`[data-open]` dialog, alert dialog or listbox, which base-ui marks) to close with an Escape key event, so a
+    dialog that refuses to be dismissed (the blocking permission dialog) also refuses back; otherwise `navigate(-1)` when react-router has an earlier entry, else the calendar, and on the calendar
+    `App.minimizeApp()` (the platform's own behaviour since Android 12; `exitApp` would also finish the activity and drop the WebView). It talks to the hash router through the address (`history.back()`, `location.replace('#/')`), which the router follows.
+  - **Insets and keyboard are Capacitor's.** `SystemBars` (core, `insetsHandling: css` by default) gives `env(safe-area-inset-*)` on WebView 140 and later and pads the decor view otherwise; it also
+    resizes the page for the keyboard, which the emulator confirmed for the sign-in form and the event sheet. The existing CSS already used `env()`. The system bar icon style follows the app's theme
+    through `SystemBars.setStyle`. Untested: a WebView older than 140 (the fallback pads the decor view, whose colour is the window background, not the app's).
+  - **Hidden on Android:** the desktop autostart switch (already platform-gated), the prayer sound from a file (already desktop-only; the picker shows the three bundled sounds) and "Use my location" (the
+    manifest declares no location permission, so the WebView could never answer it).
+  - **Tooling.** `task android:web` builds with `--mode android`, so `app/.env.android` may override `app/.env`; nothing else changes. `android:run` installs and starts. The Gradle tasks call
+    `cmd /c '.\gradlew.bat'` because `./gradlew.bat` does not run from go-task here (cmd takes `./` as a switch, and the current folder is not on its search path).
+  - **Verification seam.** `VITE_ALARM_DEBUG=1` at build time adds a fake Supabase (REST answers from memory for `example.supabase.co`, a planted session) and `window.__alarmDebug`; the gate is two
+    compile-time constants (the flag and the dummy project URL), so the real bundle has neither (checked on the built APK: it has the project ref and none of `example.supabase.co`, `__alarmDebug`). It exists because the dummy project cannot sign in.
+  - **Test status.** App 592 tests (50 files), core 479, electron 259, Kotlin JVM green. Emulator (Android 17, API 37): the bundle loads edge to edge; the sign-in code request fails with a readable message; the
+    permission dialog (blocking, then optional-only, deep links to the notification dialog, the battery screen and the full-screen-intent screen, re-check on resume); the schedule the app builds from its stores
+    reaches the engine and rings; Done then peek returns the row; an upload that fails (503) acknowledges nothing and keeps the row; the retry uploads once and acknowledges it; the back button (blocking dialog
+    stays, a sheet closes, Settings returns to the calendar, the calendar leaves the app); keyboard resize. Not done: the owner's phone (its installer still refuses, see above), the HyperOS switches (the
+    emulator is not Xiaomi: unit-tested only), a WebView older than 140.

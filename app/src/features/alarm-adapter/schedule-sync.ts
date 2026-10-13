@@ -17,6 +17,7 @@ import { useEventsStore } from '@/features/events/events-store';
 import { useExamsStore } from '@/features/exams/exams-store';
 import { useModesStore } from '@/features/modes/modes-store';
 import { usePassesStore } from '@/features/passes/passes-store';
+import { subscribeAppResume } from '@/lib/app-resume';
 import { reportScheduleProblem } from './schedule-problem';
 import { getPrayerSoundId, getSoundId, subscribeSoundId } from '@/features/settings/sound-preference';
 import { useSettingsStore } from '@/features/settings/settings-store';
@@ -70,6 +71,11 @@ export interface ScheduleSyncOptions {
   now?: () => Date;
   /** Where focus events come from; the window unless a test supplies one (there is none in node). */
   focusTarget?: Pick<EventTarget, 'addEventListener' | 'removeEventListener'>;
+  /**
+   * Where "the Android app came back to the front" comes from (a window focus is not reliable in the
+   * WebView). The app-level subscription unless a test supplies one; returns the unsubscribe function.
+   */
+  resumeSource?: (callback: () => void) => () => void;
   onError?: (error: unknown) => void;
 }
 
@@ -78,7 +84,7 @@ export interface ScheduleSyncOptions {
  * buildSchedulePayload: the concrete occurrences of the next 60 days) and pushes it once now, then
  * after any change to events, cheat days, settings, completions (which covers pass changes and
  * every realtime update, since those land in the same stores), modes, exams or the sound choice, whenever the
- * window gains focus, and once a day. Debounced so a burst, such as the loads after a window focus,
+ * window gains focus or the Android app resumes, and once a day. Debounced so a burst, such as the loads after a window focus,
  * becomes one push. Expansion is memoized on the identity of its inputs for an hour, and a focus
  * with unchanged inputs inside that hour pushes nothing. Returns the stop function.
  *
@@ -90,6 +96,7 @@ export function startScheduleSync({
   debounceMs = PUSH_DEBOUNCE_MS,
   now = () => new Date(),
   focusTarget = typeof window === 'undefined' ? undefined : window,
+  resumeSource = typeof window === 'undefined' ? () => () => undefined : subscribeAppResume,
   onError = (error) => {
     console.warn('Could not update the alarm schedule:', error);
     reportScheduleProblem();
@@ -207,6 +214,7 @@ export function startScheduleSync({
     pushSoon();
   };
   focusTarget?.addEventListener('focus', onFocus);
+  const stopResume = resumeSource(onFocus);
   const dailyTimer = setInterval(pushSoon, REPUSH_INTERVAL_MS);
 
   push();
@@ -214,6 +222,7 @@ export function startScheduleSync({
     if (timer !== null) clearTimeout(timer);
     clearInterval(dailyTimer);
     focusTarget?.removeEventListener('focus', onFocus);
+    stopResume();
     stops.forEach((stop) => stop());
   };
 }

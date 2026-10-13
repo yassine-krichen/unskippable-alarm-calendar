@@ -72,6 +72,10 @@ object Notifications {
             .build()
     }
 
+    fun clearHorizonNotice(context: Context) {
+        NotificationManagerCompat.from(context).cancel(ID_HORIZON)
+    }
+
     /** Posted when under 7 days of schedule are left: the engine cannot expand recurrences by itself. */
     fun horizonNotice(context: Context, horizonEndMs: Long?, timeZone: String) {
         ensureChannels(context)

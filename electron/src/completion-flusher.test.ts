@@ -260,15 +260,20 @@ describe('CompletionFlusher', () => {
 });
 
 describe('classifyUpsertFailure', () => {
-  it('treats network failure, expired token, throttling and server errors as retryable', () => {
+  it('treats network failure, expired token, throttling, server errors and unknown client errors as retryable', () => {
     for (const status of [0, 401, 408, 429, 500, 503]) {
       expect(classifyUpsertFailure(status, 'x').kind).toBe('transient');
     }
+    // A 400 and a missing column (schema drift) are not proof that the row can never be saved.
+    expect(classifyUpsertFailure(400, 'x').kind).toBe('transient');
+    expect(classifyUpsertFailure(400, 'x', 'PGRST204').kind).toBe('transient');
+    expect(classifyUpsertFailure(403, 'x').kind).toBe('transient');
   });
 
-  it('treats policy and constraint failures as permanent', () => {
-    for (const status of [400, 403, 404, 409]) {
-      expect(classifyUpsertFailure(status, 'x').kind).toBe('rejected');
-    }
+  it('treats only policy, foreign key and unique violations and a 409 as permanent', () => {
+    expect(classifyUpsertFailure(403, 'x', '42501').kind).toBe('rejected');
+    expect(classifyUpsertFailure(409, 'x', '23503').kind).toBe('rejected');
+    expect(classifyUpsertFailure(409, 'x', '23505').kind).toBe('rejected');
+    expect(classifyUpsertFailure(409, 'x').kind).toBe('rejected');
   });
 });
