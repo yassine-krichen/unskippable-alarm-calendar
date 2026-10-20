@@ -1,5 +1,6 @@
 <div align="center">
   <h1>Alarm Calendar</h1>
+  <p>(repo: unskippable-alarm-calendar)</p>
   <p>
     <em>A personal calendar whose alarms take over the screen until you press Done or Snooze.</em>
   </p>
@@ -16,7 +17,7 @@ Notifications are easy to swipe away, so habits that depend on them die quietly.
 
 Skipping is possible, but it costs something. A wallet of cheat passes (one granted per week, capped at two) silences every skippable event on a chosen day. The wallet lives in Postgres behind RPCs, so the client cannot grant itself a pass.
 
-It is a single-user app. The Windows build is done; the Android build is blocked on the toolchain (see [Android status](#android-status)).
+It is a single-user app. The Windows build is done; the Android alarm engine is built, wired to the app and verified on an emulator, with a physical-phone check still pending (see [Android status](#android-status)).
 
 ## Features
 
@@ -36,9 +37,11 @@ It is a single-user app. The Windows build is done; the Android build is blocked
 
 **Modes** — Normal, Exam, Ramadan, Vacation, Sick and your own. Switch one on from the chip in the calendar header (starting now or since this morning, until you switch it off or until the end of a day), plan it for a range of days, or let Exam mode start by itself 10 days before each exam (editable, 0 turns it off). Per alarm a mode can keep it, pause it, shift it up to 12 hours or shorten its calendar block; Sick and Vacation pause everything that can be paused. Alarms that always ring (medication, the alarm before an exam) are never paused and prayers are never touched. Paused alarms are greyed and struck through on the calendar and are left out of your scores like cheat days; the alarm engines just see a shorter list.
 
+**Holidays** — Display only, never an alarm. Pick a country in Settings (Tunisia included, 200+ supported, offline) and its public holidays show on Week, Month and Agenda; switch on Islamic holidays for Islamic New Year, Ashura, Mawlid, Isra and Mi'raj, Ramadan, Laylat al-Qadr, both Eids and the Day of Arafah. They are computed on the device from the Umm al-Qura calendar, and a Hijri date adjustment of -2 to +2 days follows local moon sighting. The Ramadan mode can fill its dates from the computed month. Public holiday data: date-holidays by commenthol, CC BY 3.0, https://github.com/commenthol/date-holidays.
+
 **Exams and revision** — Add an exam (title, date and time, difficulty 1 to 3) from the Exam tab of the New alarm sheet or the Exams screen. It creates an alarm before the exam (60 minutes by default, never silenced by a cheat day) and revision session alarms 7, 3 and 1 days before, plus 14 for a hard exam, at a time of day you pick. Miss a session (the alarm window was never answered, say because the PC was off) and the app adds one catch-up session halfway between then and the exam, in the daytime, if at least 3 hours remain; two devices noticing the same miss still create just one. Editing an exam regenerates the sessions that have not happened yet and keeps the finished ones. The Exams screen shows done, to go and missed sessions per exam.
 
-**Snooze limits** — `max_snoozes` from 0 to 10 per event. The button reads "Snooze 5 min (2 left)" and disappears at the limit.
+**Snooze limits** — `max_snoozes` from 0 to 10 per event. The button reads "Snooze 5 min · 2 left" and disappears at the limit.
 
 **Cheat passes** — Weekly grant, cap of 2, multi-week catch-up, spend on today or a future day, refund for future days only. Events marked non-passable (medication, say) ring anyway.
 
@@ -47,14 +50,6 @@ It is a single-user app. The Windows build is done; the Android build is blocked
 **Sign-in by emailed code** — Six-digit OTP through Supabase Auth. No magic links, so there is no redirect to catch inside Electron.
 
 **Tray app** — Closing the window hides to the tray. Quit is disabled while an alarm is ringing or snoozed. Autostart is a Settings switch.
-
-## Screenshots
-
-![Week view](docs/demo/week.png)
-_Week view with a recurring event and a cheat day shown as a striped column._
-
-![Alarm screen](docs/demo/alarm.png)
-_The full-screen alarm with the snooze counter._
 
 ## How it works
 
@@ -72,12 +67,13 @@ graph TD
   S --"realtime changes"--> R
 ```
 
-The React app talks to the platform through one interface, `AlarmAdapter`. `ElectronAlarmAdapter` is implemented; `CapacitorAlarmAdapter` waits on the Android project.
+The React app talks to the platform through one interface, `AlarmAdapter`. `ElectronAlarmAdapter` and `CapacitorAlarmAdapter` are both implemented; the Android engine behind the latter lives in `android/`.
 
 ```ts
 interface AlarmAdapter {
   setSchedule(payload: SchedulePayload): Promise<void>; // precomputed occurrences, built by core
-  drainCompletions(): Promise<CompletionRow[]>;
+  peekCompletions(): Promise<CompletionRow[]>; // completions not saved yet; removes nothing
+  ackCompletions(ids: string[]): Promise<void>;  // forget the ones the server accepted
   getPermissionStatus(): Promise<PermissionStatus>;
   openPermissionSettings(): Promise<void>;
 }
@@ -91,7 +87,7 @@ app/                  Vite + React + shadcn/ui shared UI (calendar, event form, 
 electron/             main process: scheduler, alarm window, tray, cache, completion flusher, packaging
 supabase/migrations/  schema, RLS, wallet RPCs
 supabase/tests/       SQL checks run against the linked project
-android/              not created yet
+android/              Capacitor project + Kotlin AlarmEngine plugin: scheduler, foreground service, alarm screen, boot receiver
 docs/                 spec.md, decisions.md, acceptance.md
 ```
 
@@ -172,7 +168,7 @@ There is no custom backend. No secret key, service role key or JWKS URL is used 
 
 ### Develop
 
-Commands run from the repo through [go-task](https://taskfile.dev). From the personal workspace root they are `task alarm-calendar:<name>`; inside this folder, `task <name>`.
+Commands run through [go-task](https://taskfile.dev): `task <name>` from the repository root.
 
 | Task | What it does |
 | --- | --- |
@@ -221,17 +217,25 @@ This builds `app/dist`, bundles the Electron main process, and runs electron-bui
 
 ## Android status
 
-Blocked. There is no Android SDK on the development machine, so the `android/` project (Capacitor shell plus the Kotlin `AlarmEngine` plugin: `AlarmManager.setAlarmClock`, foreground service, full-screen intent, boot receiver, and the permission dialog flow) has not been created. Nothing here has been built or run on a device. The acceptance items that depend on it are marked blocked in [docs/acceptance.md](docs/acceptance.md).
-
-Planned APK build, not yet built or verified:
+The native engine is built and verified on an Android 17 emulator, and the React app is wired to it through `CapacitorAlarmAdapter` (schedule push on launch, resume, data change and daily; completions are peeked, upserted with first-wins semantics and acknowledged only after the server answers). It has not been checked on a physical phone yet; `docs/acceptance.md` lists what that check covers.
+What exists in `android/`: a Capacitor 8 shell and a Kotlin `AlarmEngine` plugin. The engine rings from the precomputed 60-day schedule (it has no recurrence logic), schedules only the
+soonest instant with `AlarmManager.setAlarmClock`, and rings through a foreground service (type `systemExempted`) with a looping alarm-stream sound and a full-screen intent to a native
+black-and-white alarm screen that shows over the lock screen. Snooze limits, re-fire after a dismissal without a choice, the grace window, the boot, time and time zone receivers, the
+permission status (including the Xiaomi / HyperOS switches) and a notice when under 7 days of schedule remain are in. Details and the reasons: spec section 10 ("As built"),
+[docs/decisions.md](docs/decisions.md) and [docs/acceptance.md](docs/acceptance.md) (which also lists what the owner must check on the phone).
 
 ```bash
-pnpm --filter app build
-pnpm --filter app exec cap sync android
-cd android
-./gradlew assembleDebug      # debug APK: android/app/build/outputs/apk/debug/
-./gradlew assembleRelease    # needs a signing keystore (gitignored: *.keystore, *.jks)
+task android:test      # Kotlin engine tests on the JVM, including the shared scenarios also run against the Electron scheduler
+task android:build     # web bundle into app/dist-android, then the debug APK: android/app/build/outputs/apk/debug/
+task android:install   # install it on the connected phone (DEVICE=<serial> if several are attached)
+task android:logcat    # follow the engine's log
 ```
+
+Requirements: the Android SDK (platform 36 and build tools), JDK 21 (the tasks pin it; Gradle does not support the newest JDKs), and on a Xiaomi phone Developer options, "Install via USB" and
+"USB debugging (Security settings)" switched on. A release build needs a signing keystore (gitignored: `*.keystore`, `*.jks`).
+
+Known limits: the engine cannot extend the schedule by itself, so it asks you to open the app when under 7 days remain;
+an alarm that rings while the phone is unlocked and in use shows as a heads-up notification with the sound (tap it for the alarm screen).
 
 ## Roadmap
 
@@ -242,20 +246,21 @@ cd android
 | Done | Electron alarm engine, tray, autostart, offline cache |
 | Done | React app: auth, event form, Week / Month / Agenda, passes, settings |
 | Done | Windows NSIS installer |
-| Done (branch `v2-overnight`, needs `supabase db push`) | Prayer times: five prayers and a reminder before each, offline `adhan` calculation, custom prayer sound |
-| Done (branch `v2-overnight`, needs `supabase db push`) | Exams: an alarm before the exam, revision sessions at 7, 3 and 1 days before (14 for hard), catch-up for a missed session |
+| Done (needs `supabase db push`) | Prayer times: five prayers and a reminder before each, offline `adhan` calculation, custom prayer sound |
+| Done (needs `supabase db push`) | Exams: an alarm before the exam, revision sessions at 7, 3 and 1 days before (14 for hard), catch-up for a missed session |
 | Done (needs `supabase db push`) | Habits and ranks, birthday template, calendar visibility (hide alarms and the prayers), fixed category colors |
-| Done (branch `v2-overnight`, needs `supabase db push`) | Modes: manual switch, planned ranges, Exam mode before an exam, per-alarm keep / pause / shift / shorten rules |
-| Blocked | Android alarm engine and APK, waiting on the Android SDK |
+| Done (needs `supabase db push`) | Modes: manual switch, planned ranges, Exam mode before an exam, per-alarm keep / pause / shift / shorten rules |
+| Done on an emulator, phone check pending | Android alarm engine (Kotlin plugin, service, alarm screen, boot receiver), app wiring with permission dialog and completion sync, debug APK |
 | Planned | Code signing for the Windows installer, to remove the SmartScreen warning |
 
 ## License
 
-No license file yet. See the checklist below.
+**Source-available, not open source.** Alarm Calendar is published under the
+[PolyForm Strict License 1.0.0](LICENSE): you may read, run, and learn from the code
+for personal, research, or evaluation use.
 
-Built by Yassine Krichen · 2026
+You may **not** use it commercially, redistribute it, rebrand it, or publish modified
+versions without written permission. Copyright (c) 2026 Yassine Krichen. All rights
+not granted by the license are reserved.
 
-## Before You Publish
-
-- [ ] Add `docs/demo/week.png` and `docs/demo/alarm.png`, referenced in Screenshots.
-- [ ] Add a `LICENSE` file. MIT is the fit for a solo project; the line above says none exists.
+For commercial licensing or collaboration: krichenyassine22@gmail.com
