@@ -425,3 +425,7 @@ iOS, Google sign-in, magic-link redirects, Google Calendar import, categories or
 - [ ] UI uses shadcn components (preset `b0`) and lucide icons, with no native checkboxes, selects, date inputs or buttons anywhere.
 - [ ] Sign-in works by emailed code on both platforms and the session survives restarts.
 - [ ] No `sb_secret_` key or service role key appears anywhere in the repo or the built bundles, and `.env` is gitignored.
+
+## 14. Agent CLI (`alarm-cal`)
+
+A command line for agents, in `cli/`, documented in `docs/cli.md`: sign in by emailed code, read alarms, occurrences, modes, exams, settings, stats and passes, change them directly (soft deletes, every write undoable with `alarm-cal undo`), and apply declarative plans (`plan check|diff|apply`, JSON, schema in `cli/plan.schema.json`) that create, update and switch off alarms keyed by `agent_key` and write mode rules, idempotently. Uses the publishable key and the user's own session only. Data model addition: `events.agent_key` and `exams.agent_key` (nullable text, format-checked, unique per user), migration `20261108030215_agent_keys`.

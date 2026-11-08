@@ -5,7 +5,7 @@ someone runs by hand. The Android column describes the native engine (build-orde
 run on an Android 17 emulator and not yet on the owner's HyperOS phone, whose installer refused the debug build (see "Android engine" below).
 
 Status as of the holidays round (2026-10-12): automated suites green (core 479, app 528, electron 243 tests), both
-builds pass, `supabase/tests/security_checks.sql` 343 rows PASS against PGlite. Roadmap v2 phases 0 to 5 and the first
+builds pass, `supabase/tests/security_checks.sql` 361 rows PASS against PGlite (agent keys added 2026-11-08). Roadmap v2 phases 0 to 5 and the first
 owner feedback round are covered by the second table below; nothing in it needs Android.
 
 | # | Spec item | Windows / web verification | Android | Status |
@@ -25,7 +25,7 @@ owner feedback round are covered by the second table below; nothing in it needs 
 ## Roadmap v2 (desktop and web)
 
 Same conventions as above. "Manual" steps need the migrations pushed (`supabase db push`, in order:
-`20261006010617`, `20261006010618`, `20261006042009`, `20261006050221`, `20261006153533`, `20261006173000`, `20261012090000`).
+`20261006010617`, `20261006010618`, `20261006042009`, `20261006050221`, `20261006153533`, `20261006173000`, `20261012090000`, `20261108030215`).
 
 | # | Feature | Verification | Status |
 | --- | --- | --- | --- |
@@ -42,6 +42,7 @@ Same conventions as above. "Manual" steps need the migrations pushed (`supabase 
 | v2-4a | Birthdays, the exam alarm, revision sessions and catch-ups have fixed colors (light and dark) outside the picker palette; picker not offered for them | Automated: `category-colors.test.ts` (mapping, tokens in both themes, none a picker color). Contrast checked by script, both themes: text on its fill 7.7:1 or more, accent edges 4.3:1 or more against the page. Visual pass done in a throwaway harness (Week and Month, light and dark) | Done |
 | v2-5 | Modes: manual switch, ranges, Exam mode auto-window, per-alarm keep / skip / shift / shorten | Automated: `modes.test.ts`, `schedule-modes.test.ts`, `habits-modes.test.ts`, `exams-modes.test.ts`, `app/src/features/modes/*.test.ts`, `electron/src/schedule-modes.test.ts` | Done |
 | v2-6 | Holidays (display only): a country's public holidays and Islamic holidays on Week (all-day row), Month and Agenda; Settings country picker, Islamic switch and Hijri adjustment; never rings | Automated: `packages/core/src/holidays.test.ts` over `test-vectors/islamic-holidays.json` (Umm al-Qura dates for 1446 to 1449 AH from van Gent's published table and two calendar sites, offsets, merging), `app/src/features/holidays/*.test.ts` (library, Tunisia, merge agreement 2024 to 2029), `app/src/features/settings/holiday-settings.test.ts`, `electron/src/desktop-payloads-holidays.test.ts`, security checks for the three columns. Manual: with the migration pushed, Settings, Holidays, pick Tunisia and switch Islamic on: the week of 12 October 2026 shows the Evacuation Day flag chip on the 15th, February 2027 shows Ramadan from the 8th with the green wash, and 9 March shows Eid al-Fitr tagged Public holiday; compare the Eid date with the announced one and use the adjustment if it is a day off | Done |
+| v2-cli | Agent CLI `alarm-cal`: read and write commands, plans (check, diff, idempotent apply, prune, mode rules), undo journal, sign-in and refresh, JSON output and exit codes, the skill's example plans | Automated: `pnpm --filter @alarm-calendar/cli test` (`cli/test/*.test.ts`: args, event-spec, plan, commands, undo, auth, skill-examples, bundle-smoke, 111+ tests incl. `node cli/dist/alarm-cal.cjs help --json`). Manual, once: push the `agent_keys` migration, `alarm-cal login`, `alarm-cal plan apply` an example plan, `alarm-cal undo` | Done except the live run against the real project (needs the owner's sign-in) |
 | v2-db | Migrations and RLS for all of the above | Manual, repeatable: `supabase db query --linked -f supabase/tests/security_checks.sql` (every row PASS) | Done against PGlite; run on the live project after pushing |
 
 ## Windows packaging checks (build-order step 7)

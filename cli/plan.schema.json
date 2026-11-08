@@ -1,0 +1,283 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "version": {
+      "description": "Plan format version; omit or 1.",
+      "type": "number",
+      "const": 1
+    },
+    "namespace": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_.-]{0,48}$",
+      "description": "Groups the plan: every item key must start with \"<namespace>/\". `prune` only touches keys in this namespace."
+    },
+    "prune": {
+      "description": "True switches off alarms in this namespace that are not in the plan any more. Default false.",
+      "type": "boolean"
+    },
+    "items": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "pattern": "^[a-z0-9][a-z0-9/_.-]{0,99}$"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120,
+            "description": "Alarm title, 1 to 120 characters."
+          },
+          "notes": {
+            "description": "Free text shown on the alarm, up to 2000 characters.",
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "time": {
+            "type": "string",
+            "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
+            "description": "Wall-clock time in the user timezone, 24-hour HH:mm."
+          },
+          "duration": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1440
+              },
+              {
+                "type": "string",
+                "pattern": "^(\\d+h)?(\\d+m)?$"
+              }
+            ],
+            "description": "Calendar block length: whole minutes (1 to 1440) or text like \"45m\", \"1h30m\". Default 15."
+          },
+          "start": {
+            "description": "First date, or the date of a one-time alarm, in the user timezone. Defaults to today (the next occurrence for a one-time alarm); an existing alarm keeps its start.",
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          },
+          "ends": {
+            "description": "Last date the series rings on (inclusive). Repeating alarms only.",
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "repeat": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "none",
+                  "every-12-hours",
+                  "daily",
+                  "every-2-days",
+                  "every-3-days",
+                  "weekly",
+                  "monthly",
+                  "yearly"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "every": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 999
+                  },
+                  "unit": {
+                    "type": "string",
+                    "enum": [
+                      "hour",
+                      "day",
+                      "week",
+                      "month",
+                      "year"
+                    ]
+                  }
+                },
+                "required": [
+                  "every",
+                  "unit"
+                ],
+                "additionalProperties": false
+              }
+            ],
+            "description": "A named preset, or { every: N, unit }. Omit for a one-time alarm. With `days`, only \"weekly\" or { every, unit: \"week\" } fit."
+          },
+          "days": {
+            "anyOf": [
+              {
+                "minItems": 1,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "mon",
+                    "tue",
+                    "wed",
+                    "thu",
+                    "fri",
+                    "sat",
+                    "sun"
+                  ]
+                }
+              },
+              {
+                "type": "string",
+                "enum": [
+                  "weekdays",
+                  "weekends"
+                ]
+              }
+            ],
+            "description": "Weekdays it rings on: [\"mon\",\"wed\",\"fri\"], or \"weekdays\" / \"weekends\". Implies a weekly repeat."
+          },
+          "maxSnoozes": {
+            "description": "Snoozes allowed, 0 to 10; 0 hides the snooze button. Default 3.",
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10
+          },
+          "snoozeMinutes": {
+            "description": "Minutes a snooze lasts, 1 to 120. Default 5.",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 120
+          },
+          "passable": {
+            "description": "Whether a cheat-day pass or a mode may silence it. Default true. Use false for medication or anything that must always ring.",
+            "type": "boolean"
+          },
+          "color": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "red",
+                      "orange",
+                      "yellow",
+                      "green",
+                      "blue",
+                      "violet",
+                      "pink"
+                    ]
+                  },
+                  {
+                    "type": "string",
+                    "enum": [
+                      "#ef4444",
+                      "#f97316",
+                      "#eab308",
+                      "#22c55e",
+                      "#3b82f6",
+                      "#8b5cf6",
+                      "#ec4899"
+                    ]
+                  }
+                ],
+                "description": "One of the palette colours by name (red, orange, yellow, green, blue, violet, pink) or its hex value."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "showInCalendar": {
+            "description": "False keeps it off the calendar; it still rings and counts in habits. Default true.",
+            "type": "boolean"
+          },
+          "enabled": {
+            "description": "False keeps the alarm switched off (and switches it off if it exists). Default true.",
+            "type": "boolean"
+          },
+          "modes": {
+            "description": "What this alarm does while a mode is in effect, keyed by built-in mode (exam, ramadan, vacation, sick) or custom mode name. Modes not listed keep whatever rule they already have.",
+            "type": "object",
+            "propertyNames": {
+              "type": "string",
+              "minLength": 1
+            },
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "keep",
+                    "skip",
+                    "inherit"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "shift": {
+                      "type": "integer",
+                      "minimum": -720,
+                      "maximum": 720
+                    }
+                  },
+                  "required": [
+                    "shift"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "shorten": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 1440
+                    }
+                  },
+                  "required": [
+                    "shorten"
+                  ],
+                  "additionalProperties": false
+                }
+              ],
+              "description": "\"keep\" rings as usual, \"skip\" pauses it (passable alarms only), { shift: ±minutes } rings earlier or later (max 720), { shorten: minutes } shortens the calendar block, \"inherit\" removes the alarm's own rule so the mode default applies."
+            }
+          }
+        },
+        "required": [
+          "title",
+          "time"
+        ],
+        "additionalProperties": false
+      },
+      "description": "The alarms, keyed by their agent key, at most 200. Applying twice changes nothing the second time."
+    }
+  },
+  "required": [
+    "namespace",
+    "items"
+  ],
+  "additionalProperties": false,
+  "$id": "https://alarm-calendar.local/plan.schema.json",
+  "title": "alarm-cal plan",
+  "description": "A declarative set of alarms for `alarm-cal plan check|diff|apply`. Items are keyed by agent key; applying is idempotent."
+}

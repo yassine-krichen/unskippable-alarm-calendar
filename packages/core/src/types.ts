@@ -65,6 +65,11 @@ export interface EventRow {
    * `PrayerSettings.show_prayers_in_calendar`.
    */
   show_in_calendar?: boolean;
+  /**
+   * A stable name an agent (the `alarm-cal` CLI) gave this alarm, like `workout/push-day`, so it can find and update
+   * it again. Null or absent for an alarm made in the app. The app never sets or shows it, and an edit keeps it.
+   */
+  agent_key?: string | null;
 }
 
 /** The two kinds of alarm an exam owns (roadmap v2, phase 4). Both are one-off 'normal' events. */
@@ -86,6 +91,8 @@ export interface ExamRow {
   active: boolean;
   created_at: string;
   updated_at: string;
+  /** Like `EventRow.agent_key`, for an exam an agent made. Absent for rows the app read before the column existed. */
+  agent_key?: string | null;
 }
 
 export interface CompletionRow {

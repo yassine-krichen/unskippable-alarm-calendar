@@ -1,0 +1,44 @@
+{
+  "$schema": "../../../../cli/plan.schema.json",
+  "namespace": "workout",
+  "prune": true,
+  "items": {
+    "workout/push-day": {
+      "title": "Push day: bench, overhead press, dips",
+      "notes": "5x5 bench, 3x8 overhead press, 3x12 dips. Warm up 10 min first.",
+      "time": "07:30",
+      "duration": "1h",
+      "days": ["mon", "thu"],
+      "maxSnoozes": 1,
+      "color": "blue",
+      "modes": {
+        "sick": "skip",
+        "vacation": "skip",
+        "exam": { "shorten": 30 },
+        "ramadan": { "shift": 660 }
+      }
+    },
+    "workout/pull-day": {
+      "title": "Pull day: rows, pull-ups, curls",
+      "time": "07:30",
+      "duration": "1h",
+      "days": ["tue", "fri"],
+      "maxSnoozes": 1,
+      "color": "blue",
+      "modes": {
+        "sick": "skip",
+        "vacation": "skip",
+        "exam": { "shorten": 30 },
+        "ramadan": { "shift": 660 }
+      }
+    },
+    "workout/long-run": {
+      "title": "Long run, easy pace",
+      "time": "08:30",
+      "duration": "1h30m",
+      "days": ["sat"],
+      "color": "green",
+      "modes": { "sick": "skip", "ramadan": { "shift": 600 } }
+    }
+  }
+}

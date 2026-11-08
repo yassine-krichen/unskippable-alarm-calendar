@@ -1,0 +1,25 @@
+{
+  "$schema": "../../../../cli/plan.schema.json",
+  "namespace": "study",
+  "prune": true,
+  "items": {
+    "study/deep-work": {
+      "title": "Deep work block: algorithms",
+      "time": "18:00",
+      "duration": "1h30m",
+      "days": "weekdays",
+      "ends": "2027-01-29",
+      "maxSnoozes": 2,
+      "color": "violet",
+      "modes": { "sick": "skip", "vacation": "skip", "exam": { "shorten": 45 } }
+    },
+    "study/weekly-review": {
+      "title": "Weekly review: what did I learn, what is next",
+      "time": "10:00",
+      "duration": 30,
+      "days": ["sun"],
+      "showInCalendar": true,
+      "modes": { "sick": "skip", "vacation": "skip" }
+    }
+  }
+}

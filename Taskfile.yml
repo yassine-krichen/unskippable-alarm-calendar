@@ -1,6 +1,6 @@
 version: '3'
 
-# Alarm calendar: pnpm monorepo (packages/core, app, electron, android).
+# Alarm calendar: pnpm monorepo (packages/core, app, electron, android, cli = the agent CLI `alarm-cal`, see docs/cli.md).
 # Data layer is Supabase (cloud), no local DB. Vite dev port 3021 is reserved
 # in the root PORTS.md. Full spec: docs/spec.md.
 
@@ -112,3 +112,41 @@ tasks:
       ANDROID_SERIAL: '{{.DEVICE}}'
     cmds:
       - '"{{.ANDROID_SDK}}\platform-tools\adb.exe" logcat -v time AlarmEngine:I AndroidRuntime:E *:S'
+
+  cli:build:
+    desc: Bundle the agent CLI (cli/) into the single file cli/dist/alarm-cal.cjs and refresh cli/plan.schema.json. Skipped when nothing changed
+    dir: '{{.TASKFILE_DIR}}'
+    silent: true
+    sources:
+      - cli/src/**/*.ts
+      - cli/build.mjs
+      - cli/package.json
+      - packages/core/src/**/*.ts
+    generates:
+      - cli/dist/alarm-cal.cjs
+    cmds:
+      - node cli/build.mjs
+
+  cli:
+    desc: 'Run alarm-cal from anywhere, builds first when needed. Pass arguments after --, e.g. task cli -- events list --json (plan files resolve from your current folder)'
+    deps: [cli:build]
+    dir: '{{.USER_WORKING_DIR}}'
+    silent: true
+    cmds:
+      - node "{{.TASKFILE_DIR}}/cli/dist/alarm-cal.cjs" {{.CLI_ARGS}}
+
+  cli:test:
+    desc: Run the CLI test suite (includes a smoke test of the bundled binary)
+    cmds:
+      - pnpm --filter @alarm-calendar/cli test
+
+  cli:install:
+    desc: Put an alarm-cal command on your PATH (launchers in ~/.local/bin; prints the one PowerShell line to add the folder to your user PATH if it is missing, never edits PATH itself)
+    deps: [cli:build]
+    cmds:
+      - node cli/scripts/install-shim.mjs
+
+  cli:install-skill:
+    desc: Copy the alarm-calendar Claude Code skill (.claude/skills/alarm-calendar) to %USERPROFILE%\.claude\skills so every Claude Code session can use the CLI
+    cmds:
+      - node cli/scripts/install-skill.mjs

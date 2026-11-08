@@ -1,0 +1,28 @@
+{
+  "$schema": "../../../../cli/plan.schema.json",
+  "namespace": "meds",
+  "prune": true,
+  "items": {
+    "meds/morning-pill": {
+      "title": "Morning pill with food",
+      "time": "08:00",
+      "duration": 10,
+      "repeat": "daily",
+      "passable": false,
+      "maxSnoozes": 2,
+      "snoozeMinutes": 10,
+      "color": "red",
+      "modes": { "ramadan": { "shift": 660 } }
+    },
+    "meds/evening-pill": {
+      "title": "Evening pill",
+      "time": "20:30",
+      "duration": 10,
+      "repeat": "daily",
+      "passable": false,
+      "maxSnoozes": 2,
+      "snoozeMinutes": 10,
+      "color": "red"
+    }
+  }
+}

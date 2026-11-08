@@ -304,4 +304,36 @@ select 'settings.hijri_offset_days is limited to -2..2', 'true',
     and pg_get_constraintdef(oid) like '%hijri_offset_days%' and pg_get_constraintdef(oid) like '%-2%' and pg_get_constraintdef(oid) like '%2)%')::text,
   case when exists (select 1 from pg_constraint where conrelid = 'public.settings'::regclass and contype = 'c'
     and pg_get_constraintdef(oid) like '%hijri_offset_days%' and pg_get_constraintdef(oid) like '%-2%' and pg_get_constraintdef(oid) like '%2)%') then 'PASS' else 'FAIL' end
+union all
+-- Agent keys (agent_keys migration): the column exists on events and exams, is nullable text, is writable by
+-- authenticated through the table-wide grants and by nobody else, is unique per user, and its format is checked.
+select format('%s can %s %s.agent_key', role, priv, tbl), expected::text,
+  has_column_privilege(role, 'public.' || tbl, 'agent_key', priv)::text,
+  case when has_column_privilege(role, 'public.' || tbl, 'agent_key', priv) = expected then 'PASS' else 'FAIL' end
+from unnest(array['events', 'exams']) as tbl
+cross join (values
+  ('authenticated', 'INSERT', true), ('authenticated', 'UPDATE', true), ('authenticated', 'SELECT', true),
+  ('anon', 'INSERT', false), ('anon', 'UPDATE', false), ('anon', 'SELECT', false)
+) as g(role, priv, expected)
+union all
+select format('%s.agent_key is nullable text', tbl), 'true',
+  (select (a.atttypid = 'text'::regtype and not a.attnotnull)::text
+   from pg_attribute a where a.attrelid = ('public.' || tbl)::regclass and a.attname = 'agent_key'),
+  case when (select (a.atttypid = 'text'::regtype and not a.attnotnull)
+   from pg_attribute a where a.attrelid = ('public.' || tbl)::regclass and a.attname = 'agent_key') then 'PASS' else 'FAIL' end
+from unnest(array['events', 'exams']) as tbl
+union all
+select format('%s.agent_key format is checked', tbl), 'true',
+  exists (select 1 from pg_constraint where conrelid = ('public.' || tbl)::regclass and contype = 'c'
+    and pg_get_constraintdef(oid) like '%agent_key%' and pg_get_constraintdef(oid) like '%a-z0-9%')::text,
+  case when exists (select 1 from pg_constraint where conrelid = ('public.' || tbl)::regclass and contype = 'c'
+    and pg_get_constraintdef(oid) like '%agent_key%' and pg_get_constraintdef(oid) like '%a-z0-9%') then 'PASS' else 'FAIL' end
+from unnest(array['events', 'exams']) as tbl
+union all
+select format('%s.agent_key is unique per user among non-null keys', tbl), 'true',
+  exists (select 1 from pg_indexes where schemaname = 'public' and tablename = tbl
+    and indexdef like 'CREATE UNIQUE INDEX%' and indexdef like '%(user_id, agent_key)%' and indexdef like '%agent_key IS NOT NULL%')::text,
+  case when exists (select 1 from pg_indexes where schemaname = 'public' and tablename = tbl
+    and indexdef like 'CREATE UNIQUE INDEX%' and indexdef like '%(user_id, agent_key)%' and indexdef like '%agent_key IS NOT NULL%') then 'PASS' else 'FAIL' end
+from unnest(array['events', 'exams']) as tbl
 order by 1;

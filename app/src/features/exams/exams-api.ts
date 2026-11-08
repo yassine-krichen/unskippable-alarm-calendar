@@ -1,4 +1,4 @@
-import type { CompletionRow, ExamDifficulty, ExamRow } from '@alarm-calendar/core';
+import type { CompletionRow, ExamRow, ExamWriteInput } from '@alarm-calendar/core';
 
 import { fail, ok, type Result } from '@/lib/result';
 import { supabase } from '@/lib/supabase';
@@ -6,13 +6,7 @@ import { supabase } from '@/lib/supabase';
 const EXAM_COLUMNS = 'id, user_id, title, exam_at, difficulty, notes, active, created_at, updated_at';
 const COMPLETION_COLUMNS = 'id, user_id, event_id, occurrence_at, status, snoozes_used, done_at';
 
-/** The writable columns of an exams row; the rest is the database's. */
-export interface ExamWriteInput {
-  title: string;
-  exam_at: string;
-  difficulty: ExamDifficulty;
-  notes: string | null;
-}
+export type { ExamWriteInput };
 
 export async function fetchActiveExams(): Promise<Result<ExamRow[]>> {
   const { data, error } = await supabase

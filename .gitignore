@@ -20,3 +20,5 @@ android/app/build/
 # supabase cli
 supabase/.temp/
 supabase/.branches/
+# go-task checksum cache
+.task/

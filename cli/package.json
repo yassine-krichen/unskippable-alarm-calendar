@@ -1,0 +1,25 @@
+{
+  "name": "@alarm-calendar/cli",
+  "version": "0.1.0",
+  "private": true,
+  "description": "alarm-cal: a command line tool for agents (and people) to read and change the alarm calendar",
+  "type": "module",
+  "bin": {
+    "alarm-cal": "./dist/alarm-cal.cjs"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "schema": "node build.mjs --schema-only"
+  },
+  "devDependencies": {
+    "@alarm-calendar/core": "workspace:*",
+    "@supabase/supabase-js": "^2.117.2",
+    "@types/node": "^24.0.0",
+    "esbuild": "^0.28.2",
+    "typescript": "^5.9.0",
+    "vitest": "^4.1.11",
+    "zod": "^4.6.7"
+  }
+}

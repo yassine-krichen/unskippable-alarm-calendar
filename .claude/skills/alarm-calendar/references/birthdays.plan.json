@@ -1,0 +1,19 @@
+{
+  "$schema": "../../../../cli/plan.schema.json",
+  "namespace": "birthdays",
+  "items": {
+    "birthdays/sara-prep": {
+      "title": "Prep for Sara's birthday",
+      "notes": "Gift ideas: the green scarf, a book on gardening.",
+      "time": "09:00",
+      "repeat": "yearly",
+      "start": "2027-03-03"
+    },
+    "birthdays/sara-wish": {
+      "title": "Wish Sara a happy birthday",
+      "time": "09:00",
+      "repeat": "yearly",
+      "start": "2027-03-10"
+    }
+  }
+}

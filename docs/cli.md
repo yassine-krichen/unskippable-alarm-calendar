@@ -1,0 +1,92 @@
+# alarm-cal: the agent command line
+
+`alarm-cal` lets an agent (or you) read and change the calendar from a terminal: list and edit alarms, switch modes, plan exams, change settings, and apply a whole routine from one declarative file. The goal is that an agent can read a document of yours (a workout programme, a medication schedule, a study timetable), decide how it should sit in the calendar, and do the tedious translating. It also handles "I am sick today": pause or lower the routine for the day, and revert it.
+
+Source: `cli/` (package `@alarm-calendar/cli`, TypeScript, bundled by esbuild into one file, `cli/dist/alarm-cal.cjs`). It reuses `packages/core` for recurrence, modes, exam planning and validation, so it writes exactly the rows the app would. The Claude Code skill that teaches an agent to use it is `.claude/skills/alarm-calendar/`.
+
+## One-time setup (owner)
+
+1. Push the migration so alarms can carry a key: `supabase db push` (adds `events.agent_key` and `exams.agent_key`; file `supabase/migrations/20261108030215_agent_keys.sql`). The app does not need it (it never reads the column). Until it is pushed, every CLI command that reads alarms or exams fails with `migration_missing`, because the CLI selects the column.
+2. Build and put the command on your PATH: `task alarm-calendar:cli:install` (from the personal root; `task cli:install` inside the repo). It writes two launchers, `alarm-cal.cmd` and `alarm-cal`, into `~/.local/bin` and never edits PATH itself. If that folder is not on PATH it prints the one PowerShell line that adds it to your user PATH.
+3. Sign in once: `alarm-cal login --email you@example.com`, then `alarm-cal login --email you@example.com --code 12345678` with the code from the email (in a terminal, `alarm-cal login` asks for both). The session lives in `%APPDATA%\alarm-calendar-cli\session.json` (private to your user; on other systems `~/.config/alarm-calendar-cli`) and refreshes itself.
+4. Install the skill so every Claude Code session knows the tool: `task alarm-calendar:cli:install-skill` (copies `.claude/skills/alarm-calendar` to `%USERPROFILE%\.claude\skills\alarm-calendar`).
+
+Without installing, `task cli -- <arguments>` runs it from the repository (it builds first when the sources changed), and `node cli/dist/alarm-cal.cjs <arguments>` always works after `task cli:build`. Plain `task` swallows the exit code (it exits 1 on any failure); use `task -x cli -- ...` if you need the real one.
+
+The Supabase URL and the publishable key are read, in order, from the environment (`ALARM_CAL_SUPABASE_URL`, `ALARM_CAL_SUPABASE_KEY`, or the app's `VITE_SUPABASE_URL` / `VITE_SUPABASE_PUBLISHABLE_KEY`), `alarm-cal config set url|key <value>` (your deliberate choice outranks a file), and last the `app/.env` of the CLI's own repository (found from the bundle's location, `cli/dist/../../app/.env`, never by searching the working directory; only those two names are read and nothing is printed). A secret or service-role key is refused wherever it comes from. `ALARM_CAL_CONFIG_DIR` moves the tool's own files (tests use a scratch folder).
+
+## How it behaves
+
+- **Direct, with a safety net.** Writes apply at once (no confirmation flag); an agent may discuss the plan with you in chat first. Any alarm can be changed, not only ones the tool made. Deleting is switching off (`active = false`). Every write appends an entry (rows before and after) to `journal.json` in the config folder; `alarm-cal undo [--steps n]` restores them, newest first (undoing a create switches the alarm off), and `alarm-cal history` lists them. A command that fails half-way journals what landed and says so. Undo first checks that each row still looks as the change left it (`updated_at`, or the written columns for settings); if the app or another command changed it since, undo refuses with exit 6 and names the rows, and `--force` overwrites them. An undo that stops half-way records the finished steps and a retry continues from there. The journal file is changed under its own lock file, so parallel commands cannot lose entries.
+- **Times.** Everything is the wall clock in `settings.timezone`; output always shows the local time with the ISO instant beside it. Input times follow the app's DST rules (a time in a spring-forward gap moves forward).
+- **Output.** Human text by default; `--json` prints one JSON object (`{ "ok": true, ... }`) on stdout and nothing else. Errors with `--json` are `{ "ok": false, "error": { "code", "message", "hint" } }`.
+- **Exit codes.** 0 ok; 1 internal; 2 usage; 3 not signed in or not configured; 4 not found or ambiguous; 5 invalid input or plan (nothing written); 6 conflict (a key already used); 7 server, network, permission or missing migration.
+- **Machine-readable description.** `alarm-cal help --json` (commands, options, exit codes, plan schema) and `alarm-cal schema [plan|commands]`. The plan's JSON Schema is also committed as `cli/plan.schema.json`, regenerated by every build from the same zod schema the tool validates with.
+- **Prayers** are settings, not alarms: `alarm-cal settings set prayers_enabled true`, `latitude`, `longitude`, and so on. The CLI never creates prayer rows, and prayers ignore modes and passes.
+
+## Commands
+
+See `alarm-cal help` or `.claude/skills/alarm-calendar/references/commands.md`. In short:
+
+```
+login | logout | whoami | config show|set|unset
+events list|get|add|update|disable|enable      occurrences      stats      passes
+modes list | modes rule set | modes switch | modes normal | modes range add|remove
+exams list|add|update|remove                    settings get|set
+plan check|diff|apply <file|->                  undo [--steps n]      history
+help [--json]                                   schema [plan|commands]
+```
+
+Examples:
+
+```
+alarm-cal events add --title "Push day" --time 07:30 --days mon,wed,fri --duration 60 --key workout/push-day
+alarm-cal events update workout/push-day --time 08:00
+alarm-cal events disable --key-prefix workout/          # the whole workout off
+alarm-cal modes rule set sick workout/push-day skip      # paused on sick days
+alarm-cal modes switch sick --since today --until 2026-11-12
+alarm-cal modes normal
+alarm-cal exams add --title "Maths final" --date 2026-12-10 --difficulty hard --key exams/maths
+alarm-cal settings set grace_minutes 15
+alarm-cal occurrences --from 2026-11-09 --to 2026-11-15 --json
+alarm-cal undo
+```
+
+Alarms are addressed by id, an 8+ character id prefix, or agent key. `events add|update` take the form's fields as flags (`--title --notes --time --start --at --duration --repeat --every --unit --days --ends --max-snoozes --snooze-minutes --passable/--no-passable --color --show-in-calendar/--no-show-in-calendar --key`). `modes rule set <mode> <event> keep|skip|inherit|shift <±min>|shorten <min>`; `inherit` removes the alarm's own rule. `modes switch` can begin up to 7 days back (`--since today` is "since this morning"). `exams add|update|remove` use the app's own planning and diff code (`packages/core/src/exam-plan.ts`, moved from the app), so the exam alarm, revision sessions and edit-by-diff are the same.
+
+## Plans
+
+A plan is a JSON file: a `namespace`, `prune`, and items keyed by agent key (`workout/push-day`). Each item is an alarm in friendly terms plus what it does under each mode.
+
+```json
+{
+  "namespace": "workout",
+  "prune": true,
+  "items": {
+    "workout/push-day": {
+      "title": "Push day", "time": "07:30", "duration": "1h", "days": ["mon", "thu"], "maxSnoozes": 1, "color": "blue",
+      "modes": { "sick": "skip", "vacation": "skip", "exam": { "shorten": 30 }, "ramadan": { "shift": 660 } }
+    }
+  }
+}
+```
+
+- `plan check <file>` validates the file (works offline and reports every problem with its path; when signed in it also resolves times, modes and keys and prints warnings such as a `skip` rule on a non-passable alarm).
+- `plan diff <file>` shows `create` / `update` / `enable` / `disable` / `unchanged` per alarm, field-level changes (`time: "07:30" -> "08:00"`) and rule changes, without writing.
+- `plan apply <file>` does it: creates missing alarms, updates only the changed columns of existing ones (same id, so history stays), leaves identical ones alone, switches an alarm back on if its key is in the plan again, writes mode rules, and with `prune` switches off keyed alarms of that namespace that left the plan. Applying twice changes nothing the second time (an existing alarm keeps its start date, so "today" does not creep).
+- The item is the whole desired state: a field left out returns to the app's default. Rules only for modes listed in `modes`.
+
+Full field reference: `.claude/skills/alarm-calendar/references/plan-format.md`. Ready-made plans: `references/workout.plan.json`, `medication.plan.json`, `study.plan.json`, `birthdays.plan.json` (all of them are applied to an empty calendar in the tests).
+
+## Limits
+
+- Plans cover alarms and their mode rules. Exams, modes' ranges and settings have their own commands. Custom modes cannot be created from the CLI (rules can name one that exists).
+- An alarm made by an agent birthday template is two plain yearly alarms (no `group_id`), so the app edits them separately.
+- `passes` reads the wallet row; a weekly grant shows up after the app next syncs.
+- Undo restores the rows it recorded and refuses (exit 6) when something changed them since, unless `--force`. Hard deletes never happen, so nothing is lost.
+- The session file holds a refresh token. It is private to your user (the restrictive ACL or mode is re-applied on every write), never printed, and `alarm-cal logout` revokes it.
+- A plan file or standard-input plan is limited to 1 MB and 200 items; `--key-prefix` must not be empty.
+
+## Tests
+
+`pnpm --filter @alarm-calendar/cli test` (or `task cli:test`): plan schema, friendly-to-row mapping (zones, DST, weekday alignment, presets), diff and idempotency, prune, mode rules, undo round trips, sign-in and refresh against a fake GoTrue with the real supabase-js, argument parsing, JSON output, the skill's examples, and limits (plan size and item count, empty key prefix), lock files, and a smoke test of the bundled binary (`node cli/dist/alarm-cal.cjs help --json`).

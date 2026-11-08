@@ -8,6 +8,12 @@ export * from './habits';
 export * from './exams';
 export * from './modes';
 export * from './holidays';
+export * from './wall-time';
+export * from './event-colors';
+export * from './repeat-presets';
+export * from './event-form-values';
+export * from './exam-plan';
+export * from './settings-columns';
 export { instantMs } from './instant';
 export * from './schedule';
 export {

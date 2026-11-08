@@ -2,6 +2,7 @@ packages:
   - 'packages/*'
   - 'app'
   - 'electron'
+  - 'cli'
 allowBuilds:
   esbuild: true
   electron: true
