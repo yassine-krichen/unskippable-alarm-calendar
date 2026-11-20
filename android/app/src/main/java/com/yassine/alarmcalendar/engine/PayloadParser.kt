@@ -19,6 +19,7 @@ object PayloadParser {
     const val MAX_EVENTS = 5000
     const val MAX_LOOKBACK_MINUTES = 7 * 24 * 60
     const val MAX_SHIFT_MS = 12 * 60 * Instants.MS_PER_MINUTE
+    const val MAX_PRAYER_WINDOW_MS = 24 * 60 * Instants.MS_PER_MINUTE
 
     private val SOUND_ID = Regex("^[a-z0-9-]{1,32}$")
     private val KINDS = setOf("normal", "prayer", "pre_prayer")
@@ -130,6 +131,11 @@ object PayloadParser {
                 null
             }
         }
+        // A window end that is not after the prayer, or is more than a day later, is not one core produced: read as
+        // absent, so the prayer rings as a plain alarm instead of being refused (a silent prayer is the worse failure).
+        val windowEndMs = (json.opt("windowEnd") as? String)?.let(Instants::parse)?.takeIf {
+            it > parsedId.atMs && it - parsedId.atMs <= MAX_PRAYER_WINDOW_MS
+        }
         return ScheduleOccurrence(
             id = id,
             eventId = parsedId.eventId,
@@ -141,6 +147,7 @@ object PayloadParser {
             originalAtMs = originalAt?.let(Instants::parse),
             label = (json.opt("label") as? String)?.takeIf { it.length in 1..200 },
             labelIfUnlogged = unlogged,
+            windowEndMs = windowEndMs,
         )
     }
 
@@ -168,6 +175,7 @@ object PayloadParser {
                 .put("silenced", o.silenced).put("completed", o.completed)
             o.originalAt?.let { json.put("originalAt", it) }
             o.label?.let { json.put("label", it) }
+            o.windowEndMs?.let { json.put("windowEnd", Instants.format(it)) }
             o.labelIfUnlogged?.let { json.put("labelIfUnlogged", JSONObject().put("id", it.id).put("label", it.label)) }
             occurrences.put(json)
         }

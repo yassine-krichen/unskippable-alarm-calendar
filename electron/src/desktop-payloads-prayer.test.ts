@@ -94,13 +94,80 @@ describe('parseSchedulePayload, prayer times', () => {
   });
 
   it('keeps a labelIfUnlogged instruction untouched', () => {
+    // core no longer builds one while the previous prayer has a window, but an older app's push still carries them.
     const payload = build();
-    const withInstruction = payload.occurrences.filter((occurrence) => occurrence.labelIfUnlogged !== undefined);
-    expect(withInstruction.length).toBeGreaterThan(0);
-    const parsed = parseSchedulePayload(payload);
-    expect(parsed.ok && parsed.version === 2 && parsed.value.occurrences.filter((o) => o.labelIfUnlogged !== undefined)).toEqual(
-      withInstruction
+    const target = payload.occurrences.find((occurrence) => occurrence.eventId === PRE_ID)!;
+    const instruction = { id: `${PRAYER_ID}@${NOW.toISOString()}`, label: "You haven't logged Dhuhr" };
+    const withInstruction = {
+      ...payload,
+      occurrences: payload.occurrences.map((o) => (o === target ? { ...o, labelIfUnlogged: instruction } : o)),
+    };
+    const parsed = parseSchedulePayload(withInstruction);
+    expect(parsed.ok && parsed.version === 2 && parsed.value.occurrences.find((o) => o.id === target.id)?.labelIfUnlogged).toEqual(
+      instruction
     );
+  });
+
+  describe('the prayer window', () => {
+    const windowed = (occurrences: ReturnType<typeof build>['occurrences']) =>
+      occurrences.filter((o) => o.windowEnd !== undefined);
+
+    it("keeps windowEnd on a prayer through parse, so main's own ring keeps Later and Can't now", () => {
+      const payload = build();
+      expect(windowed(payload.occurrences).length).toBeGreaterThan(0);
+      expect(windowed(payload.occurrences).every((o) => o.eventId === PRAYER_ID || o.eventId === FAJR_ID)).toBe(true);
+      const parsed = parseSchedulePayload(payload);
+      expect(parsed.ok && parsed.version === 2 && windowed(parsed.value.occurrences)).toEqual(windowed(payload.occurrences));
+    });
+
+    it('reads an unusable windowEnd as absent instead of dropping the prayer', () => {
+      const payload = build();
+      const first = windowed(payload.occurrences)[0]!;
+      const tampered = (windowEnd: unknown) => ({
+        ...payload,
+        occurrences: payload.occurrences.map((o) => (o === first ? { ...o, windowEnd } : o)),
+      });
+      const day = 24 * 60 * 60_000;
+      for (const bad of [
+        'not a time',
+        first.at, // not after the prayer
+        new Date(Date.parse(first.at) - 60_000).toISOString(),
+        new Date(Date.parse(first.at) + day + 1000).toISOString(), // more than a day later
+        42,
+      ]) {
+        const parsed = parseSchedulePayload(tampered(bad));
+        expect(parsed.ok, String(bad)).toBe(true);
+        if (!parsed.ok || parsed.version !== 2) continue;
+        expect(parsed.dropped.occurrences, String(bad)).toBe(0);
+        const kept = parsed.value.occurrences.find((o) => o.id === first.id);
+        expect(kept, String(bad)).toBeDefined();
+        expect('windowEnd' in kept!, String(bad)).toBe(false);
+      }
+    });
+
+    it('accepts a window of exactly a day', () => {
+      const payload = build();
+      const first = windowed(payload.occurrences)[0]!;
+      const end = new Date(Date.parse(first.at) + 24 * 60 * 60_000).toISOString();
+      const parsed = parseSchedulePayload({
+        ...payload,
+        occurrences: payload.occurrences.map((o) => (o === first ? { ...o, windowEnd: end } : o)),
+      });
+      expect(parsed.ok && parsed.version === 2 && parsed.value.occurrences.find((o) => o.id === first.id)?.windowEnd).toBe(end);
+    });
+  });
+
+  describe('the Fajr reminder switch', () => {
+    it('survives parse, so a refill from the parsed settings still leaves the Fajr reminder out', () => {
+      const parsed = parseSchedulePayload({ ...build(), settings: { ...SETTINGS, pre_prayer_skip_fajr: true } });
+      expect(parsed.ok && parsed.version === 2 && parsed.value.settings.pre_prayer_skip_fajr).toBe(true);
+    });
+
+    it('reads a malformed value as absent instead of rejecting the push', () => {
+      const parsed = parseSchedulePayload({ ...build(), settings: { ...SETTINGS, pre_prayer_skip_fajr: 'yes' } });
+      expect(parsed.ok).toBe(true);
+      expect(parsed.ok && parsed.version === 2 && parsed.value.settings.pre_prayer_skip_fajr).toBeUndefined();
+    });
   });
 
   it('drops an occurrence whose label is empty or whose conditional text names no occurrence', () => {

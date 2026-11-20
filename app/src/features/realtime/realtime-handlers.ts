@@ -155,6 +155,7 @@ function prayerFieldsOf(row: Record<string, unknown>): Partial<PrayerSettings> {
   const fields: Record<string, unknown> = {};
   if (typeof row.prayers_enabled === 'boolean') fields.prayers_enabled = row.prayers_enabled;
   if (typeof row.show_prayers_in_calendar === 'boolean') fields.show_prayers_in_calendar = row.show_prayers_in_calendar;
+  if (typeof row.pre_prayer_skip_fajr === 'boolean') fields.pre_prayer_skip_fajr = row.pre_prayer_skip_fajr;
   if (row.prayers_enabled_since === null || typeof row.prayers_enabled_since === 'string') {
     if ('prayers_enabled_since' in row) fields.prayers_enabled_since = row.prayers_enabled_since;
   }

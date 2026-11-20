@@ -1,5 +1,5 @@
 {
-  "source": "Aladhan API https://api.aladhan.com/v1/timings (custom method 99: Fajr and Isha angles, school = Asr factor), local clock times in the given zone; asrNoaa is an independent computation (NOAA solar position at the Asr instant, no adhan code).",
+  "source": "Aladhan API https://api.aladhan.com/v1/timings (custom method 99: Fajr and Isha angles, school = Asr factor), local clock times in the given zone; asrNoaa is an independent computation (NOAA solar position at the Asr instant, no adhan code). Sunrise and midnight were added later: midnight is Aladhan's midnightMode=1 (halfway from Maghrib to the next Fajr, the definition the app uses for the end of Isha), not its default (sunset to sunrise).",
   "fetchedAt": "2026-10-06T04:18:58.711Z",
   "toleranceMinutes": {
     "default": 1,
@@ -20,7 +20,9 @@
         "dhuhr": "12:23",
         "asr": "14:55",
         "maghrib": "17:14",
-        "isha": "18:46"
+        "isha": "18:46",
+        "sunrise": "07:32",
+        "midnight": "23:36"
       },
       "asrNoaa": "14:56"
     },
@@ -38,7 +40,9 @@
         "dhuhr": "12:29",
         "asr": "15:06",
         "maghrib": "17:26",
-        "isha": "18:58"
+        "isha": "18:58",
+        "sunrise": "07:31",
+        "midnight": "23:43"
       },
       "asrNoaa": "15:07"
     },
@@ -56,7 +60,9 @@
         "dhuhr": "12:27",
         "asr": "15:52",
         "maghrib": "18:31",
-        "isha": "19:58"
+        "isha": "19:58",
+        "sunrise": "06:23",
+        "midnight": "23:44"
       },
       "asrNoaa": "15:53"
     },
@@ -74,7 +80,9 @@
         "dhuhr": "12:16",
         "asr": "16:02",
         "maghrib": "19:08",
-        "isha": "20:45"
+        "isha": "20:45",
+        "sunrise": "05:25",
+        "midnight": "23:28"
       },
       "asrNoaa": "16:03"
     },
@@ -92,7 +100,9 @@
         "dhuhr": "12:21",
         "asr": "16:13",
         "maghrib": "19:42",
-        "isha": "21:34"
+        "isha": "21:34",
+        "sunrise": "05:00",
+        "midnight": "23:25"
       },
       "asrNoaa": "16:13"
     },
@@ -110,7 +120,9 @@
         "dhuhr": "12:25",
         "asr": "16:17",
         "maghrib": "19:38",
-        "isha": "21:26"
+        "isha": "21:26",
+        "sunrise": "05:12",
+        "midnight": "23:31"
       },
       "asrNoaa": "16:16"
     },
@@ -128,7 +140,9 @@
         "dhuhr": "12:12",
         "asr": "15:39",
         "maghrib": "18:15",
-        "isha": "19:41"
+        "isha": "19:41",
+        "sunrise": "06:08",
+        "midnight": "23:28"
       },
       "asrNoaa": "15:38"
     },
@@ -146,7 +160,9 @@
         "dhuhr": "12:07",
         "asr": "15:25",
         "maghrib": "17:55",
-        "isha": "19:21"
+        "isha": "19:21",
+        "sunrise": "06:19",
+        "midnight": "23:24"
       },
       "asrNoaa": "15:24"
     },
@@ -164,7 +180,9 @@
         "dhuhr": "12:17",
         "asr": "14:48",
         "maghrib": "17:06",
-        "isha": "18:39"
+        "isha": "18:39",
+        "sunrise": "07:28",
+        "midnight": "23:31"
       },
       "asrNoaa": "14:49"
     },
@@ -182,7 +200,9 @@
         "dhuhr": "12:32",
         "asr": "15:42",
         "maghrib": "18:12",
-        "isha": "19:38"
+        "isha": "19:38",
+        "sunrise": "06:52",
+        "midnight": "23:49"
       },
       "asrNoaa": "15:43"
     },
@@ -200,7 +220,9 @@
         "dhuhr": "12:21",
         "asr": "17:28",
         "maghrib": "19:42",
-        "isha": "21:34"
+        "isha": "21:34",
+        "sunrise": "05:00",
+        "midnight": "23:25"
       },
       "asrNoaa": "17:28"
     },
@@ -218,7 +240,9 @@
         "dhuhr": "12:17",
         "asr": "15:27",
         "maghrib": "17:06",
-        "isha": "18:39"
+        "isha": "18:39",
+        "sunrise": "07:28",
+        "midnight": "23:31"
       },
       "asrNoaa": "15:27"
     },
@@ -236,7 +260,9 @@
         "dhuhr": "13:20",
         "asr": "16:51",
         "maghrib": "19:35",
-        "isha": "21:08"
+        "isha": "21:08",
+        "sunrise": "07:05",
+        "midnight": "00:34"
       },
       "asrNoaa": "16:52"
     },
@@ -254,7 +280,9 @@
         "dhuhr": "14:20",
         "asr": "17:51",
         "maghrib": "20:36",
-        "isha": "22:09"
+        "isha": "22:09",
+        "sunrise": "08:04",
+        "midnight": "01:34"
       },
       "asrNoaa": "17:52"
     },
@@ -272,7 +300,9 @@
         "dhuhr": "14:19",
         "asr": "17:51",
         "maghrib": "20:37",
-        "isha": "22:10"
+        "isha": "22:10",
+        "sunrise": "08:02",
+        "midnight": "01:33"
       },
       "asrNoaa": "17:52"
     },
@@ -290,7 +320,9 @@
         "dhuhr": "13:59",
         "asr": "16:57",
         "maghrib": "19:22",
-        "isha": "20:53"
+        "isha": "20:53",
+        "sunrise": "08:35",
+        "midnight": "01:13"
       },
       "asrNoaa": "16:56"
     },
@@ -308,7 +340,9 @@
         "dhuhr": "12:59",
         "asr": "15:56",
         "maghrib": "18:21",
-        "isha": "19:52"
+        "isha": "19:52",
+        "sunrise": "07:36",
+        "midnight": "00:13"
       },
       "asrNoaa": "15:55"
     },
@@ -326,7 +360,9 @@
         "dhuhr": "12:59",
         "asr": "15:55",
         "maghrib": "18:19",
-        "isha": "19:51"
+        "isha": "19:51",
+        "sunrise": "07:38",
+        "midnight": "00:13"
       },
       "asrNoaa": "15:54"
     },
@@ -344,7 +380,9 @@
         "dhuhr": "11:54",
         "asr": "15:16",
         "maghrib": "17:47",
-        "isha": "19:02"
+        "isha": "19:02",
+        "sunrise": "06:01",
+        "midnight": "23:13"
       },
       "asrNoaa": "15:16"
     },
@@ -362,7 +400,9 @@
         "dhuhr": "12:23",
         "asr": "14:54",
         "maghrib": "17:12",
-        "isha": "18:40"
+        "isha": "18:40",
+        "sunrise": "07:34",
+        "midnight": "23:36"
       },
       "asrNoaa": "14:54"
     },
@@ -380,7 +420,9 @@
         "dhuhr": "13:19",
         "asr": "17:11",
         "maghrib": "20:40",
-        "isha": "22:24"
+        "isha": "22:24",
+        "sunrise": "05:58",
+        "midnight": "00:23"
       },
       "asrNoaa": "17:11"
     },
@@ -398,7 +440,9 @@
         "dhuhr": "12:55",
         "asr": "16:40",
         "maghrib": "20:08",
-        "isha": "21:32"
+        "isha": "21:32",
+        "sunrise": "05:42",
+        "midnight": "00:13"
       },
       "asrNoaa": "16:40"
     },
@@ -416,7 +460,9 @@
         "dhuhr": "11:51",
         "asr": "14:30",
         "maghrib": "16:48",
-        "isha": "18:02"
+        "isha": "18:02",
+        "sunrise": "06:55",
+        "midnight": "23:14"
       },
       "asrNoaa": "14:30"
     }

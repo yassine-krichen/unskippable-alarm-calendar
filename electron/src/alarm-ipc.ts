@@ -7,6 +7,8 @@ export const ALARM_CHANNELS = {
   get: 'alarm:get',
   done: 'alarm:done',
   snooze: 'alarm:snooze',
+  later: 'alarm:later',
+  cantNow: 'alarm:cant-now',
   customSound: 'alarm:custom-sound',
 } as const;
 

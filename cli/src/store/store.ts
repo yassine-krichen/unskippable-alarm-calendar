@@ -80,4 +80,11 @@ export interface Store {
   getWallet(): Promise<WalletView | null>;
   /** Completions whose occurrence is at or after `sinceIso`; `complete` is false when the read was cut short. */
   listCompletions(sinceIso: string): Promise<{ rows: CompletionRow[]; complete: boolean }>;
+  /**
+   * Writes a 'done' completion (a made-up prayer: `doneAt` is after its window). A completion already there for
+   * that occurrence is a conflict, never overwritten: the first write wins, as in the apps.
+   */
+  insertCompletion(input: { event_id: string; occurrence_at: string; done_at: string }): Promise<CompletionRow>;
+  /** Removes one completion by id (undo of insertCompletion). */
+  deleteCompletion(id: string): Promise<void>;
 }

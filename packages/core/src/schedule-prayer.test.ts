@@ -6,6 +6,7 @@ import {
   DEFAULT_PRAYER_SETTINGS,
   PRAYER_NAMES,
   prayerTimesOnDay,
+  prayerWindowEnd,
   resolvePrayerConfig,
 } from './prayer-times';
 import { buildSchedulePayload, expandSchedule, makeOccurrenceId } from './schedule';
@@ -29,6 +30,8 @@ const SETTINGS: AlarmSettings = {
   ...DEFAULT_PRAYER_SETTINGS,
   prayers_enabled: true,
   prayers_enabled_since: '2026-09-01T00:00:00.000Z',
+  // These tests count every reminder; the skip has its own test.
+  pre_prayer_skip_fajr: false,
 };
 
 const config = resolvePrayerConfig(SETTINGS)!;
@@ -265,13 +268,25 @@ describe('pre-prayer alarm text', () => {
     expect(occurrence.labelIfUnlogged).toBeUndefined();
   });
 
-  it('hands the engine the unlogged text when the previous prayer already passed with no Done', () => {
+  it('leaves the unlogged text out when the previous prayer has a window: its last call already rang', () => {
+    // Dhuhr's last call is Asr - 20 min, five minutes before the Asr reminder.
     const occurrence = pre(AFTER_DHUHR, '2026-10-06', 'asr');
-    // The engine decides at ring time: a Done made after this list was built must still win.
     expect(occurrence.label).toBe('Asr in 15 min');
-    expect(occurrence.labelIfUnlogged).toEqual({
-      id: makeOccurrenceId(prayerId('prayer', 'dhuhr'), prayerInstant('2026-10-06', 'dhuhr')),
-      label: "You haven't logged Dhuhr — you have until Asr",
+    expect(occurrence.labelIfUnlogged).toBeUndefined();
+  });
+
+  describe('a prayer whose offsets make its window empty', () => {
+    // Maghrib pushed an hour later and Isha an hour earlier: Maghrib's window ends before it starts.
+    const crossing = { ...SETTINGS, maghrib_offset_min: 60, isha_offset_min: -60 };
+    const crossingConfig = resolvePrayerConfig(crossing)!;
+    const maghribAt = prayerTimesOnDay(crossingConfig, dayNumberFromDateString('2026-10-06')).maghrib;
+    it('gives Maghrib no window, so it offers no Later / Can\'t now', () => {
+      expect(prayerWindowEnd(crossingConfig, 'maghrib', maghribAt, TZ)).toBeNull();
+      const maghrib = occurrencesOf(expand(ALL_PRAYER_EVENTS, { now: MORNING, settings: crossing }), 'prayer', 'maghrib')[0];
+      expect(maghrib?.windowEnd).toBeUndefined();
+      // The other prayers still have theirs.
+      const dhuhr = occurrencesOf(expand(ALL_PRAYER_EVENTS, { now: MORNING, settings: crossing }), 'prayer', 'dhuhr')[0];
+      expect(dhuhr?.windowEnd).toBeDefined();
     });
   });
 
@@ -282,34 +297,17 @@ describe('pre-prayer alarm text', () => {
     expect(occurrence.label).toBe('Asr in 15 min');
   });
 
-  it('lets the engine decide when the previous prayer is still to come', () => {
+  it('is plain too when the previous prayer is still to come', () => {
     const occurrence = pre(MORNING, '2026-10-06', 'asr');
     expect(occurrence.label).toBe('Asr in 15 min');
-    expect(occurrence.labelIfUnlogged).toEqual({
-      id: makeOccurrenceId(prayerId('prayer', 'dhuhr'), prayerInstant('2026-10-06', 'dhuhr')),
-      label: "You haven't logged Dhuhr — you have until Asr",
-    });
+    expect(occurrence.labelIfUnlogged).toBeUndefined();
   });
 
-  it('uses the previous day Isha for the Fajr reminder', () => {
-    const occurrence = pre(MORNING, '2026-10-07', 'fajr');
-    expect(occurrence.labelIfUnlogged).toEqual({
-      id: makeOccurrenceId(prayerId('prayer', 'isha'), prayerInstant('2026-10-06', 'isha')),
-      label: "You haven't logged Isha — you have until Fajr",
-    });
-    // Already past and not logged: still left to the engine.
+  it('is plain for the Fajr and Dhuhr reminders as well: Isha and Fajr have their own last calls', () => {
     const lateNight = new Date(prayerInstant('2026-10-06', 'isha').getTime() + 30 * MINUTE);
-    expect(pre(lateNight, '2026-10-07', 'fajr').labelIfUnlogged?.label).toBe("You haven't logged Isha — you have until Fajr");
-  });
-
-  it('says Fajr ended at sunrise in the Dhuhr reminder', () => {
-    expect(pre(AFTER_DHUHR, '2026-10-07', 'dhuhr').labelIfUnlogged?.label).toBe(
-      "You haven't logged Fajr — its time ended at sunrise"
-    );
-    const justBeforeDhuhr = new Date(prayerInstant('2026-10-06', 'dhuhr').getTime() - 20 * MINUTE);
-    expect(pre(justBeforeDhuhr, '2026-10-06', 'dhuhr').labelIfUnlogged?.label).toBe(
-      "You haven't logged Fajr — its time ended at sunrise"
-    );
+    expect(pre(MORNING, '2026-10-07', 'fajr').labelIfUnlogged).toBeUndefined();
+    expect(pre(lateNight, '2026-10-07', 'fajr').labelIfUnlogged).toBeUndefined();
+    expect(pre(AFTER_DHUHR, '2026-10-07', 'dhuhr').labelIfUnlogged).toBeUndefined();
   });
 
   it('ignores prayers from before prayers were switched on', () => {

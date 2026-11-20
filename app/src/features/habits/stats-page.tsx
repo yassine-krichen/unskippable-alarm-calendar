@@ -7,7 +7,17 @@ import {
   type HabitStats,
   type HabitsReport,
 } from '@alarm-calendar/core';
-import { ArrowLeftIcon, CheckIcon, FlameIcon, PauseIcon, RepeatIcon, TicketIcon, XIcon } from 'lucide-react';
+import {
+  ArrowLeftIcon,
+  CheckIcon,
+  ClockIcon,
+  FlameIcon,
+  HistoryIcon,
+  PauseIcon,
+  RepeatIcon,
+  TicketIcon,
+  XIcon,
+} from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useNavigate } from 'react-router';
 
@@ -21,6 +31,7 @@ import { useEventsStore } from '@/features/events/events-store';
 
 import { sortHabits, unrankedProgress, weeksLabel } from './habit-view';
 import { loadHabitCompletions, useHabitCompletionsStore } from './habits-store';
+import { QadaList } from './qada-list';
 import { TierBadge } from './tier-badge';
 import { RANKED_TIERS_DESCENDING, TIER_META } from './tier-meta';
 import { useHabitsReport } from './use-habits-report';
@@ -179,7 +190,7 @@ function HabitRow({ habit }: { habit: HabitStats }) {
       </div>
       {pooledPrayer ? (
         <p className="text-sm text-muted-foreground">
-          Fajr, Dhuhr, Asr, Maghrib and Isha together. A day counts when you prayed all of them.
+          Fajr, Dhuhr, Asr, Maghrib and Isha together. A day counts when you prayed all of them within their time.
         </p>
       ) : null}
 
@@ -196,8 +207,19 @@ function HabitRow({ habit }: { habit: HabitStats }) {
       )}
 
       <dl className="flex flex-wrap gap-x-5 gap-y-1.5 text-sm">
-        <Stat icon={CheckIcon} label="Done" value={habit.done} />
-        <Stat icon={XIcon} label="Missed" value={habit.missed} />
+        {habit.prayerTimings !== undefined ? (
+          <>
+            <Stat icon={CheckIcon} label="On time" value={habit.prayerTimings.onTime} />
+            <Stat icon={ClockIcon} label="Late" value={habit.prayerTimings.late} />
+            <Stat icon={HistoryIcon} label="Made up" value={habit.prayerTimings.qada} />
+            <Stat icon={XIcon} label="Missed" value={habit.missed} />
+          </>
+        ) : (
+          <>
+            <Stat icon={CheckIcon} label="Done" value={habit.done} />
+            <Stat icon={XIcon} label="Missed" value={habit.missed} />
+          </>
+        )}
         <Stat icon={TicketIcon} label="Excused" value={habit.excused} />
         {habit.paused > 0 ? <Stat icon={PauseIcon} label="Paused" value={habit.paused} /> : null}
         <Stat icon={FlameIcon} label={pooledPrayer ? 'Day streak' : 'Streak'} value={habit.currentStreak} />
@@ -207,6 +229,7 @@ function HabitRow({ habit }: { habit: HabitStats }) {
           value={habit.bestStreak}
         />
       </dl>
+      {pooledPrayer ? <QadaList /> : null}
     </div>
   );
 }
@@ -259,12 +282,15 @@ function HowRanksWork() {
       <p className="max-w-prose text-sm text-muted-foreground">
         Only repeating alarms count; yearly alarms such as birthdays and anniversaries are not ranked. The five daily
         prayers are one habit, Prayer: its score pools all five, and a day is done only when every prayer of that day
-        is, so one missed prayer ends the day streak. Each other alarm is scored over the last {MIN_WEEKS}, or over five of its own repeat periods
-        if that is longer (up to {MAX_WEEKS}), so a weekly or monthly alarm can be ranked too. A done alarm earns full
-        credit, each snooze costs a little, and a miss counts double. Recent alarms weigh more. Cheat days, alarms
-        paused by a mode (Sick, Vacation and the like) and alarms still inside their late window are left out. A
-        streak is a run of done alarms over the same window; a cheat day or a paused alarm keeps it going without
-        adding to it.
+        is, so one prayer that ran out unprayed ends the day streak. A prayer is scored by when you prayed it: within
+        15 minutes of its time is full credit, later inside its time is 80%, and a prayer made up after its time
+        (qada) is 50% and keeps the streak going without adding to it. Each prayer stays open until its time ends
+        (Fajr at sunrise, Isha at Islamic midnight, the others at the next prayer). Each other alarm is scored over
+        the last {MIN_WEEKS}, or over five of its own repeat periods if that is longer (up to {MAX_WEEKS}), so a
+        weekly or monthly alarm can be ranked too. A done alarm earns full credit, each snooze costs a little, and a
+        miss counts double. Recent alarms weigh more. Cheat days, alarms paused by a mode (Sick, Vacation and the
+        like) and alarms still inside their late window are left out. A streak is a run of done alarms over the same
+        window; a cheat day or a paused alarm keeps it going without adding to it.
       </p>
       <ul className="grid gap-2 sm:grid-cols-2">
         {RANKED_TIERS_DESCENDING.map((tier) => (

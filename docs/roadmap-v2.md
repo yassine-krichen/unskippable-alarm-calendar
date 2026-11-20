@@ -129,6 +129,15 @@ Owner request: show Tunisian holidays on the calendar (any country if it can be 
 - Islamic holidays come from `Intl` (Umm al-Qura), checked against published tables for 1446 to 1449 AH. Ramadan is a faint green run with its first day chipped; Eid dates the country also gives off are merged into one "Public holiday" entry.
 - The Ramadan mode can fill its planned dates from the computed Ramadan.
 
+## Feedback round 3 (2026-11-20): honest prayers
+
+Owner request: a prayer should not be "done" just because Done was pressed at any time, and an alarm that cannot be answered right now needs a way to be put off without being skipped. Needs migration `20261120170000_prayer_windows` pushed before the new app build (the app selects the new settings column). Choices and reasons in `docs/decisions.md`.
+
+- **Windows.** Each prayer is open until the next begins (Fajr until sunrise, Isha until the Islamic midnight). The schedule list carries `windowEnd`; both engines dismiss the prayer then, with no completion.
+- **Later / Can't now.** Prayers show Prayed, Later (+20, +40, +60, unlimited, only while it still ends 10 minutes before the window does) and Can't now (quiet until the last call, 20 minutes before the end; then it gives up). Device-local, nothing synced.
+- **Qada.** A missed prayer made up afterwards is a normal done completion whose `done_at` falls after the window. On time (within 15 minutes) 1.0, late 0.8, qada 0.5, unmade miss 0 and double weight. A qada day keeps the prayer streak alive without adding to it. Stats lists the open qadas (28 days) with a "Made up" button; the CLI has `prayers`, `qada list` and `qada done` (undoable).
+- **Quieter nights.** The reminder before Fajr is off by default (`settings.pre_prayer_skip_fajr`); the "you haven't logged X" reminder text is gone for prayers with a window, because the last call already said it. `prayer_max_snoozes` now governs the reminders only.
+
 ## Deferred
 
 - Leaderboards and anything social.

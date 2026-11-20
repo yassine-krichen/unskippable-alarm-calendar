@@ -28,6 +28,12 @@ data class ScheduleOccurrence(
     val originalAtMs: Long?,
     val label: String?,
     val labelIfUnlogged: UnloggedLabel?,
+    /**
+     * Only for a prayer: when its window closes. Present means Later / Can't now replace the snooze and the alarm
+     * is dismissed with no completion at this instant; absent means the plain alarm rules. The parser drops a
+     * value that is not after `at` or more than a day later.
+     */
+    val windowEndMs: Long? = null,
 )
 
 data class EventInfo(
@@ -74,6 +80,10 @@ class OccurrenceState(
     var kind: String?,
     /** True when `title` is the occurrence's own text (a pre-prayer label), not the event's title. */
     var labelled: Boolean,
+    /** A prayer with a window: its own copy of the window end (the list moves on while it rings). Null otherwise. */
+    var windowEndMs: Long? = null,
+    /** True once Can't now quieted it until the last call: the next Can't now gives the prayer up. */
+    var lastCall: Boolean = false,
 ) {
     val occurrenceId: String get() = "$eventId@$occurrenceAt"
     val occurrenceAtMs: Long get() = Instants.parse(occurrenceAt) ?: 0L
@@ -114,4 +124,10 @@ data class AlarmView(
     val kind: String?,
     val snoozesUsed: Int,
     val snoozesLeft: Int,
+    /** A prayer with a window: the Later buttons (minutes, ascending, maybe empty). Null for every other alarm. */
+    val laterMinutes: List<Int>? = null,
+    /** A prayer with a window: [EngineCore.CANT_NOW_UNTIL_LAST_CALL] or [EngineCore.CANT_NOW_GIVE_UP]. */
+    val cantNow: String? = null,
+    val windowEndMs: Long? = null,
+    val lastCallAtMs: Long? = null,
 )

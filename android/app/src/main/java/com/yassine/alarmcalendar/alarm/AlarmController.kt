@@ -44,6 +44,18 @@ object AlarmController {
         afterChange(context)
     }
 
+    /** Later on a prayer with a window: ring again after `minutes` (not a snooze). */
+    fun later(context: Context, occurrenceId: String, minutes: Int) {
+        AlarmHost.runtime(context).later(occurrenceId, minutes)
+        afterChange(context)
+    }
+
+    /** Can't now on a prayer with a window: quiet until the last call, or give the prayer up once it is that late. */
+    fun cantNow(context: Context, occurrenceId: String, shown: String) {
+        AlarmHost.runtime(context).cantNow(occurrenceId, shown)
+        afterChange(context)
+    }
+
     /** The alarm screen went away without Done or Snooze: ring again after the refire delay. */
     fun windowClosed(context: Context, occurrenceId: String) {
         AlarmHost.runtime(context).windowClosed(occurrenceId)

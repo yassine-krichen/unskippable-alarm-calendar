@@ -1,4 +1,4 @@
-import type { AlarmView } from '@alarm-calendar/core';
+import type { AlarmView, CantNowChoice } from '@alarm-calendar/core';
 import { AlarmClockIcon, CheckIcon } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router';
@@ -6,6 +6,8 @@ import { useSearchParams } from 'react-router';
 import { Button } from '@/components/ui/button';
 
 import { CUSTOM_SOUND_ID, DEFAULT_SOUND_ID, soundUrl } from './alarm-sounds';
+import { nextChoiceChangeMs } from './choice-changes';
+import { PrayerChoices } from './prayer-choices';
 
 type LoadState =
   | { kind: 'loading' }
@@ -18,10 +20,11 @@ function formatTime(iso: string): string {
 
 /**
  * The desktop alarm window (spec sections 6 and 9): what is ringing, when, and two ways out.
- * Done is the one primary action; Snooze is shown only while snoozes are left, and says how many.
+ * Done is the one primary action; Snooze is shown only while snoozes are left, and says how many. A prayer with a
+ * window shows Later and Can't now instead (see prayer-choices.tsx).
  * There is deliberately no close control: the window is the alarm, and main re-opens it if it
  * goes away without a choice. Always black and white, whatever the app theme. Laid out for the centered, semi-transparent
- * panel main opens (about 560x440), not for a full screen.
+ * panel main opens (about 560x540), not for a full screen.
  */
 export function AlarmScreen() {
   const [params] = useSearchParams();
@@ -106,13 +109,42 @@ export function AlarmScreen() {
     };
   }, [occurrenceId, startSound]);
 
-  async function choose(action: 'done' | 'snooze'): Promise<void> {
+  // A prayer's choices change with the clock (a Later option stops fitting, Can't now becomes the last call): redraw
+  // from main at the next such instant instead of leaving a stale button on screen.
+  const choices = state.kind === 'ready' ? state.view.prayerChoices : undefined;
+  useEffect(() => {
+    const api = window.alarmApi;
+    if (choices === undefined || api === undefined || occurrenceId === null) return;
+    const next = nextChoiceChangeMs(choices, Date.now());
+    if (next === null) return;
+    const timer = setTimeout(
+      () => {
+        api
+          .getAlarm(occurrenceId)
+          .then((view) => {
+            if (view !== null) setState({ kind: 'ready', view });
+          })
+          .catch(() => undefined);
+      },
+      next - Date.now() + 500
+    );
+    return () => clearTimeout(timer);
+  }, [choices, occurrenceId]);
+
+  async function choose(
+    action: 'done' | 'snooze' | { later: number } | { cantNow: CantNowChoice }
+  ): Promise<void> {
     const api = window.alarmApi;
     if (api === undefined || occurrenceId === null) return;
     setBusy(true);
     setProblem(null);
     try {
-      const result = await api[action](occurrenceId);
+      const result =
+        action === 'done' || action === 'snooze'
+          ? await api[action](occurrenceId)
+          : 'later' in action
+            ? await api.later(occurrenceId, action.later)
+            : await api.cantNow(occurrenceId, action.cantNow);
       if (result.ok) {
         // Main closes this window right after; stop the sound first so it never lingers.
         audioRef.current?.pause();
@@ -121,6 +153,10 @@ export function AlarmScreen() {
       // The state moved under us (for example the last snooze was just used): redraw from main.
       const view = await api.getAlarm(occurrenceId);
       if (view !== null) setState({ kind: 'ready', view });
+      if (typeof action === 'object' && 'cantNow' in action) {
+        // The button changed while it was on screen (it became the last call): nothing was given up.
+        setProblem('That button just changed. Check it and press again.');
+      }
     } catch {
       // This window is the only way out of the alarm: never leave its buttons dead.
       setProblem("That didn't work. Try again.");
@@ -166,6 +202,15 @@ export function AlarmScreen() {
               <CheckIcon className="size-6" />
               {state.view.kind === 'prayer' ? 'Prayed' : 'Done'}
             </Button>
+            {state.view.prayerChoices !== undefined ? (
+              <PrayerChoices
+                prayer={state.view.title}
+                choices={state.view.prayerChoices}
+                busy={busy}
+                onLater={(minutes) => void choose({ later: minutes })}
+                onCantNow={(shown) => void choose({ cantNow: shown })}
+              />
+            ) : null}
             {state.view.snoozeLabel !== null ? (
               <Button
                 size="lg"

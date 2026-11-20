@@ -34,6 +34,7 @@ import {
   parseSessionPayload,
   upgradeLegacyPayload,
 } from './desktop-payloads';
+import { parseCantNowRequest, parseLaterRequest } from './later-request';
 import { createLogger } from './logger';
 import { MainWindow } from './main-window';
 import { AlarmScheduler, realTimers } from './scheduler';
@@ -299,6 +300,26 @@ function registerAlarmIpc(
     const occurrenceId = authorize(event, payload);
     if (occurrenceId === null) return { ok: false };
     const ok = scheduler.snooze(occurrenceId);
+    if (ok) alarmWindows.close(occurrenceId);
+    return { ok };
+  });
+
+  ipcMain.handle(ALARM_CHANNELS.later, (event, payload: unknown): ActionResult => {
+    const request = parseLaterRequest(payload);
+    if (request === null) return { ok: false };
+    const occurrenceId = authorize(event, request.occurrenceId);
+    if (occurrenceId === null) return { ok: false };
+    const ok = scheduler.later(occurrenceId, request.minutes);
+    if (ok) alarmWindows.close(occurrenceId);
+    return { ok };
+  });
+
+  ipcMain.handle(ALARM_CHANNELS.cantNow, (event, payload: unknown): ActionResult => {
+    const request = parseCantNowRequest(payload);
+    if (request === null) return { ok: false };
+    const occurrenceId = authorize(event, request.occurrenceId);
+    if (occurrenceId === null) return { ok: false };
+    const ok = scheduler.cantNow(occurrenceId, request.shown);
     if (ok) alarmWindows.close(occurrenceId);
     return { ok };
   });

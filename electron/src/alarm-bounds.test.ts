@@ -6,8 +6,8 @@ import { alarmPanelBounds, type Rect } from './alarm-bounds';
 const WORK_AREA: Rect = { x: 1920, y: 40, width: 1600, height: 900 };
 
 describe('alarmPanelBounds', () => {
-  it('centers the 560x440 panel in the work area, offsets of the display included', () => {
-    expect(alarmPanelBounds(WORK_AREA, 0)).toEqual({ x: 2440, y: 270, width: 560, height: 440 });
+  it('centers the 560x540 panel in the work area, offsets of the display included', () => {
+    expect(alarmPanelBounds(WORK_AREA, 0)).toEqual({ x: 2440, y: 220, width: 560, height: 540 });
   });
 
   it('shrinks to 90% of a work area that is smaller than the panel', () => {

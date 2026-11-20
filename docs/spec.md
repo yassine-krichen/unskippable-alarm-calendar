@@ -196,13 +196,15 @@ An exam owns ordinary one-off alarms through `events.exam_id`: one at the exam (
 
 Unique `(event_id, occurrence_at)`. Writes are upserts so offline flushes are idempotent.
 
+Qada convention (windowed prayers, feedback round 3): a prayer made up after its window is an ordinary `status = 'done'` row whose `occurrence_at` is the prayer's own instant and whose `done_at` is when it was made up. Nothing else is stored: whether a done prayer was on time (within 15 minutes of its time), late (inside its window, plus 2 minutes of slack) or a qada (after the window) is derived from `done_at` against the computed window (`prayerTimingOf` in `packages/core/src/habits.ts`). First write wins, so a qada never overwrites a Prayed that reached the server first.
+
 **settings** (one row per user): `timezone` (IANA, default from device), `week_starts_on` (0 = Monday default), `refire_seconds` (default 120), `pass_cap` (default 2), `grace_minutes` (default 30).
 
 `exam_mode_days_before` (roadmap-v2 phase 5, default 10, 0 to 60, 0 = Exam mode does not start by itself).
 
 Holiday columns (display only, owner feedback round 2): `holiday_country` (ISO 3166-1 alpha-2 or null, check `^[A-Z]{2}$`), `islamic_holidays` (boolean, default false), `hijri_offset_days` (smallint, -2 to 2, default 0; shifts every computed Hijri date to follow the local moon sighting). Existing `Africa/Tunis` rows are migrated to TN with Islamic holidays on.
 
-Prayer columns (roadmap-v2 phase 3b), all with defaults for Ariana, Tunis: `prayers_enabled` (false), `prayers_enabled_since`, `latitude` (36.8625, range -65 to 65) / `longitude` (10.1956), `location_label`, `fajr_angle` / `isha_angle` (18, range 10 to 22), `asr_factor` (1 or 2), `fajr_offset_min` ... `isha_offset_min` (-60 to 60), `pre_prayer_minutes` (15, 0 to 120, 0 = no reminders), `prayer_max_snoozes` (0, 0 to 10), `prayer_snooze_minutes` (5, 1 to 120). The RPC `set_prayers_enabled(boolean)` switches them on (creating or re-activating the 10 rows) or off (deactivating them) in one transaction.
+Prayer columns (roadmap-v2 phase 3b), all with defaults for Ariana, Tunis: `prayers_enabled` (false), `prayers_enabled_since`, `latitude` (36.8625, range -65 to 65) / `longitude` (10.1956), `location_label`, `fajr_angle` / `isha_angle` (18, range 10 to 22), `asr_factor` (1 or 2), `fajr_offset_min` ... `isha_offset_min` (-60 to 60), `pre_prayer_minutes` (15, 0 to 120, 0 = no reminders), `pre_prayer_skip_fajr` (boolean, default true: no reminder before Fajr; migration `20261120170000_prayer_windows`, which also sets it on the existing row), `prayer_max_snoozes` (0, 0 to 10) and `prayer_snooze_minutes` (5, 1 to 120), which now apply to the pre-prayer reminders only (a prayer has Later and Can't now, section 6). The RPC `set_prayers_enabled(boolean)` switches them on (creating or re-activating the 10 rows) or off (deactivating them) in one transaction.
 
 **modes** (roadmap-v2 phase 5; RLS own rows, in the realtime publication, `updated_at` trigger)
 | column | type | notes |
@@ -281,6 +283,17 @@ Per occurrence, state: `pending -> ringing -> (snoozed -> ringing)* -> done`.
 7. If another occurrence of the same event comes due while one is still ringing, drop the new one.
 8. Alarms are scheduled **locally from cached data** and must work with no internet. Local state of snoozes and pending completions lives on the device until it syncs.
 9. Each device handles its own ringing independently in v1. Done on one device does not silence the other. Both write the same upsert, which is fine.
+
+**Prayer alarms have a window (feedback round 3).** A prayer in the schedule list carries `windowEnd` (core's `prayerWindowEnd`): Fajr ends at sunrise, Dhuhr at Asr, Asr at Maghrib, Maghrib at Isha, Isha at the Islamic midnight (halfway from Maghrib to the next Fajr, floored to the minute). While `windowEnd` is present, rules 4 and 5 change for that prayer:
+
+- No Snooze. The screen offers **Prayed**, **Later** (+20, +40, +60 minutes, each only while it still ends 10 minutes before the window does; unlimited, not counted as snoozes) and **Can't now**.
+- **Can't now** quiets the prayer until the **last call**, `windowEnd` minus 20 minutes (half the window when it is shorter), and from a minute before the last call on it ends the alarm with no completion ("Can't pray in time"). Either way no completion is written: the prayer is missed when the window closes and can be made up afterwards (qada).
+- At `windowEnd` any ringing or snoozed state of that prayer is dismissed, its screen closes, and it does not ring again, also after a restart. The grace rule for a device that wakes late is unchanged.
+- A Can't now press carries the variant of the button the person saw (`until_last_call` or `give_up`); if the clock has made it the other since, the engine refuses (nothing changes) and the screen redraws, in both engines. The screens also redraw by themselves at the instants the choices change (a Later option stops fitting, Can't now turns into the give-up button).
+- Later and Can't now are device-local ring control (the occurrence state, nothing synced); they never touch the database. A payload without `windowEnd` (an older app, or offsets that leave no window) keeps the plain alarm rules.
+- A pre-prayer reminder does not carry the "you haven't logged <previous prayer>" text when that prayer has a window, because its own last call already rang. The reminder before Fajr can be switched off (`pre_prayer_skip_fajr`).
+
+Scoring: a done prayer earns 1.0 (within 15 minutes of its time), 0.8 (late, inside the window) or 0.5 (qada, after it); a prayer unprayed at its window end is missed and weighs double, like any miss. A day with a qada and no miss keeps the prayer streak alive without adding to it. The Stats Prayer card lists the open qadas (last 28 days) with a "Made up" button; `alarm-cal qada done` does the same.
 
 ## 7. Cheat pass system
 
@@ -389,6 +402,7 @@ in `android/` differs in these places (reasons in `docs/decisions.md`, "Android 
   `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`.
 - A ringing alarm stays reachable: the notification is re-posted every 30 s and when swiped away, the app opening shows the alarm screen, and
   without the notification permission it still rings (the screen then depends on the phone allowing a background launch).
+- Prayer windows (feedback round 3): the engine ports `later`, `cantNow` and the window-close dismissal from the scheduler (`EngineCore`), with `windowEnd` and the last-call flag in the occurrence state; the alarm screen shows Later and Can't now buttons for a prayer with a window, and the window end is a wake-up of its own (`nextTriggerAt`). 12 more scenarios in `alarm-engine.json` pin both engines. Kotlin never computes a window: it is in the list.
 - The alarm screen shows the oldest ringing alarm; Done is labelled "Prayed" for a prayer. Home and the power button only hide it
   (the sound belongs to the service and goes on); the screen being destroyed without a choice starts the re-fire.
 - The engine cannot expand recurrences, so under 7 days of horizon it posts "Open Alarm Calendar to keep your alarms scheduled" (at most

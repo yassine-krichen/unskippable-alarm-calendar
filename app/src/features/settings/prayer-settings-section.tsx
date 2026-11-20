@@ -331,8 +331,25 @@ export function PrayerSettingsSection({ form, settings }: PrayerSettingsSectionP
                     </SelectContent>
                   </Select>
                   <FieldDescription>
-                    If the prayer before is not marked prayed, the reminder says so and how long you have.
+                    A heads-up with the prayer name. The prayers themselves offer Later and Can&apos;t now.
                   </FieldDescription>
+                </Field>
+              )}
+            />
+            <Controller
+              name="skipFajrReminder"
+              control={form.control}
+              render={({ field }) => (
+                <Field orientation="horizontal">
+                  <div className="flex flex-1 flex-col gap-1">
+                    <FieldLabel htmlFor="settings-skip-fajr-reminder">Skip the reminder before Fajr</FieldLabel>
+                    <FieldDescription>The Fajr alarm itself still rings. Saves you a second wake-up.</FieldDescription>
+                  </div>
+                  <Switch
+                    id="settings-skip-fajr-reminder"
+                    checked={field.value}
+                    onCheckedChange={(next) => field.onChange(next)}
+                  />
                 </Field>
               )}
             />
@@ -341,16 +358,18 @@ export function PrayerSettingsSection({ form, settings }: PrayerSettingsSectionP
               control={form.control}
               render={({ field }) => (
                 <Field>
-                  <FieldLabel htmlFor="settings-prayer-snoozes">Snoozes allowed</FieldLabel>
+                  <FieldLabel htmlFor="settings-prayer-snoozes">Reminder snoozes</FieldLabel>
                   <NumberStepper
                     id="settings-prayer-snoozes"
-                    label="prayer snoozes"
+                    label="reminder snoozes"
                     value={field.value}
                     onChange={field.onChange}
                     min={0}
                     max={10}
                   />
-                  <FieldDescription>0 = no snooze, you answer on the spot.</FieldDescription>
+                  <FieldDescription>
+                    0 = no snooze. Prayers themselves offer Later and Can&apos;t now.
+                  </FieldDescription>
                 </Field>
               )}
             />
@@ -360,10 +379,10 @@ export function PrayerSettingsSection({ form, settings }: PrayerSettingsSectionP
                 control={form.control}
                 render={({ field }) => (
                   <Field>
-                    <FieldLabel htmlFor="settings-prayer-snooze-minutes">Snooze length</FieldLabel>
+                    <FieldLabel htmlFor="settings-prayer-snooze-minutes">Reminder snooze length</FieldLabel>
                     <NumberStepper
                       id="settings-prayer-snooze-minutes"
-                      label="prayer snooze length"
+                      label="reminder snooze length"
                       value={field.value}
                       onChange={field.onChange}
                       min={1}

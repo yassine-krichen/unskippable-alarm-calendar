@@ -3,13 +3,17 @@ import {
   buildModeTimeline,
   expandSchedule,
   MAX_LOOKBACK_MINUTES,
+  PRAYER_LATER_MINUTES,
   prayerDayKey,
+  prayerDeferralChoices,
+  prayerFinalCallAt,
   refireAfterDismissal,
   shouldRingMissedOccurrence,
   snoozeUi,
 } from '@alarm-calendar/core';
 import type {
   AlarmSettings,
+  CantNowChoice,
   CompletionRow,
   ModeConfig,
   ModeTimeline,
@@ -387,10 +391,12 @@ export class AlarmScheduler {
    */
   evaluate(reason: string): void {
     const now = this.deps.now();
+    // First: a prayer whose time is over must not ring or wake again, whatever else is due.
+    const closed = this.closeExpiredPrayerWindows(now);
     const refilled = this.refillIfStale(now);
     const woke = this.wakeWaitingOccurrences(now);
     const rang = this.ringDueOccurrences(now);
-    if (refilled || woke || rang) this.deps.persist(this.deps.cache);
+    if (closed || refilled || woke || rang) this.deps.persist(this.deps.cache);
     if (woke || rang) this.deps.log('scheduler.evaluated', { reason });
     this.armTimeout(now);
     this.deps.afterEvaluate?.();
@@ -435,7 +441,8 @@ export class AlarmScheduler {
   /** Snoozes if the occurrence still allows it. False if it was not ringing or no snoozes are left. */
   snooze(occurrenceId: string): boolean {
     const state = this.findRingingState(occurrenceId);
-    if (state === null) return false;
+    // A prayer with a window has Later / Can't now instead of snoozes, whatever the rules say.
+    if (state === null || state.windowEnd !== undefined) return false;
 
     let result;
     try {
@@ -453,6 +460,64 @@ export class AlarmScheduler {
     return true;
   }
 
+  /**
+   * Later on a prayer with a window: quiet for `minutes` (one of PRAYER_LATER_MINUTES, and only while it still
+   * ends 10 minutes before the window does), then ring again. Unlimited and not counted as a snooze. False if the
+   * occurrence is not ringing, has no window, or that choice no longer fits.
+   */
+  later(occurrenceId: string, minutes: number): boolean {
+    const state = this.findRingingState(occurrenceId);
+    if (state === null || state.windowEnd === undefined) return false;
+    const now = this.deps.now();
+    const choices = prayerDeferralChoices(
+      Date.parse(state.occurrenceAt),
+      Date.parse(state.windowEnd),
+      now.getTime(),
+      state.lastCall === true
+    );
+    if (!PRAYER_LATER_MINUTES.includes(minutes) || !choices.laterMinutes.includes(minutes)) return false;
+    state.phase = 'snoozed';
+    state.wakeAt = new Date(now.getTime() + minutes * MS_PER_MINUTE).toISOString();
+    this.deps.persist(this.deps.cache);
+    this.deps.log('alarm.later', { occurrenceId, minutes });
+    this.evaluate('later');
+    return true;
+  }
+
+  /**
+   * Can't now on a prayer with a window. Before the last call it quiets the prayer until then (and the next
+   * Can't now gives up); from a minute before the last call on, or at the last call itself, it ends the alarm
+   * with no completion: the prayer becomes missed when the window closes, and can be made up afterwards (qada).
+   * False if the occurrence is not ringing or has no window.
+   */
+  cantNow(occurrenceId: string, shown: CantNowChoice): boolean {
+    const state = this.findRingingState(occurrenceId);
+    if (state === null || state.windowEnd === undefined) return false;
+    const now = this.deps.now();
+    const atMs = Date.parse(state.occurrenceAt);
+    const endMs = Date.parse(state.windowEnd);
+    const choices = prayerDeferralChoices(atMs, endMs, now.getTime(), state.lastCall === true);
+    // The button the person pressed said one thing; if the clock has made it the other, do nothing and let the screen
+    // redraw. Otherwise a stale "Can't now · last call" would give the prayer up without the person seeing that.
+    if (choices.cantNow !== shown) {
+      this.deps.log('alarm.cant_now_refused', { occurrenceId, shown, now: choices.cantNow });
+      return false;
+    }
+    if (choices.cantNow === 'give_up') {
+      this.removeState(state);
+      this.deps.persist(this.deps.cache);
+      this.deps.log('alarm.gave_up', { occurrenceId });
+    } else {
+      state.phase = 'snoozed';
+      state.lastCall = true;
+      state.wakeAt = prayerFinalCallAt(new Date(atMs), new Date(endMs)).toISOString();
+      this.deps.persist(this.deps.cache);
+      this.deps.log('alarm.cant_now', { occurrenceId, lastCallAt: state.wakeAt });
+    }
+    this.evaluate('cant-now');
+    return true;
+  }
+
   /** The alarm window went away. If no choice was made, schedule the re-ring. */
   windowClosed(occurrenceId: string): void {
     const state = this.findRingingState(occurrenceId);
@@ -463,6 +528,22 @@ export class AlarmScheduler {
     this.deps.persist(this.deps.cache);
     this.deps.log('alarm.closed_without_choice', { occurrenceId, refireAt: state.wakeAt });
     this.evaluate('window-closed');
+  }
+
+  /**
+   * A prayer's time is over at its window end: any ringing or snoozed state of it goes, its window closes and
+   * nothing is recorded (it is missed from here on, and can be made up).
+   */
+  private closeExpiredPrayerWindows(now: Date): boolean {
+    let changed = false;
+    for (const state of [...this.deps.cache.occurrences]) {
+      if (state.windowEnd === undefined || Date.parse(state.windowEnd) > now.getTime()) continue;
+      this.removeState(state);
+      this.deps.onDismiss(makeOccurrenceId(state.eventId, new Date(state.occurrenceAt)));
+      this.deps.log('alarm.window_closed', { eventId: state.eventId, occurrenceAt: state.occurrenceAt });
+      changed = true;
+    }
+    return changed;
   }
 
   private wakeWaitingOccurrences(now: Date): boolean {
@@ -529,6 +610,11 @@ export class AlarmScheduler {
       this.deps.log('alarm.silenced_by_cheat_day', { eventId: occurrence.eventId });
       return true;
     }
+    // A prayer whose time is already over (the device slept through it, or restarted after it) does not ring.
+    if (occurrence.windowEnd !== undefined && Date.parse(occurrence.windowEnd) <= now.getTime()) {
+      this.deps.log('alarm.skipped_window_closed', { eventId: occurrence.eventId });
+      return true;
+    }
     // Rule 7: a new occurrence of an event that is still ringing is dropped. A
     // snoozed occurrence is part of the same ringing lifecycle, so it counts too.
     const alreadyRinging = cache.occurrences.some((state) => state.eventId === occurrence.eventId);
@@ -558,6 +644,7 @@ export class AlarmScheduler {
       soundId: info.soundId,
       ...(info.kind === undefined ? {} : { kind: info.kind }),
       ...(text.labelled ? { labelled: true } : {}),
+      ...(occurrence.windowEnd === undefined ? {} : { windowEnd: occurrence.windowEnd }),
     };
     cache.occurrences.push(state);
     this.deps.log('alarm.ringing', { eventId: state.eventId, occurrenceAt: state.occurrenceAt });
@@ -588,6 +675,8 @@ export class AlarmScheduler {
     let soonestMs = Infinity;
     for (const state of occurrences) {
       if (state.wakeAt !== null) soonestMs = Math.min(soonestMs, Date.parse(state.wakeAt));
+      // A prayer's window closing is an event of its own: it dismisses the state.
+      if (state.windowEnd !== undefined) soonestMs = Math.min(soonestMs, Date.parse(state.windowEnd));
     }
     if (this.deps.cache.settings !== null && schedule !== null) {
       // First occurrence strictly after now that its event has not handled yet.
@@ -639,7 +728,10 @@ export class AlarmScheduler {
   }
 
   private buildView(state: OccurrenceState): AlarmView {
-    const ui = snoozeUi(snoozeRules(state), state.snoozesUsed);
+    // A prayer with a window offers Later / Can't now instead of snoozing.
+    const ui = state.windowEnd === undefined ? snoozeUi(snoozeRules(state), state.snoozesUsed) : { label: null, notice: null };
+    const atMs = Date.parse(state.occurrenceAt);
+    const endMs = state.windowEnd === undefined ? Number.NaN : Date.parse(state.windowEnd);
     return {
       occurrenceId: makeOccurrenceId(state.eventId, new Date(state.occurrenceAt)),
       title: state.title,
@@ -649,6 +741,15 @@ export class AlarmScheduler {
       snoozeNotice: ui.notice,
       soundId: state.soundId,
       ...(state.kind === undefined ? {} : { kind: state.kind }),
+      ...(state.windowEnd === undefined
+        ? {}
+        : {
+            prayerChoices: {
+              ...prayerDeferralChoices(atMs, endMs, this.deps.now().getTime(), state.lastCall === true),
+              windowEnd: state.windowEnd,
+              lastCallAt: prayerFinalCallAt(new Date(atMs), new Date(endMs)).toISOString(),
+            },
+          }),
     };
   }
 }

@@ -115,6 +115,9 @@ const settingsSchema = z.object({
   maghrib_offset_min: smallInt(-60, 60).optional(),
   isha_offset_min: smallInt(-60, 60).optional(),
   pre_prayer_minutes: smallInt(0, 120).optional(),
+  // Read by main's own refill (no reminder before Fajr): without it here, zod would strip it and the refill
+  // would bring the Fajr reminder back. A malformed value reads as absent (reminders as before).
+  pre_prayer_skip_fajr: z.boolean().optional().catch(undefined),
   prayer_max_snoozes: smallInt(0, 10).optional(),
   prayer_snooze_minutes: smallInt(1, 120).optional(),
   // Whether the calendar draws the prayers: never read here (the prayers ring either way). A malformed value
@@ -234,6 +237,9 @@ const occurrenceSchema = z
     completed: z.boolean(),
     // Only for an occurrence a mode shifted: when it would have rung without the shift.
     originalAt: timestamp.optional(),
+    // Only for a prayer: when its window closes. Unreadable or out of range reads as absent (the prayer then rings
+    // as a plain alarm) rather than rejecting the occurrence, which would silence the prayer; see withValidWindow.
+    windowEnd: timestamp.optional().catch(undefined),
     label: z.string().min(1).max(200).optional(),
     labelIfUnlogged: z
       .object({
@@ -259,7 +265,18 @@ const occurrenceSchema = z
       return gap > 0 && gap <= MAX_SHIFT_MS;
     },
     { message: 'originalAt is not within a shift of at' }
-  );
+  )
+  .transform(withValidWindow);
+
+const MAX_PRAYER_WINDOW_MS = 24 * 60 * 60_000;
+
+/** A window end is later than the prayer and at most a day after it; anything else is dropped from the occurrence. */
+function withValidWindow(value: ScheduleOccurrence): ScheduleOccurrence {
+  const { windowEnd, ...rest } = value;
+  if (windowEnd === undefined) return rest;
+  const gap = Date.parse(windowEnd) - Date.parse(value.at);
+  return gap > 0 && gap <= MAX_PRAYER_WINDOW_MS ? value : rest;
+}
 
 const cheatDaySchema = z.iso.date();
 

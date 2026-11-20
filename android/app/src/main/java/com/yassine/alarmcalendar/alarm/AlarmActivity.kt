@@ -11,6 +11,8 @@ import android.graphics.drawable.RippleDrawable
 import android.content.res.ColorStateList
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
@@ -24,11 +26,13 @@ import android.widget.TextView
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import com.yassine.alarmcalendar.engine.AlarmView
+import com.yassine.alarmcalendar.engine.EngineCore
 
 /**
  * The alarm screen: native, not the WebView, so it can show over the lock screen and turn the screen on. Black
  * and white with big type and large rounded buttons, mirroring the app's b0 preset (a native view cannot use
- * shadcn). It shows the oldest ringing alarm in the engine; Done and Snooze are the only way out.
+ * shadcn). It shows the oldest ringing alarm in the engine; Done and Snooze are the only way out (a prayer with a
+ * window has Later and Can't now in place of Snooze).
  *
  * Back is disabled. If the screen is destroyed without a choice (swiped away, killed by the system) the alarm
  * rings again after the refire delay (spec 6.5); Home and the power button only hide it, and the sound, which
@@ -38,6 +42,8 @@ class AlarmActivity : Activity() {
     private lateinit var content: LinearLayout
     private var displayed: String? = null
     private var answered = false
+    private val redrawHandler = Handler(Looper.getMainLooper())
+    private val redraw = Runnable { render() }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -82,6 +88,7 @@ class AlarmActivity : Activity() {
 
     override fun onDestroy() {
         if (current === this) current = null
+        redrawHandler.removeCallbacks(redraw)
         visible = false
         val id = displayed
         if (id != null && !answered && !isChangingConfigurations) {
@@ -138,6 +145,9 @@ class AlarmActivity : Activity() {
         val timeZone = AlarmHost.runtime(this).settings()?.timezone ?: "UTC"
         content.removeAllViews()
         build(front, active.size - 1, timeZone)
+        // A prayer's choices change with the clock: redraw at the next such instant instead of leaving a stale button.
+        redrawHandler.removeCallbacks(redraw)
+        EngineCore.nextChoiceChangeAt(front, System.currentTimeMillis())?.let { redrawHandler.postDelayed(redraw, it - System.currentTimeMillis() + 500L) }
     }
 
     private fun build(view: AlarmView, others: Int, timeZone: String) {
@@ -172,12 +182,44 @@ class AlarmActivity : Activity() {
         view.snoozeLabel?.let { snooze ->
             content.addView(button(snooze, 64, 0xFF1A1A1A.toInt(), Color.WHITE, 0xFF3A3A3A.toInt()) { answer(view) { AlarmController.snooze(this, it) } }, margins(top = 12))
         }
+        buildPrayerChoices(view, timeZone)
+    }
+
+    /** A prayer with a window: Later (only the options that still fit), Can't now, and when its time ends. */
+    private fun buildPrayerChoices(view: AlarmView, timeZone: String) {
+        val later = view.laterMinutes ?: return
+        if (later.isNotEmpty()) {
+            val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            later.forEachIndexed { index, minutes ->
+                val laterButton = button("+$minutes min", 56, 0xFF1A1A1A.toInt(), Color.WHITE, 0xFF3A3A3A.toInt()) {
+                    answer(view) { AlarmController.later(this, it, minutes) }
+                }
+                laterButton.layoutParams = LinearLayout.LayoutParams(0, dp(56), 1f).apply { if (index > 0) marginStart = dp(8) }
+                row.addView(laterButton)
+            }
+            content.addView(row, margins(top = 12))
+        }
+        val cantNowText = if (view.cantNow == EngineCore.CANT_NOW_GIVE_UP) {
+            "Can't pray in time"
+        } else {
+            "Can't now · last call ${TimeText.time(this, view.lastCallAtMs ?: view.occurrenceAtMs, timeZone)}"
+        }
+        content.addView(button(cantNowText, 56, 0xFF1A1A1A.toInt(), Color.WHITE, 0xFF3A3A3A.toInt()) { answer(view) { AlarmController.cantNow(this, it, view.cantNow ?: EngineCore.CANT_NOW_UNTIL_LAST_CALL) } }, margins(top = 12))
+        view.windowEndMs?.let {
+            content.addView(
+                label("${view.title} time ends ${TimeText.time(this, it, timeZone)}", 16f, 0x99FFFFFF.toInt(), Typeface.DEFAULT).apply { gravity = Gravity.CENTER },
+                margins(top = 12),
+            )
+        }
     }
 
     private fun answer(view: AlarmView, action: (String) -> Unit) {
         if (answered && displayed == view.occurrenceId) return
         answered = true
         action(view.occurrenceId)
+        // A choice the engine refused (a Later that no longer fits the window) leaves the alarm ringing: let the next
+        // tap through, on the redrawn options.
+        if (AlarmHost.runtime(this).activeRinging().any { it.occurrenceId == view.occurrenceId }) answered = false
         // The engine now says what is next; refresh() from the service may also arrive, which is harmless.
         render()
     }

@@ -185,6 +185,17 @@ export const stats = defineCommand({
       current_streak: habit.currentStreak,
       best_streak: habit.bestStreak,
       window_days: habit.windowDays,
+      // Only the pooled Prayer habit: how its prayers were done, and how many can still be made up (qada).
+      ...(habit.prayerTimings === undefined
+        ? {}
+        : {
+            prayer_timings: {
+              on_time: habit.prayerTimings.onTime,
+              late: habit.prayerTimings.late,
+              qada: habit.prayerTimings.qada,
+              open_qada: habit.prayerTimings.openQada,
+            },
+          }),
     }));
     const overall = report.overallScore === null ? null : Math.round(report.overallScore);
     const warnings = [

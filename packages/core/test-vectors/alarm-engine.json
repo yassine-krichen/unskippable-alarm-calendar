@@ -1,5 +1,5 @@
 {
-  "description": "Alarm engine scenarios shared by electron/src/engine-vectors.test.ts and android/app/src/test/java/com/yassine/alarmcalendar/engine/SharedVectorsTest.kt. Time is a fake clock starting at `start`; the list is pushed at `start` and again for a step with `push`. Events A, B and C stand for the uuids under `events`. A step sets the clock to `at` (running every wake-up on the way, like timers or AlarmManager would), pushes a new list if it has `push`, performs `action` (done, snooze or close, for `event`), then checks `ringing` (alarms on screen, compared as a set) and `pending` (completions made here and not drained: event, occurrence instant, snoozes used). `snoozesLeft` is the number of snoozes still offered, `snoozeLabel` the exact button text (null when there is no button) and `noticeShown` whether 'No snoozes left, do it now' is shown.",
+  "description": "Alarm engine scenarios shared by electron/src/engine-vectors.test.ts and android/app/src/test/java/com/yassine/alarmcalendar/engine/SharedVectorsTest.kt. Time is a fake clock starting at `start`; the list is pushed at `start` and again for a step with `push`. Events A, B and C stand for the uuids under `events`. A step sets the clock to `at` (running every wake-up on the way, like timers or AlarmManager would), pushes a new list if it has `push`, performs `action` (done, snooze or close, for `event`), then checks `ringing` (alarms on screen, compared as a set) and `pending` (completions made here and not drained: event, occurrence instant, snoozes used). `snoozesLeft` is the number of snoozes still offered, `snoozeLabel` the exact button text (null when there is no button) and `noticeShown` whether 'No snoozes left, do it now' is shown. Prayer windows (honest prayers): an occurrence may carry `windowEnd`; its ring then offers `laterMinutes` (the Later buttons) and `cantNow` ('until_last_call' or 'give_up') instead of a snooze, which `snoozeLabel` null shows, and a ringing row may assert `laterMinutes` and `cantNow` (null when the view has no prayer choices; left out of the row, they are not checked). Further actions: `later` (with `minutes`) and `cantNow` (with `variant`, the button the person saw: the engine refuses a press whose variant is no longer the current one; absent means the variant the view shows at that moment); a `pending` row may assert `doneAt`, when Prayed was pressed. The last call is windowEnd minus 20 minutes, or half the window when shorter; Later offers 20, 40 and 60 minutes while they end at least 10 minutes before the window does; a prayer is dismissed with no completion when its window ends.",
   "events": {
     "A": "11111111-1111-4111-8111-111111111111",
     "B": "22222222-2222-4222-8222-222222222222",
@@ -1115,6 +1115,984 @@
         {
           "at": "2026-03-02T09:10:00.000Z",
           "ringing": []
+        }
+      ]
+    },
+    {
+      "name": "a prayer with a window shows no Snooze even when snoozes are allowed",
+      "note": "The prayer offers Later and Cant now instead; the window is 180 minutes, so every Later option fits and the last call is 14:40. Prayed records when it was pressed.",
+      "start": "2026-11-02T11:59:00.000Z",
+      "settings": {
+        "grace_minutes": 30,
+        "refire_seconds": 120
+      },
+      "info": {
+        "A": {
+          "title": "Dhuhr",
+          "maxSnoozes": 3,
+          "snoozeMinutes": 5
+        }
+      },
+      "occurrences": [
+        {
+          "event": "A",
+          "at": "2026-11-02T12:00:00.000Z",
+          "windowEnd": "2026-11-02T15:00:00.000Z"
+        }
+      ],
+      "steps": [
+        {
+          "at": "2026-11-02T11:59:59.000Z",
+          "ringing": []
+        },
+        {
+          "at": "2026-11-02T12:00:00.000Z",
+          "ringing": [
+            {
+              "event": "A",
+              "at": "2026-11-02T12:00:00.000Z",
+              "title": "Dhuhr",
+              "snoozesLeft": 0,
+              "snoozeLabel": null,
+              "noticeShown": false,
+              "laterMinutes": [
+                20,
+                40,
+                60
+              ],
+              "cantNow": "until_last_call"
+            }
+          ]
+        },
+        {
+          "at": "2026-11-02T12:05:00.000Z",
+          "action": "done",
+          "event": "A",
+          "ringing": [],
+          "pending": [
+            {
+              "event": "A",
+              "at": "2026-11-02T12:00:00.000Z",
+              "snoozesUsed": 0,
+              "doneAt": "2026-11-02T12:05:00.000Z"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Later +20 rings again every time, with no limit (and is not a snooze)",
+      "note": "Six Laters in a row with maxSnoozes 3: nothing is counted. The options shrink as the window runs out: 59.5 minutes left offers +20 and +40.",
+      "start": "2026-11-02T11:59:00.000Z",
+      "settings": {
+        "grace_minutes": 30,
+        "refire_seconds": 120
+      },
+      "info": {
+        "A": {
+          "title": "Dhuhr",
+          "maxSnoozes": 3,
+          "snoozeMinutes": 5
+        }
+      },
+      "occurrences": [
+        {
+          "event": "A",
+          "at": "2026-11-02T12:00:00.000Z",
+          "windowEnd": "2026-11-02T15:00:00.000Z"
+        }
+      ],
+      "steps": [
+        {
+          "at": "2026-11-02T12:00:00.000Z",
+          "ringing": [
+            {
+              "event": "A",
+              "at": "2026-11-02T12:00:00.000Z",
+              "title": "Dhuhr",
+              "snoozesLeft": 0,
+              "snoozeLabel": null,
+              "noticeShown": false,
+              "laterMinutes": [
+                20,
+                40,
+                60
+              ],
+              "cantNow": "until_last_call"
+            }
+          ]
+        },
+        {
+          "at": "2026-11-02T12:00:30.000Z",
+          "action": "later",
+          "minutes": 20,
+          "event": "A",
+          "ringing": []
+        },
+        {
+          "at": "2026-11-02T12:20:30.000Z",
+          "ringing": [
+            {
+              "event": "A",
+              "at": "2026-11-02T12:00:00.000Z",
+              "title": "Dhuhr",
+              "snoozesLeft": 0,
+              "snoozeLabel": null,
+              "noticeShown": false,
+              "laterMinutes": [
+                20,
+                40,
+                60
+              ],
+              "cantNow": "until_last_call"
+            }
+          ]
+        },
+        {
+          "at": "2026-11-02T12:20:30.000Z",
+          "action": "later",
+          "minutes": 20,
+          "event": "A",
+          "ringing": []
+        },
+        {
+          "at": "2026-11-02T12:40:30.000Z",
+          "ringing": [
+            {
+              "event": "A",
+              "at": "2026-11-02T12:00:00.000Z",
+              "title": "Dhuhr",
+              "snoozesLeft": 0,
+              "snoozeLabel": null,
+              "noticeShown": false,
+              "laterMinutes": [
+                20,
+                40,
+                60
+              ],
+              "cantNow": "until_last_call"
+            }
+          ]
+        },
+        {
+          "at": "2026-11-02T12:40:30.000Z",
+          "action": "later",
+          "minutes": 20,
+          "event": "A",
+          "ringing": []
+        },
+        {
+          "at": "2026-11-02T13:00:30.000Z",
+          "ringing": [
+            {
+              "event": "A",
+              "at": "2026-11-02T12:00:00.000Z",
+              "title": "Dhuhr",
+              "snoozesLeft": 0,
+              "snoozeLabel": null,
+              "noticeShown": false,
+              "laterMinutes": [
+                20,
+                40,
+                60
+              ],
+              "cantNow": "until_last_call"
+            }
+          ]
+        },
+        {
+          "at": "2026-11-02T13:00:30.000Z",
+          "action": "later",
+          "minutes": 20,
+          "event": "A",
+          "ringing": []
+        },
+        {
+          "at": "2026-11-02T13:20:30.000Z",
+          "ringing": [
+            {
+              "event": "A",
+              "at": "2026-11-02T12:00:00.000Z",
+              "title": "Dhuhr",
+              "snoozesLeft": 0,
+              "snoozeLabel": null,
+              "noticeShown": false,
+              "laterMinutes": [
+                20,
+                40,
+                60
+              ],
+              "cantNow": "until_last_call"
+            }
+          ]
+        },
+        {
+          "at": "2026-11-02T13:20:30.000Z",
+          "action": "later",
+          "minutes": 20,
+          "event": "A",
+          "ringing": []
+        },
+        {
+          "at": "2026-11-02T13:40:30.000Z",
+          "ringing": [
+            {
+              "event": "A",
+              "at": "2026-11-02T12:00:00.000Z",
+              "title": "Dhuhr",
+              "snoozesLeft": 0,
+              "snoozeLabel": null,
+              "noticeShown": false,
+              "laterMinutes": [
+                20,
+                40,
+                60
+              ],
+              "cantNow": "until_last_call"
+            }
+          ]
+        },
+        {
+          "at": "2026-11-02T13:40:30.000Z",
+          "action": "later",
+          "minutes": 20,
+          "event": "A",
+          "ringing": []
+        },
+        {
+          "at": "2026-11-02T14:00:30.000Z",
+          "ringing": [
+            {
+              "event": "A",
+              "at": "2026-11-02T12:00:00.000Z",
+              "title": "Dhuhr",
+              "snoozesLeft": 0,
+              "snoozeLabel": null,
+              "noticeShown": false,
+              "laterMinutes": [
+                20,
+                40
+              ],
+              "cantNow": "until_last_call"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Later options shrink near the end of the window",
+      "note": "Each option must still end 10 minutes before the window does: 50 minutes left offers +20 and +40, 30 left only +20, 25 left nothing.",
+      "start": "2026-11-02T14:00:00.000Z",
+      "settings": {
+        "grace_minutes": 30,
+        "refire_seconds": 120
+      },
+      "info": {
+        "A": {
+          "title": "Dhuhr",
+          "maxSnoozes": 3,
+          "snoozeMinutes": 5
+        },
+        "B": {
+          "title": "Asr",
+          "maxSnoozes": 3,
+          "snoozeMinutes": 5
+        }
+      },
+      "occurrences": [
+        {
+          "event": "A",
+          "at": "2026-11-02T14:10:00.000Z",
+          "windowEnd": "2026-11-02T15:00:00.000Z"
+        },
+        {
+          "event": "B",
+          "at": "2026-11-02T14:35:00.000Z",
+          "windowEnd": "2026-11-02T15:00:00.000Z"
+        }
+      ],
+      "steps": [
+        {
+          "at": "2026-11-02T14:10:00.000Z",
+          "ringing": [
+            {
+              "event": "A",
+              "at": "2026-11-02T14:10:00.000Z",
+              "title": "Dhuhr",
+              "snoozesLeft": 0,
+              "snoozeLabel": null,
+              "noticeShown": false,
+              "laterMinutes": [
+                20,
+                40
+              ],
+              "cantNow": "until_last_call"
+            }
+          ]
+        },
+        {
+          "at": "2026-11-02T14:35:00.000Z",
+          "ringing": [
+            {
+              "event": "A",
+              "at": "2026-11-02T14:10:00.000Z",
+              "title": "Dhuhr",
+              "snoozesLeft": 0,
+              "snoozeLabel": null,
+              "noticeShown": false,
+              "laterMinutes": [],
+              "cantNow": "until_last_call"
+            },
+            {
+              "event": "B",
+              "at": "2026-11-02T14:35:00.000Z",
+              "title": "Asr",
+              "snoozesLeft": 0,
+              "snoozeLabel": null,
+              "noticeShown": false,
+              "laterMinutes": [],
+              "cantNow": "until_last_call"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Can't now is silent until the last call, then the next Can't now gives the prayer up",
+      "note": "Last call = window end minus 20 minutes (14:40). At the last call the button says it gives up: it ends the alarm, no completion, and nothing rings again.",
+      "start": "2026-11-02T11:59:00.000Z",
+      "settings": {
+        "grace_minutes": 30,
+        "refire_seconds": 120
+      },
+      "info": {
+        "A": {
+          "title": "Dhuhr",
+          "maxSnoozes": 3,
+          "snoozeMinutes": 5
+        }
+      },
+      "occurrences": [
+        {
+          "event": "A",
+          "at": "2026-11-02T12:00:00.000Z",
+          "windowEnd": "2026-11-02T15:00:00.000Z"
+        }
+      ],
+      "steps": [
+        {
+          "at": "2026-11-02T12:00:00.000Z",
+          "ringing": [
+            {
+              "event": "A",
+              "at": "2026-11-02T12:00:00.000Z",
+              "title": "Dhuhr",
+              "snoozesLeft": 0,
+              "snoozeLabel": null,
+              "noticeShown": false,
+              "laterMinutes": [
+                20,
+                40,
+                60
+              ],
+              "cantNow": "until_last_call"
+            }
+          ]
+        },
+        {
+          "at": "2026-11-02T12:01:00.000Z",
+          "action": "cantNow",
+          "event": "A",
+          "ringing": []
+        },
+        {
+          "at": "2026-11-02T14:39:59.000Z",
+          "ringing": []
+        },
+        {
+          "at": "2026-11-02T14:40:00.000Z",
+          "ringing": [
+            {
+              "event": "A",
+              "at": "2026-11-02T12:00:00.000Z",
+              "title": "Dhuhr",
+              "snoozesLeft": 0,
+              "snoozeLabel": null,
+              "noticeShown": false,
+              "laterMinutes": [],
+              "cantNow": "give_up"
+            }
+          ]
+        },
+        {
+          "at": "2026-11-02T14:41:00.000Z",
+          "action": "cantNow",
+          "event": "A",
+          "ringing": [],
+          "pending": []
+        },
+        {
+          "at": "2026-11-02T14:59:59.000Z",
+          "ringing": []
+        },
+        {
+          "at": "2026-11-02T15:00:00.000Z",
+          "ringing": [],
+          "pending": []
+        },
+        {
+          "at": "2026-11-02T15:10:00.000Z",
+          "ringing": [],
+          "pending": []
+        }
+      ]
+    },
+    {
+      "name": "Can't now pressed after the last call ends the alarm at once",
+      "note": "Reached with Later: +60 at 12:00 and 13:00, +40 at 14:00, which rings at 14:40, the last call. Cant now there gives up.",
+      "start": "2026-11-02T11:59:00.000Z",
+      "settings": {
+        "grace_minutes": 30,
+        "refire_seconds": 120
+      },
+      "info": {
+        "A": {
+          "title": "Dhuhr",
+          "maxSnoozes": 3,
+          "snoozeMinutes": 5
+        }
+      },
+      "occurrences": [
+        {
+          "event": "A",
+          "at": "2026-11-02T12:00:00.000Z",
+          "windowEnd": "2026-11-02T15:00:00.000Z"
+        }
+      ],
+      "steps": [
+        {
+          "at": "2026-11-02T12:00:00.000Z",
+          "action": "later",
+          "minutes": 60,
+          "event": "A",
+          "ringing": []
+        },
+        {
+          "at": "2026-11-02T13:00:00.000Z",
+          "ringing": [
+            {
+              "event": "A",
+              "at": "2026-11-02T12:00:00.000Z",
+              "title": "Dhuhr",
+              "snoozesLeft": 0,
+              "snoozeLabel": null,
+              "noticeShown": false,
+              "laterMinutes": [
+                20,
+                40,
+                60
+              ],
+              "cantNow": "until_last_call"
+            }
+          ]
+        },
+        {
+          "at": "2026-11-02T13:00:00.000Z",
+          "action": "later",
+          "minutes": 60,
+          "event": "A",
+          "ringing": []
+        },
+        {
+          "at": "2026-11-02T14:00:00.000Z",
+          "ringing": [
+            {
+              "event": "A",
+              "at": "2026-11-02T12:00:00.000Z",
+              "title": "Dhuhr",
+              "snoozesLeft": 0,
+              "snoozeLabel": null,
+              "noticeShown": false,
+              "laterMinutes": [
+                20,
+                40
+              ],
+              "cantNow": "until_last_call"
+            }
+          ]
+        },
+        {
+          "at": "2026-11-02T14:00:00.000Z",
+          "action": "later",
+          "minutes": 40,
+          "event": "A",
+          "ringing": []
+        },
+        {
+          "at": "2026-11-02T14:40:00.000Z",
+          "ringing": [
+            {
+              "event": "A",
+              "at": "2026-11-02T12:00:00.000Z",
+              "title": "Dhuhr",
+              "snoozesLeft": 0,
+              "snoozeLabel": null,
+              "noticeShown": false,
+              "laterMinutes": [],
+              "cantNow": "give_up"
+            }
+          ]
+        },
+        {
+          "at": "2026-11-02T14:40:30.000Z",
+          "action": "cantNow",
+          "event": "A",
+          "ringing": [],
+          "pending": []
+        },
+        {
+          "at": "2026-11-02T15:30:00.000Z",
+          "ringing": [],
+          "pending": []
+        }
+      ]
+    },
+    {
+      "name": "a short window rings its last call 15 minutes before the end",
+      "note": "A 30 minute window: the last call is half the window (12:15), and only +20 still fits (12:20 is 10 minutes before the end).",
+      "start": "2026-11-02T11:59:00.000Z",
+      "settings": {
+        "grace_minutes": 30,
+        "refire_seconds": 120
+      },
+      "info": {
+        "A": {
+          "title": "Dhuhr",
+          "maxSnoozes": 3,
+          "snoozeMinutes": 5
+        }
+      },
+      "occurrences": [
+        {
+          "event": "A",
+          "at": "2026-11-02T12:00:00.000Z",
+          "windowEnd": "2026-11-02T12:30:00.000Z"
+        }
+      ],
+      "steps": [
+        {
+          "at": "2026-11-02T12:00:00.000Z",
+          "ringing": [
+            {
+              "event": "A",
+              "at": "2026-11-02T12:00:00.000Z",
+              "title": "Dhuhr",
+              "snoozesLeft": 0,
+              "snoozeLabel": null,
+              "noticeShown": false,
+              "laterMinutes": [
+                20
+              ],
+              "cantNow": "until_last_call"
+            }
+          ]
+        },
+        {
+          "at": "2026-11-02T12:00:30.000Z",
+          "action": "cantNow",
+          "event": "A",
+          "ringing": []
+        },
+        {
+          "at": "2026-11-02T12:14:59.000Z",
+          "ringing": []
+        },
+        {
+          "at": "2026-11-02T12:15:00.000Z",
+          "ringing": [
+            {
+              "event": "A",
+              "at": "2026-11-02T12:00:00.000Z",
+              "title": "Dhuhr",
+              "snoozesLeft": 0,
+              "snoozeLabel": null,
+              "noticeShown": false,
+              "laterMinutes": [],
+              "cantNow": "give_up"
+            }
+          ]
+        },
+        {
+          "at": "2026-11-02T12:30:00.000Z",
+          "ringing": []
+        }
+      ]
+    },
+    {
+      "name": "an unanswered prayer is dismissed when its window ends",
+      "note": "Closing the window without a choice re-rings every refire_seconds (120). At the window end (12:30) the alarm is dismissed and nothing is recorded; it does not ring again.",
+      "start": "2026-11-02T11:59:00.000Z",
+      "settings": {
+        "grace_minutes": 30,
+        "refire_seconds": 120
+      },
+      "info": {
+        "A": {
+          "title": "Dhuhr",
+          "maxSnoozes": 3,
+          "snoozeMinutes": 5
+        }
+      },
+      "occurrences": [
+        {
+          "event": "A",
+          "at": "2026-11-02T12:00:00.000Z",
+          "windowEnd": "2026-11-02T12:30:00.000Z"
+        }
+      ],
+      "steps": [
+        {
+          "at": "2026-11-02T12:00:00.000Z",
+          "ringing": [
+            {
+              "event": "A",
+              "at": "2026-11-02T12:00:00.000Z",
+              "title": "Dhuhr",
+              "snoozesLeft": 0,
+              "snoozeLabel": null,
+              "noticeShown": false,
+              "laterMinutes": [
+                20
+              ],
+              "cantNow": "until_last_call"
+            }
+          ]
+        },
+        {
+          "at": "2026-11-02T12:00:10.000Z",
+          "action": "close",
+          "event": "A",
+          "ringing": []
+        },
+        {
+          "at": "2026-11-02T12:02:10.000Z",
+          "ringing": [
+            {
+              "event": "A",
+              "at": "2026-11-02T12:00:00.000Z",
+              "title": "Dhuhr",
+              "snoozesLeft": 0,
+              "snoozeLabel": null,
+              "noticeShown": false,
+              "laterMinutes": [],
+              "cantNow": "until_last_call"
+            }
+          ]
+        },
+        {
+          "at": "2026-11-02T12:29:59.000Z",
+          "ringing": [
+            {
+              "event": "A",
+              "at": "2026-11-02T12:00:00.000Z",
+              "title": "Dhuhr",
+              "snoozesLeft": 0,
+              "snoozeLabel": null,
+              "noticeShown": false,
+              "laterMinutes": [],
+              "cantNow": "give_up"
+            }
+          ]
+        },
+        {
+          "at": "2026-11-02T12:30:00.000Z",
+          "ringing": [],
+          "pending": []
+        },
+        {
+          "at": "2026-11-02T12:35:00.000Z",
+          "ringing": [],
+          "pending": []
+        }
+      ]
+    },
+    {
+      "name": "Prayed after Later records the press time as doneAt",
+      "note": "done_at is what tells on time, late and qada apart, so it must be the moment Prayed was pressed, not the prayer time.",
+      "start": "2026-11-02T11:59:00.000Z",
+      "settings": {
+        "grace_minutes": 30,
+        "refire_seconds": 120
+      },
+      "info": {
+        "A": {
+          "title": "Dhuhr",
+          "maxSnoozes": 3,
+          "snoozeMinutes": 5
+        }
+      },
+      "occurrences": [
+        {
+          "event": "A",
+          "at": "2026-11-02T12:00:00.000Z",
+          "windowEnd": "2026-11-02T15:00:00.000Z"
+        }
+      ],
+      "steps": [
+        {
+          "at": "2026-11-02T12:00:00.000Z",
+          "action": "later",
+          "minutes": 20,
+          "event": "A",
+          "ringing": []
+        },
+        {
+          "at": "2026-11-02T12:20:00.000Z",
+          "ringing": [
+            {
+              "event": "A",
+              "at": "2026-11-02T12:00:00.000Z",
+              "title": "Dhuhr",
+              "snoozesLeft": 0,
+              "snoozeLabel": null,
+              "noticeShown": false,
+              "laterMinutes": [
+                20,
+                40,
+                60
+              ],
+              "cantNow": "until_last_call"
+            }
+          ]
+        },
+        {
+          "at": "2026-11-02T12:31:15.000Z",
+          "action": "done",
+          "event": "A",
+          "ringing": [],
+          "pending": [
+            {
+              "event": "A",
+              "at": "2026-11-02T12:00:00.000Z",
+              "snoozesUsed": 0,
+              "doneAt": "2026-11-02T12:31:15.000Z"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a prayer without windowEnd behaves exactly as before: snooze button, no Later",
+      "note": "An older app (no windowEnd in the list) with this engine: the snooze rules apply and there is no Later or Cant now.",
+      "start": "2026-11-02T11:59:00.000Z",
+      "settings": {
+        "grace_minutes": 30,
+        "refire_seconds": 120
+      },
+      "info": {
+        "A": {
+          "title": "Dhuhr",
+          "maxSnoozes": 3,
+          "snoozeMinutes": 5
+        }
+      },
+      "occurrences": [
+        {
+          "event": "A",
+          "at": "2026-11-02T12:00:00.000Z"
+        }
+      ],
+      "steps": [
+        {
+          "at": "2026-11-02T12:00:00.000Z",
+          "ringing": [
+            {
+              "event": "A",
+              "at": "2026-11-02T12:00:00.000Z",
+              "title": "Dhuhr",
+              "snoozesLeft": 3,
+              "snoozeLabel": "Snooze 5 min \u00b7 3 left",
+              "noticeShown": false,
+              "laterMinutes": null,
+              "cantNow": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a prayer whose window already closed does not ring on wake, even inside the grace window",
+      "note": "The device wakes at 12:31, one minute after the window ended and well inside grace 60: nothing rings. Woken at 12:29 it does ring.",
+      "start": "2026-11-02T12:31:00.000Z",
+      "settings": {
+        "grace_minutes": 60,
+        "refire_seconds": 120
+      },
+      "info": {
+        "A": {
+          "title": "Dhuhr",
+          "maxSnoozes": 3,
+          "snoozeMinutes": 5
+        }
+      },
+      "occurrences": [
+        {
+          "event": "A",
+          "at": "2026-11-02T12:00:00.000Z",
+          "windowEnd": "2026-11-02T12:30:00.000Z"
+        }
+      ],
+      "steps": [
+        {
+          "at": "2026-11-02T12:31:00.000Z",
+          "ringing": []
+        },
+        {
+          "at": "2026-11-02T12:40:00.000Z",
+          "ringing": []
+        }
+      ]
+    },
+    {
+      "name": "a prayer woken one minute before its window ends still rings",
+      "note": "Same list, woken at 12:29 (grace 60): it rings, with no Later option left, and is dismissed at 12:30.",
+      "start": "2026-11-02T12:29:00.000Z",
+      "settings": {
+        "grace_minutes": 60,
+        "refire_seconds": 120
+      },
+      "info": {
+        "A": {
+          "title": "Dhuhr",
+          "maxSnoozes": 3,
+          "snoozeMinutes": 5
+        }
+      },
+      "occurrences": [
+        {
+          "event": "A",
+          "at": "2026-11-02T12:00:00.000Z",
+          "windowEnd": "2026-11-02T12:30:00.000Z"
+        }
+      ],
+      "steps": [
+        {
+          "at": "2026-11-02T12:29:00.000Z",
+          "ringing": [
+            {
+              "event": "A",
+              "at": "2026-11-02T12:00:00.000Z",
+              "title": "Dhuhr",
+              "snoozesLeft": 0,
+              "snoozeLabel": null,
+              "noticeShown": false,
+              "laterMinutes": [],
+              "cantNow": "give_up"
+            }
+          ]
+        },
+        {
+          "at": "2026-11-02T12:30:00.000Z",
+          "ringing": []
+        }
+      ]
+    },
+    {
+      "name": "a Can't now pressed on a stale button is refused, never a silent give-up",
+      "note": "The press carries the variant the person saw (`variant`). Pressed at 14:39:30 the last-call button (until_last_call) is stale, the engine now says give_up: refused, the prayer keeps ringing and the screen redraws with the give_up button. A give_up press while the view still says until_last_call is refused too. Pressing what is shown works.",
+      "start": "2026-11-02T11:59:00.000Z",
+      "settings": {
+        "grace_minutes": 30,
+        "refire_seconds": 120
+      },
+      "info": {
+        "A": {
+          "title": "Dhuhr",
+          "maxSnoozes": 3,
+          "snoozeMinutes": 5
+        }
+      },
+      "occurrences": [
+        {
+          "event": "A",
+          "at": "2026-11-02T12:00:00.000Z",
+          "windowEnd": "2026-11-02T15:00:00.000Z"
+        }
+      ],
+      "steps": [
+        {
+          "at": "2026-11-02T12:00:00.000Z",
+          "ringing": [
+            {
+              "event": "A",
+              "at": "2026-11-02T12:00:00.000Z",
+              "title": "Dhuhr",
+              "snoozesLeft": 0,
+              "snoozeLabel": null,
+              "noticeShown": false,
+              "laterMinutes": [
+                20,
+                40,
+                60
+              ],
+              "cantNow": "until_last_call"
+            }
+          ]
+        },
+        {
+          "at": "2026-11-02T12:30:00.000Z",
+          "action": "cantNow",
+          "variant": "give_up",
+          "event": "A",
+          "ringing": [
+            {
+              "event": "A",
+              "at": "2026-11-02T12:00:00.000Z",
+              "title": "Dhuhr",
+              "snoozesLeft": 0,
+              "snoozeLabel": null,
+              "noticeShown": false,
+              "laterMinutes": [
+                20,
+                40,
+                60
+              ],
+              "cantNow": "until_last_call"
+            }
+          ],
+          "pending": []
+        },
+        {
+          "at": "2026-11-02T14:39:30.000Z",
+          "action": "cantNow",
+          "variant": "until_last_call",
+          "event": "A",
+          "ringing": [
+            {
+              "event": "A",
+              "at": "2026-11-02T12:00:00.000Z",
+              "title": "Dhuhr",
+              "snoozesLeft": 0,
+              "snoozeLabel": null,
+              "noticeShown": false,
+              "laterMinutes": [],
+              "cantNow": "give_up"
+            }
+          ],
+          "pending": []
+        },
+        {
+          "at": "2026-11-02T14:39:40.000Z",
+          "action": "cantNow",
+          "variant": "give_up",
+          "event": "A",
+          "ringing": [],
+          "pending": []
+        },
+        {
+          "at": "2026-11-02T15:30:00.000Z",
+          "ringing": [],
+          "pending": []
         }
       ]
     }

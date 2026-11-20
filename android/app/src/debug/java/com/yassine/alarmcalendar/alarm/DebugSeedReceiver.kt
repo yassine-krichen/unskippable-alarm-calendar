@@ -14,6 +14,7 @@ import org.json.JSONObject
  *
  *   SEED   a schedule with an alarm in `a` seconds (2 snoozes of 1 min), a no-snooze alarm in `b` seconds, and
  *          refire of `refire` seconds. Extras (all optional): --ei a 60  --ei b 90  --ei refire 20  --ei grace 30
+ *          --ei window 30  makes the first alarm a prayer with a 30 minute window (Later / Can't now, last call at half)
  *   CLEAR  forgets the schedule and every state, cancels the alarm and stops the service
  *   DUMP   prints the engine state to logcat (tag AlarmEngine, lines "dump ...")
  *   CLOSE_SCREEN  finishes the alarm screen without a choice (the swiped-away path)
@@ -32,6 +33,7 @@ class DebugSeedReceiver : BroadcastReceiver() {
                     bSeconds = intent.getIntExtra("b", 90),
                     refireSeconds = intent.getIntExtra("refire", 20),
                     graceMinutes = intent.getIntExtra("grace", 30),
+                    windowMinutes = intent.getIntExtra("window", 0),
                 )
                 val result = runtime.setSchedule(payload)
                 AlarmController.afterChange(context)
@@ -58,14 +60,21 @@ class DebugSeedReceiver : BroadcastReceiver() {
         }
     }
 
-    private fun seedPayload(now: Long, aSeconds: Int, bSeconds: Int, refireSeconds: Int, graceMinutes: Int): JSONObject {
+    private fun seedPayload(now: Long, aSeconds: Int, bSeconds: Int, refireSeconds: Int, graceMinutes: Int, windowMinutes: Int): JSONObject {
         val wholeSecond = (now + 999) / 1000 * 1000
+        // With --ei window N, alarm A becomes a prayer whose window closes N minutes after it rings (Later / Can't now).
         fun occurrence(eventId: String, seconds: Int): JSONObject {
             val at = Instants.format(wholeSecond + seconds * 1000L)
             return JSONObject().put("id", "$eventId@$at").put("eventId", eventId).put("at", at).put("silenced", false).put("completed", false)
+                .also { json ->
+                    if (windowMinutes > 0 && eventId == EVENT_A) {
+                        json.put("windowEnd", Instants.format(wholeSecond + seconds * 1000L + windowMinutes * 60_000L))
+                    }
+                }
         }
         fun info(title: String, maxSnoozes: Int) = JSONObject()
             .put("title", title).put("notes", "Debug seed").put("maxSnoozes", maxSnoozes).put("snoozeMinutes", 1).put("soundId", "bell")
+            .also { json -> if (windowMinutes > 0 && title.startsWith("Dev alarm: 2 snoozes")) json.put("kind", "prayer").put("prayer", "dhuhr") }
         return JSONObject()
             .put("version", 2)
             .put("generatedAt", Instants.format(now))

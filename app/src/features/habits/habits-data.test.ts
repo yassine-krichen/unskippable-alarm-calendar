@@ -80,7 +80,7 @@ describe('fetchHabitCompletions', () => {
   it('reads only the columns scoring needs', async () => {
     fake.responses['select:completions'] = { data: [], error: null };
     await fetchHabitCompletions(NOW);
-    expect(fake.payloadOf('select:completions')).toBe('id, event_id, occurrence_at, status, snoozes_used');
+    expect(fake.payloadOf('select:completions')).toBe('id, event_id, occurrence_at, status, snoozes_used, done_at');
   });
 
   it('keeps reading pages while they come back full and stops at the first short one', async () => {

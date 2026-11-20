@@ -67,7 +67,9 @@ select format('%s can %s settings.%s', role, priv, col), expected::text,
 from unnest(array[
   'prayers_enabled', 'prayers_enabled_since', 'latitude', 'longitude', 'location_label', 'fajr_angle', 'isha_angle',
   'asr_factor', 'fajr_offset_min', 'dhuhr_offset_min', 'asr_offset_min', 'maghrib_offset_min', 'isha_offset_min',
-  'pre_prayer_minutes', 'prayer_max_snoozes', 'prayer_snooze_minutes'
+  'pre_prayer_minutes', 'prayer_max_snoozes', 'prayer_snooze_minutes',
+  -- prayer_windows migration
+  'pre_prayer_skip_fajr'
 ]) as col
 cross join (values
   ('authenticated', 'INSERT', true), ('authenticated', 'UPDATE', true), ('authenticated', 'SELECT', true),
@@ -289,7 +291,9 @@ select format('settings.%s is %s', col, shape), 'true',
 from (values
   ('holiday_country', 'text', false, '', 'nullable text with no default'),
   ('islamic_holidays', 'boolean', true, 'false', 'NOT NULL boolean defaulting to false'),
-  ('hijri_offset_days', 'smallint', true, '0', 'NOT NULL smallint defaulting to 0')
+  ('hijri_offset_days', 'smallint', true, '0', 'NOT NULL smallint defaulting to 0'),
+  -- prayer_windows migration: on by default, so the existing row skips the Fajr reminder too
+  ('pre_prayer_skip_fajr', 'boolean', true, 'true', 'NOT NULL boolean defaulting to true')
 ) as c(col, typ, not_null, expected_default, shape)
 union all
 -- The value checks the database enforces, so a client cannot store an unknown country shape or a shift of a week.

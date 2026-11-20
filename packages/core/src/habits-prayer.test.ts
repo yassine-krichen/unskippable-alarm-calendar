@@ -284,19 +284,19 @@ describe('the days of the Prayer habit', () => {
     expect(habit).toMatchObject({ done: 100, missed: 0, scoredDays: 20, currentStreak: 20, bestStreak: 20, score: 100 });
   });
 
-  it('leaves the day pending while a prayer is still inside its late window, then breaks it once the window closes', () => {
-    const dhuhr = prayerTimesOnDay(config, dayNumberFromDateString('2026-10-20')).dhuhr;
+  it('leaves the day pending while a prayer is still inside its window, then breaks it once the window closes', () => {
+    const times = prayerTimesOnDay(config, dayNumberFromDateString('2026-10-20'));
     const completions = [...allPrayed(DATES.slice(0, 19)), ...prayed('fajr', ['2026-10-20'])];
 
-    // 10 minutes after Dhuhr, grace is 30: not missed yet.
+    // 40 minutes after Dhuhr, past the 30 minute grace: still pending, the window runs until Asr.
     const inWindow = pooled(
-      computeHabitsReport(ALL_PRAYERS, completions, [], SETTINGS, new Date(dhuhr.getTime() + 10 * 60_000))
+      computeHabitsReport(ALL_PRAYERS, completions, [], SETTINGS, new Date(times.dhuhr.getTime() + 40 * 60_000))
     );
     expect(inWindow).toMatchObject({ missed: 0, pending: 1, currentStreak: 19, scoredDays: 19 });
 
-    // 40 minutes after: Dhuhr is missed, today is a missed day and the streak is over.
+    // A minute after Asr starts: Dhuhr's window is closed, today is a missed day and the streak is over.
     const closed = pooled(
-      computeHabitsReport(ALL_PRAYERS, completions, [], SETTINGS, new Date(dhuhr.getTime() + 40 * 60_000))
+      computeHabitsReport(ALL_PRAYERS, completions, [], SETTINGS, new Date(times.asr.getTime() + 60_000))
     );
     expect(closed).toMatchObject({ missed: 1, currentStreak: 0, bestStreak: 19, scoredDays: 20 });
   });

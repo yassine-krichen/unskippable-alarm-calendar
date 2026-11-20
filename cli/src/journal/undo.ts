@@ -110,14 +110,23 @@ async function revertOp(store: Store, op: JournalOp): Promise<string> {
       await store.setPrayersEnabled(before['enabled'] === true);
       return 'restored the prayers switch';
     }
+    case 'completions': {
+      // Only a made-up prayer is ever written here, so undoing it is deleting that row: the prayer is missed again.
+      if (op.kind === 'insert') {
+        await store.deleteCompletion(op.id);
+        return 'removed a made-up prayer, so it is missed again';
+      }
+      return 'nothing to restore';
+    }
   }
 }
 
 type RowLike = Record<string, unknown>;
 
-const RESTORED_FIELDS: Record<'events' | 'exams' | 'mode_rules' | 'mode_activations', readonly string[]> = {
+const RESTORED_FIELDS: Record<'events' | 'exams' | 'mode_rules' | 'mode_activations' | 'completions', readonly string[]> = {
   events: EVENT_RESTORE_COLUMNS,
   exams: EXAM_RESTORE_COLUMNS,
+  completions: ['status', 'snoozes_used', 'done_at'],
   mode_rules: ['behavior', 'shift_minutes', 'duration_min'],
   mode_activations: ['starts_at', 'ends_at'],
 };
@@ -135,6 +144,7 @@ function describeOp(op: JournalOp): string {
     mode_activations: 'mode activation',
     settings: 'setting',
     prayers: 'prayers switch',
+    completions: 'made-up prayer',
   };
   return `${label[op.table]}${name}`;
 }
@@ -187,6 +197,11 @@ export async function findUndoConflicts(store: Store, entry: JournalEntry, cover
           return store.listExams();
         case 'mode_rules':
           return store.listRules();
+        case 'completions': {
+          // A day either side of the occurrence is plenty to find the one row.
+          const at = Date.parse(String((op.after ?? op.before)?.['occurrence_at'] ?? ''));
+          return (await store.listCompletions(new Date((Number.isNaN(at) ? 0 : at) - 86_400_000).toISOString())).rows;
+        }
         default:
           return store.listActivations();
       }

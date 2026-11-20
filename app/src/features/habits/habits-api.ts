@@ -15,7 +15,8 @@ export interface LongWindowHabit {
   windowDays: number;
 }
 
-const HABIT_COMPLETION_COLUMNS = 'id, event_id, occurrence_at, status, snoozes_used';
+// done_at tells a prayer's timing apart (on time, late, made up); see prayerTimingOf in core.
+const HABIT_COMPLETION_COLUMNS = 'id, event_id, occurrence_at, status, snoozes_used, done_at';
 
 const MS_PER_DAY = 86_400_000;
 /** The bulk fetch: 28 days plus one so an occurrence at the window edge is never cut by clock skew. */

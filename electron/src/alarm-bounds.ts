@@ -6,7 +6,7 @@ export interface Rect {
 }
 
 export const ALARM_PANEL_WIDTH = 560;
-export const ALARM_PANEL_HEIGHT = 440;
+export const ALARM_PANEL_HEIGHT = 540;
 /** Never more than this share of the work area, so the panel fits small displays. */
 const MAX_WORK_AREA_SHARE = 0.9;
 /** Each further ringing alarm sits this far down and right of the previous one. */

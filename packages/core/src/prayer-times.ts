@@ -39,6 +39,7 @@ export const DEFAULT_PRAYER_SETTINGS: Readonly<PrayerSettings> = {
   maghrib_offset_min: 0,
   isha_offset_min: 0,
   pre_prayer_minutes: 15,
+  pre_prayer_skip_fajr: true,
   prayer_max_snoozes: 0,
   prayer_snooze_minutes: 5,
   show_prayers_in_calendar: false,
@@ -65,6 +66,9 @@ export interface PrayerConfig {
   offsetsMin: Readonly<Record<PrayerName, number>>;
   /** 0 means no pre-prayer alarms. */
   prePrayerMinutes: number;
+  /** No reminder before Fajr (the prayer alarm itself still rings). Absent in settings means false. */
+  skipFajrReminder: boolean;
+  /** Snooze rules of the pre-prayer reminders (and of a prayer without a window, see prayerWindowEnd). */
   maxSnoozes: number;
   snoozeMinutes: number;
   /** Prayers before this instant do not count (null: all count). */
@@ -114,6 +118,7 @@ export function resolvePrayerConfig(settings: Partial<PrayerSettings>): PrayerCo
       prePrayerMinutes.min,
       prePrayerMinutes.max
     ),
+    skipFajrReminder: settings.pre_prayer_skip_fajr === true,
     maxSnoozes: inRange(
       'prayer_max_snoozes',
       settings.prayer_max_snoozes ?? d.prayer_max_snoozes,
@@ -130,7 +135,8 @@ export function resolvePrayerConfig(settings: Partial<PrayerSettings>): PrayerCo
   };
 }
 
-type DayTimes = Readonly<Record<PrayerName, Date>>;
+/** The five prayers plus sunrise, which ends Fajr's window (it takes no offset). */
+type DayTimes = Readonly<Record<PrayerName, Date>> & { readonly sunrise: Date };
 
 // Computing a day takes tens of microseconds, but a calendar render, a habit report and a 60 day
 // expansion ask for the same days over and over. Bounded so a long session cannot grow it forever.
@@ -185,8 +191,9 @@ export function prayerTimesOnDay(config: PrayerConfig, dayNumber: number): DayTi
     asr: raw.asr,
     maghrib: raw.maghrib,
     isha: raw.isha,
+    sunrise: raw.sunrise,
   });
-  for (const name of PRAYER_NAMES) {
+  for (const name of [...PRAYER_NAMES, 'sunrise'] as const) {
     if (Number.isNaN(times[name].getTime())) {
       throw new RangeError(`No ${name} time at latitude ${config.latitude} on that date`);
     }
@@ -212,7 +219,9 @@ export function prayerOccurrencesBetween(
   to: Date,
   tz: string
 ): Date[] {
-  if (kind === 'pre_prayer' && config.prePrayerMinutes === 0) return [];
+  if (kind === 'pre_prayer' && (config.prePrayerMinutes === 0 || (prayer === 'fajr' && config.skipFajrReminder))) {
+    return [];
+  }
   const leadMs = kind === 'pre_prayer' ? config.prePrayerMinutes * MS_PER_MINUTE : 0;
   const firstDay = toWallClock(from, tz).dayNumber - 1;
   const lastDay = toWallClock(new Date(Math.max(to.getTime() - 1, from.getTime())), tz).dayNumber + 1;
@@ -291,4 +300,88 @@ export function unloggedPrayerLabel(previous: PrayerName, next: PrayerName): str
   const name = PRAYER_LABELS[previous];
   if (previous === 'fajr') return `You haven't logged ${name} — its time ended at sunrise`;
   return `You haven't logged ${name} — you have until ${PRAYER_LABELS[next]}`;
+}
+
+/** Later offers these many minutes, each only while it still leaves PRAYER_LATER_MARGIN_MINUTES before the window ends. */
+export const PRAYER_LATER_MINUTES: readonly number[] = [20, 40, 60];
+/** The last call rings this long before the window ends (half the window when it is shorter than twice this). */
+export const PRAYER_FINAL_CALL_MINUTES = 20;
+export const PRAYER_LATER_MARGIN_MINUTES = 10;
+/** A prayer done within this many minutes of its time counts as on time. */
+export const PRAYER_ON_TIME_MINUTES = 15;
+/** Slack after the window end for a Done pressed just as the window closes (clock skew, a slow sync). */
+export const PRAYER_WINDOW_TOLERANCE_MINUTES = 2;
+
+function floorToMinuteMs(ms: number): number {
+  return Math.floor(ms / MS_PER_MINUTE) * MS_PER_MINUTE;
+}
+
+/**
+ * When the prayer's window closes: Fajr at sunrise, Dhuhr at Asr, Asr at Maghrib, Maghrib at Isha, and Isha
+ * at the Islamic midnight (halfway from Maghrib to the next Fajr, floored to the minute). The times carry
+ * the per-prayer offsets, so the window matches what the person sees. `at` is the prayer's own instant.
+ * Null when the end is not more than a minute after `at` (offsets that cross), in which case the engines
+ * keep treating the prayer as an ordinary alarm.
+ */
+export function prayerWindowEnd(config: PrayerConfig, prayer: PrayerName, at: Date, tz: string): Date | null {
+  const day = prayerDayOf(config, prayer, at, tz);
+  const times = prayerTimesOnDay(config, day);
+  let endMs: number;
+  switch (prayer) {
+    case 'fajr':
+      endMs = times.sunrise.getTime();
+      break;
+    case 'dhuhr':
+      endMs = times.asr.getTime();
+      break;
+    case 'asr':
+      endMs = times.maghrib.getTime();
+      break;
+    case 'maghrib':
+      endMs = times.isha.getTime();
+      break;
+    case 'isha': {
+      const maghribMs = times.maghrib.getTime();
+      const nextFajrMs = prayerTimesOnDay(config, day + 1).fajr.getTime();
+      endMs = floorToMinuteMs(maghribMs + (nextFajrMs - maghribMs) / 2);
+      break;
+    }
+  }
+  return endMs - at.getTime() > MS_PER_MINUTE ? new Date(endMs) : null;
+}
+
+/** When the last call rings: 20 minutes before the window ends, or halfway through a shorter window. */
+export function prayerFinalCallAt(at: Date, windowEnd: Date): Date {
+  const windowMs = windowEnd.getTime() - at.getTime();
+  const leadMs = Math.min(PRAYER_FINAL_CALL_MINUTES * MS_PER_MINUTE, Math.floor(windowMs / 2));
+  return new Date(windowEnd.getTime() - leadMs);
+}
+
+/** What Can't now does at a given moment; a press carries the one the person saw, and a mismatch is refused. */
+export type CantNowChoice = 'until_last_call' | 'give_up';
+
+export interface PrayerDeferralChoices {
+  /** The Later buttons to show, ascending; empty when none fits before the window ends. */
+  laterMinutes: number[];
+  /** 'until_last_call': Can't now quiets it until the last call; 'give_up': it ends the alarm (the prayer becomes a qada). */
+  cantNow: CantNowChoice;
+}
+
+/**
+ * What a ringing prayer offers. Later keeps the presets that still end at least PRAYER_LATER_MARGIN_MINUTES
+ * before the window does. Can't now waits for the last call until a minute before it, and gives up from
+ * then on (or when this ring already is the last call).
+ */
+export function prayerDeferralChoices(
+  atMs: number,
+  windowEndMs: number,
+  nowMs: number,
+  lastCall: boolean
+): PrayerDeferralChoices {
+  const latestMs = windowEndMs - PRAYER_LATER_MARGIN_MINUTES * MS_PER_MINUTE;
+  const finalCallMs = prayerFinalCallAt(new Date(atMs), new Date(windowEndMs)).getTime();
+  return {
+    laterMinutes: PRAYER_LATER_MINUTES.filter((minutes) => nowMs + minutes * MS_PER_MINUTE <= latestMs),
+    cantNow: lastCall || nowMs >= finalCallMs - MS_PER_MINUTE ? 'give_up' : 'until_last_call',
+  };
 }

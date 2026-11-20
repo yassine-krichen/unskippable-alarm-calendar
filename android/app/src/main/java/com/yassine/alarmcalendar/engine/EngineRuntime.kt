@@ -84,14 +84,20 @@ class EngineRuntime(
 
     /** Rings what is due now. Returns the alarms to show, oldest first. */
     fun evaluate(): List<AlarmView> = synchronized(lock) {
-        if (core.evaluate(clock())) writeState()
-        core.activeRinging().map(core::viewOf)
+        val now = clock()
+        if (core.evaluate(now)) writeState()
+        core.activeRinging().map { core.viewOf(it, now) }
     }
 
-    fun activeRinging(): List<AlarmView> = synchronized(lock) { core.activeRinging().map(core::viewOf) }
+    fun activeRinging(): List<AlarmView> = synchronized(lock) {
+        val now = clock()
+        core.activeRinging().map { core.viewOf(it, now) }
+    }
 
     fun done(occurrenceId: String): Boolean = mutate { core.done(occurrenceId, it) }
     fun snooze(occurrenceId: String): Boolean = mutate { core.snooze(occurrenceId, it) }
+    fun later(occurrenceId: String, minutes: Int): Boolean = mutate { core.later(occurrenceId, minutes, it) }
+    fun cantNow(occurrenceId: String, shown: String): Boolean = mutate { core.cantNow(occurrenceId, shown, it) }
     fun windowClosed(occurrenceId: String): Boolean = mutate { core.windowClosed(occurrenceId, it) }
 
     private fun mutate(action: (now: Long) -> Boolean): Boolean = synchronized(lock) {
@@ -147,7 +153,8 @@ class EngineRuntime(
             append("nextTrigger=").append(core.nextTriggerAt(now)?.let(Instants::format) ?: "none").append('\n')
             for (o in state.occurrences) {
                 append("state ").append(o.occurrenceId).append(" phase=").append(o.phase).append(" snoozesUsed=").append(o.snoozesUsed)
-                append(" wakeAt=").append(o.wakeAtMs?.let(Instants::format) ?: "-").append('\n')
+                append(" wakeAt=").append(o.wakeAtMs?.let(Instants::format) ?: "-")
+                append(" windowEnd=").append(o.windowEndMs?.let(Instants::format) ?: "-").append(" lastCall=").append(o.lastCall).append('\n')
             }
             append("pendingCompletions=").append(state.pendingCompletions.size).append('\n')
             append("knownCompletions=").append(state.knownCompletions.size).append('\n')

@@ -255,4 +255,20 @@ export class MemoryStore implements Store {
   async listCompletions(sinceIso: string): Promise<{ rows: CompletionRow[]; complete: boolean }> {
     return { rows: this.completions.filter((row) => Date.parse(row.occurrence_at) >= Date.parse(sinceIso)), complete: true };
   }
+
+  async insertCompletion(input: { event_id: string; occurrence_at: string; done_at: string }): Promise<CompletionRow> {
+    this.writes += 1;
+    if (!this.events.some((event) => event.id === input.event_id)) throw new CliError('invalid_input', 'event');
+    if (this.completions.some((row) => row.event_id === input.event_id && Date.parse(row.occurrence_at) === Date.parse(input.occurrence_at))) {
+      throw new CliError('conflict', 'Duplicate value: completions_event_id_occurrence_at_key');
+    }
+    const row: CompletionRow = { id: randomUUID(), user_id: this.userId, status: 'done', snoozes_used: 0, ...input };
+    this.completions.push(row);
+    return structuredClone(row);
+  }
+
+  async deleteCompletion(id: string): Promise<void> {
+    this.writes += 1;
+    this.completions = this.completions.filter((row) => row.id !== id);
+  }
 }

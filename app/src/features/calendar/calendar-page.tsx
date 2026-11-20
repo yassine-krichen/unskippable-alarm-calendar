@@ -12,6 +12,7 @@ import {
 import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -22,6 +23,7 @@ import type { EventFormTarget } from '@/features/events/event-form-view';
 import { loadEvents, useEventsStore } from '@/features/events/events-store';
 import { useExamsStore } from '@/features/exams/exams-store';
 import { findRelationshipGroup } from '@/features/events/relationship-template';
+import { useOpenQadaCount } from '@/features/habits/use-prayer-log';
 import { toHolidayCalendarEvents } from '@/features/holidays/holiday-events';
 import { useHolidays } from '@/features/holidays/use-holidays';
 import { ModeChip } from '@/features/modes/mode-chip';
@@ -70,6 +72,7 @@ export function CalendarPage() {
   const exams = useExamsStore((state) => state.exams);
   const eventsStatus = useEventsStore((state) => state.status);
   const cheatDays = usePassesStore((state) => state.cheatDays);
+  const openQada = useOpenQadaCount();
 
   const [formTarget, setFormTarget] = useState<EventFormTarget | null>(null);
   const [passDialogOpen, setPassDialogOpen] = useState(false);
@@ -170,8 +173,19 @@ export function CalendarPage() {
           <Button variant="ghost" size="icon" aria-label="Exams" onClick={() => navigate('/exams')}>
             <GraduationCapIcon />
           </Button>
-          <Button variant="ghost" size="icon" aria-label="Habits and ranks" onClick={() => navigate('/stats')}>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="relative"
+            aria-label={openQada ? `Habits and ranks, ${openQada} prayers to make up` : 'Habits and ranks'}
+            onClick={() => navigate('/stats')}
+          >
             <ChartNoAxesColumnIcon />
+            {openQada ? (
+              <Badge variant="secondary" aria-hidden="true" className="absolute -top-1 -right-1 h-4 min-w-4 px-1 text-[10px]">
+                {openQada}
+              </Badge>
+            ) : null}
           </Button>
           <Button variant="ghost" size="icon" aria-label="Settings" onClick={() => navigate('/settings')}>
             <SettingsIcon />

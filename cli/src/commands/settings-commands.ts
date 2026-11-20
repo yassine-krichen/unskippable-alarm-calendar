@@ -91,6 +91,7 @@ const SETTING_SPECS: Record<string, SettingSpec> = {
   maghrib_offset_min: integer(-60, 60),
   isha_offset_min: integer(-60, 60),
   pre_prayer_minutes: integer(0, 120),
+  pre_prayer_skip_fajr: boolean,
   prayer_max_snoozes: integer(0, 10),
   prayer_snooze_minutes: integer(1, 120),
   show_prayers_in_calendar: boolean,

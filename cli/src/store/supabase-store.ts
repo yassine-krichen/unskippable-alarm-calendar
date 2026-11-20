@@ -335,4 +335,21 @@ export class SupabaseStore implements Store {
         .overrideTypes<CompletionRow[], { merge: false }>()
     );
   }
+
+  async insertCompletion(input: { event_id: string; occurrence_at: string; done_at: string }): Promise<CompletionRow> {
+    // user_id is the column default (auth.uid()); a duplicate occurrence is the unique constraint's 23505, a conflict.
+    const { data, error } = await this.client
+      .from('completions')
+      .insert({ ...input, status: 'done', snoozes_used: 0 })
+      .select(COMPLETION_COLUMNS)
+      .single<CompletionRow>();
+    check(error);
+    if (data === null) throw new CliError('server', 'The completion was not returned after saving.');
+    return data;
+  }
+
+  async deleteCompletion(id: string): Promise<void> {
+    const { error } = await this.client.from('completions').delete().eq('id', id);
+    check(error);
+  }
 }

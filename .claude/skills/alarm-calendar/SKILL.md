@@ -36,7 +36,8 @@ Applying is idempotent: the same plan twice changes nothing the second time. Re-
 
 - **Use keys.** Everything you create gets an `agent_key`, so you can find it again and update it in place instead of making a duplicate. You may change or disable any alarm, including the ones the owner made in the app: give it a key with `alarm-cal events update <id> --key ns/slug` first if you want to manage it from a plan.
 - **Deletes are soft.** "Delete" means `events disable`; the alarm can come back with `events enable`.
-- **Prayers are settings, never alarms.** Do not create prayer alarms. Prayer times, offsets and the on/off switch are `alarm-cal settings set ...` (`prayers_enabled`, `latitude`, `longitude`, `fajr_angle`, ...). Prayers and their reminders ignore modes and passes.
+- **Prayers are settings, never alarms.** Do not create prayer alarms. Prayer times, offsets and the on/off switch are `alarm-cal settings set ...` (`prayers_enabled`, `latitude`, `longitude`, `fajr_angle`, `pre_prayer_skip_fajr` to leave out the reminder before Fajr, ...). Prayers and their reminders ignore modes and passes.
+- **Prayers have a window, and qada is only for a miss.** Each prayer is open until the next one begins (Fajr until sunrise, Isha until Islamic midnight). On the phone and desktop the owner can put it off (Later) or say they cannot now (the last call is 20 minutes before the window ends). `alarm-cal prayers` shows what became of each prayer. A prayer whose time ran out unprayed is *missed*; `alarm-cal qada done <prayer> --date <prayer_day>` (the `prayer_day` that `prayers` and `qada list` print, not the clock date: an Isha after midnight belongs to the evening before) records it as made up (half credit, keeps the day streak alive). Run it only when the owner says they really made that prayer up, never to tidy numbers, and never for a prayer still inside its time (the command refuses). `alarm-cal undo` removes it.
 - **Non-passable alarms always ring.** `passable: false` means neither a cheat-day pass nor a mode can silence it. Use it for medication and anything safety-relevant. A `skip` rule on such an alarm does nothing; a `shift` or `shorten` rule still applies.
 - **Be strict by default only where it matters.** Everything else stays passable so the owner can use a pass.
 - **Exams have their own command.** `alarm-cal exams add --title ... --date ... --difficulty hard` plans the exam alarm and the revision sessions the way the app does. Do not hand-build those alarms in a plan. Exam mode switches itself on `exam_mode_days_before` days ahead.
@@ -59,6 +60,7 @@ Modes change how alarms behave without editing them. Each mode has a default (Si
 
 - What rings when: `alarm-cal occurrences --from 2026-11-09 --to 2026-11-15 --json` (paused, shifted and cheat-day effects are marked per ring).
 - How habits are going: `alarm-cal stats --json`. Passes: `alarm-cal passes --json`.
+- How the prayers went: `alarm-cal prayers --date 2026-11-09 --json`; what can still be made up: `alarm-cal qada list --json`.
 - What changed recently: `alarm-cal history`; revert with `alarm-cal undo` (or `--steps 3`).
 
 ## Errors

@@ -24,6 +24,7 @@ interface VectorOccurrence {
   originalAt?: string;
   label?: string;
   labelIfUnlogged?: { id: string; label: string };
+  windowEnd?: string;
 }
 
 interface VectorList {
@@ -38,15 +39,21 @@ interface ExpectedRing {
   snoozesLeft: number;
   snoozeLabel: string | null;
   noticeShown: boolean;
+  /** Only checked when the row has it; null means the view carries no prayer choices. */
+  laterMinutes?: number[] | null;
+  cantNow?: 'until_last_call' | 'give_up' | null;
 }
 
 interface VectorStep {
   at: string;
   push?: VectorList;
-  action?: 'done' | 'snooze' | 'close';
+  action?: 'done' | 'snooze' | 'close' | 'later' | 'cantNow';
   event?: string;
+  minutes?: number;
+  /** For cantNow: the variant the person saw on the button; absent means whatever the view shows right now. */
+  variant?: 'until_last_call' | 'give_up';
   ringing?: ExpectedRing[];
-  pending?: { event: string; at: string; snoozesUsed: number }[];
+  pending?: { event: string; at: string; snoozesUsed: number; doneAt?: string }[];
 }
 
 interface Scenario extends VectorList {
@@ -83,6 +90,7 @@ function toPayload(list: VectorList, settings: Scenario['settings'], now: Date):
     completed: o.completed ?? false,
     ...(o.originalAt === undefined ? {} : { originalAt: o.originalAt }),
     ...(o.label === undefined ? {} : { label: o.label }),
+    ...(o.windowEnd === undefined ? {} : { windowEnd: o.windowEnd }),
     ...(o.labelIfUnlogged === undefined
       ? {}
       : {
@@ -148,6 +156,8 @@ describe('shared alarm engine vectors (electron scheduler)', () => {
           const id = state === undefined ? `${idOf(step.event)}@none` : makeOccurrenceId(state.eventId, new Date(state.occurrenceAt));
           if (step.action === 'done') scheduler.done(id);
           else if (step.action === 'snooze') scheduler.snooze(id);
+          else if (step.action === 'later') scheduler.later(id, step.minutes ?? 0);
+          else if (step.action === 'cantNow') scheduler.cantNow(id, step.variant ?? scheduler.getAlarm(id)?.prayerChoices?.cantNow ?? 'until_last_call');
           else scheduler.windowClosed(id);
         }
         const where = `${scenario.name} @ ${step.at}`;
@@ -156,13 +166,17 @@ describe('shared alarm engine vectors (electron scheduler)', () => {
             .filter((s) => s.phase === 'ringing' && s.wakeAt === null)
             .map((s) => {
               const view = scheduler.getAlarm(makeOccurrenceId(s.eventId, new Date(s.occurrenceAt)));
+              const event = keyOf(s.eventId);
+              const wanted = step.ringing?.find((row) => row.event === event);
               return {
-                event: keyOf(s.eventId),
+                event,
                 at: s.occurrenceAt,
                 title: s.title,
                 snoozesLeft: leftFromLabel(view?.snoozeLabel ?? null),
                 snoozeLabel: view?.snoozeLabel ?? null,
                 noticeShown: view?.snoozeNotice != null,
+                ...(wanted?.laterMinutes === undefined ? {} : { laterMinutes: view?.prayerChoices?.laterMinutes ?? null }),
+                ...(wanted?.cantNow === undefined ? {} : { cantNow: view?.prayerChoices?.cantNow ?? null }),
               };
             })
             .sort((a, b) => (a.event < b.event ? -1 : 1));
@@ -171,9 +185,14 @@ describe('shared alarm engine vectors (electron scheduler)', () => {
         }
         if (step.pending !== undefined) {
           const actual = cache.pendingCompletions
-            .map((c) => ({ event: keyOf(c.event_id), at: c.occurrence_at, snoozesUsed: c.snoozes_used }))
+            .map((c) => ({ event: keyOf(c.event_id), at: c.occurrence_at, snoozesUsed: c.snoozes_used, doneAt: c.done_at }))
             .sort((a, b) => (a.event + a.at < b.event + b.at ? -1 : 1));
-          expect(actual, where).toEqual([...step.pending].sort((a, b) => (a.event + a.at < b.event + b.at ? -1 : 1)));
+          // doneAt is only checked for a row that names it (the older scenarios never did).
+          const expected = [...step.pending].sort((a, b) => (a.event + a.at < b.event + b.at ? -1 : 1));
+          expect(
+            actual.map(({ doneAt, ...row }, i) => (expected[i]?.doneAt === undefined ? row : { ...row, doneAt })),
+            where
+          ).toEqual(expected);
         }
       }
     });

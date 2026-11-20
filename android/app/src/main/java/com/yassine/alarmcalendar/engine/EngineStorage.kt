@@ -79,6 +79,8 @@ object StateCodec {
                     .put("soundId", s.soundId ?: JSONObject.NULL)
                     .put("kind", s.kind ?: JSONObject.NULL)
                     .put("labelled", s.labelled)
+                    .put("windowEnd", s.windowEndMs?.let(Instants::format) ?: JSONObject.NULL)
+                    .put("lastCall", s.lastCall)
             )
         }
         val handled = JSONObject()
@@ -125,6 +127,9 @@ object StateCodec {
                         soundId = json.opt("soundId") as? String,
                         kind = json.opt("kind") as? String,
                         labelled = json.optBoolean("labelled", false),
+                        // Absent in a state written before prayer windows: the plain alarm rules.
+                        windowEndMs = (json.opt("windowEnd") as? String)?.let(Instants::parse),
+                        lastCall = json.optBoolean("lastCall", false),
                     )
                 )
             }

@@ -86,3 +86,10 @@ none of it. The next `task android:web` replaces the dummy bundle with the real 
    airplane mode on, a Done is kept and uploaded after the network returns.
 6. Back button: open a sheet, press back (closes), press back on Settings (calendar), press back on the calendar (app leaves).
 7. Keyboard: tap the title field of a new alarm; the form stays reachable.
+8. Prayer windows (needs the new app build and the `prayer_windows` migration): seed a prayer with a 30 minute window,
+   `... -a com.yassine.alarmcalendar.debug.SEED --ei a 30 --ei window 30` (alarm A becomes a Dhuhr prayer whose window closes 30 minutes
+   after it rings). The screen shows Prayed, one "+20 min" button (only +20 still ends 10 minutes before the window does), "Can't now ·
+   last call HH:mm" and "Dhuhr time ends HH:mm", and no Snooze. Walk it with the screen off and once across a reboot: Later +20 rings
+   again 20 minutes after the press; Can't now is silent until the last call (15 minutes in), which says "Can't pray in time" and ends the
+   alarm when pressed; an unanswered prayer disappears at the window end and does not ring again; Prayed after Later records the press
+   time (check `done_at` in Supabase). Finish with the CLEAR broadcast.

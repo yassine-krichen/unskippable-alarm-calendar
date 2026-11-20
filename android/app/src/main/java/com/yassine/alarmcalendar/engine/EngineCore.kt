@@ -29,6 +29,41 @@ class EngineCore(
         const val HORIZON_WARNING_MS = 7 * Instants.MS_PER_DAY
         /** At most one horizon notice per this long. */
         const val HORIZON_NOTICE_GAP_MS = 24 * 60 * Instants.MS_PER_MINUTE
+
+        // Prayer windows (mirrors PRAYER_* in packages/core/src/prayer-times.ts; the shared vectors pin both).
+        /** Later offers these many minutes, each only while it still ends [PRAYER_LATER_MARGIN_MS] before the window does. */
+        val PRAYER_LATER_MINUTES: List<Int> = listOf(20, 40, 60)
+        const val PRAYER_FINAL_CALL_MS = 20 * Instants.MS_PER_MINUTE
+        const val PRAYER_LATER_MARGIN_MS = 10 * Instants.MS_PER_MINUTE
+        const val CANT_NOW_UNTIL_LAST_CALL = "until_last_call"
+        const val CANT_NOW_GIVE_UP = "give_up"
+
+        /** When the last call rings: 20 minutes before the window ends, or halfway through a shorter window. */
+        fun finalCallAt(atMs: Long, windowEndMs: Long): Long =
+            windowEndMs - minOf(PRAYER_FINAL_CALL_MS, (windowEndMs - atMs) / 2)
+
+        /** The Later buttons a prayer offers at `now` (see prayerDeferralChoices in core). */
+        fun laterChoices(windowEndMs: Long, now: Long): List<Int> =
+            PRAYER_LATER_MINUTES.filter { now + it * Instants.MS_PER_MINUTE <= windowEndMs - PRAYER_LATER_MARGIN_MS }
+
+        /**
+         * The next instant at which what a prayer's screen shows changes by itself: a Later option stops fitting, or
+         * Can't now turns into the give-up button (a minute before the last call). Null when nothing is left to change.
+         * The screen redraws from the engine then, so a stale button is never left on screen.
+         */
+        fun nextChoiceChangeAt(view: AlarmView, now: Long): Long? {
+            val windowEnd = view.windowEndMs ?: return null
+            val boundaries = ArrayList<Long>()
+            val lastCallAt = view.lastCallAtMs
+            if (view.cantNow == CANT_NOW_UNTIL_LAST_CALL && lastCallAt != null) boundaries.add(lastCallAt - Instants.MS_PER_MINUTE)
+            // An option is offered while now + minutes <= end - 10 min, so it is gone one millisecond after that.
+            for (minutes in view.laterMinutes ?: emptyList()) boundaries.add(windowEnd - PRAYER_LATER_MARGIN_MS - minutes * Instants.MS_PER_MINUTE + 1)
+            return boundaries.filter { it > now }.minOrNull()
+        }
+
+        /** 'give_up' from a minute before the last call on, or when this ring already is the last call. */
+        fun cantNowChoice(atMs: Long, windowEndMs: Long, now: Long, lastCall: Boolean): String =
+            if (lastCall || now >= finalCallAt(atMs, windowEndMs) - Instants.MS_PER_MINUTE) CANT_NOW_GIVE_UP else CANT_NOW_UNTIL_LAST_CALL
     }
 
     /** What the host must do after a [setSchedule]. */
@@ -127,10 +162,24 @@ class EngineCore(
      * true when the state changed (the caller persists it). The host then reads [activeRinging].
      */
     fun evaluate(now: Long): Boolean {
+        // First: a prayer whose time is over must not ring or wake again, whatever else is due.
+        val closed = closeExpiredPrayerWindows(now)
         val woke = wakeWaitingOccurrences(now)
         val rang = ringDueOccurrences(now)
         if (woke || rang) log("scheduler.evaluated", emptyMap())
-        return woke || rang
+        return closed || woke || rang
+    }
+
+    /**
+     * A prayer's time is over at its window end: any ringing or snoozed state of it goes and nothing is recorded (it
+     * is missed from here on, and can be made up). The host sees it leave [activeRinging] and closes the screen.
+     */
+    private fun closeExpiredPrayerWindows(now: Long): Boolean {
+        val expired = state.occurrences.filter { val end = it.windowEndMs; end != null && end <= now }
+        if (expired.isEmpty()) return false
+        state.occurrences.removeAll(expired.toSet())
+        for (s in expired) log("alarm.window_closed", mapOf("eventId" to s.eventId, "occurrenceAt" to s.occurrenceAt))
+        return true
     }
 
     /** Alarms on screen (or to be put on screen) now, oldest first. */
@@ -139,7 +188,18 @@ class EngineCore(
             .filter { it.phase == Phase.RINGING && it.wakeAtMs == null }
             .sortedWith(compareBy<OccurrenceState> { it.occurrenceAtMs }.thenBy { it.eventId })
 
-    fun viewOf(s: OccurrenceState): AlarmView {
+    fun viewOf(s: OccurrenceState, now: Long): AlarmView {
+        val windowEnd = s.windowEndMs
+        // A prayer with a window offers Later / Can't now instead of snoozes.
+        if (windowEnd != null) {
+            return AlarmView(
+                s.occurrenceId, s.title, s.notes, s.occurrenceAt, s.occurrenceAtMs, null, null, s.soundId, s.kind, s.snoozesUsed, 0,
+                laterMinutes = laterChoices(windowEnd, now),
+                cantNow = cantNowChoice(s.occurrenceAtMs, windowEnd, now, s.lastCall),
+                windowEndMs = windowEnd,
+                lastCallAtMs = finalCallAt(s.occurrenceAtMs, windowEnd),
+            )
+        }
         val left = maxOf(0, s.maxSnoozes - s.snoozesUsed)
         // With max_snoozes = 0 no snooze was ever offered, so there is nothing to explain.
         val label = if (left > 0) "Snooze ${s.snoozeMinutes} min · $left left" else null
@@ -174,11 +234,57 @@ class EngineCore(
     /** Snoozes if the occurrence still allows it. False if it was not ringing or no snoozes are left. */
     fun snooze(occurrenceId: String, now: Long): Boolean {
         val s = findRingingState(occurrenceId) ?: return false
-        if (s.maxSnoozes - s.snoozesUsed <= 0) return false
+        // A prayer with a window has Later / Can't now instead of snoozes, whatever the rules say.
+        if (s.windowEndMs != null || s.maxSnoozes - s.snoozesUsed <= 0) return false
         s.snoozesUsed += 1
         s.phase = Phase.SNOOZED
         s.wakeAtMs = now + s.snoozeMinutes * Instants.MS_PER_MINUTE
         log("alarm.snoozed", mapOf("occurrenceId" to occurrenceId, "snoozesUsed" to s.snoozesUsed))
+        evaluate(now)
+        return true
+    }
+
+    /**
+     * Later on a prayer with a window: quiet for `minutes` (one of [PRAYER_LATER_MINUTES], and only while it still ends
+     * 10 minutes before the window does), then ring again. Unlimited and not counted as a snooze. False if the
+     * occurrence is not ringing, has no window, or that choice no longer fits.
+     */
+    fun later(occurrenceId: String, minutes: Int, now: Long): Boolean {
+        val s = findRingingState(occurrenceId) ?: return false
+        val windowEnd = s.windowEndMs ?: return false
+        if (minutes !in laterChoices(windowEnd, now)) return false
+        s.phase = Phase.SNOOZED
+        s.wakeAtMs = now + minutes * Instants.MS_PER_MINUTE
+        log("alarm.later", mapOf("occurrenceId" to occurrenceId, "minutes" to minutes))
+        evaluate(now)
+        return true
+    }
+
+    /**
+     * Can't now on a prayer with a window. Before the last call it quiets the prayer until then (and the next Can't now
+     * gives up); from a minute before the last call on, or at the last call itself, it ends the alarm with no
+     * completion: the prayer becomes missed when the window closes, and can be made up afterwards (qada). False if the
+     * occurrence is not ringing or has no window.
+     */
+    fun cantNow(occurrenceId: String, shown: String, now: Long): Boolean {
+        val s = findRingingState(occurrenceId) ?: return false
+        val windowEnd = s.windowEndMs ?: return false
+        val choice = cantNowChoice(s.occurrenceAtMs, windowEnd, now, s.lastCall)
+        // The button pressed said one thing; if the clock has made it the other, do nothing and let the screen redraw.
+        // Otherwise a stale "Can't now · last call" would give the prayer up without the person seeing that.
+        if (choice != shown) {
+            log("alarm.cant_now_refused", mapOf("occurrenceId" to occurrenceId, "shown" to shown, "now" to choice))
+            return false
+        }
+        if (choice == CANT_NOW_GIVE_UP) {
+            state.occurrences.remove(s)
+            log("alarm.gave_up", mapOf("occurrenceId" to occurrenceId))
+        } else {
+            s.phase = Phase.SNOOZED
+            s.lastCall = true
+            s.wakeAtMs = finalCallAt(s.occurrenceAtMs, windowEnd)
+            log("alarm.cant_now", mapOf("occurrenceId" to occurrenceId, "lastCallAt" to Instants.format(s.wakeAtMs!!)))
+        }
         evaluate(now)
         return true
     }
@@ -217,7 +323,11 @@ class EngineCore(
      */
     fun nextTriggerAt(now: Long): Long? {
         var soonest = Long.MAX_VALUE
-        for (s in state.occurrences) s.wakeAtMs?.let { soonest = minOf(soonest, it) }
+        for (s in state.occurrences) {
+            s.wakeAtMs?.let { soonest = minOf(soonest, it) }
+            // A prayer's window closing is an event of its own: it dismisses the state.
+            s.windowEndMs?.let { soonest = minOf(soonest, it) }
+        }
         val current = schedule
         if (current != null) {
             val graceStart = now - graceMsOf(current.settings)
@@ -301,6 +411,11 @@ class EngineCore(
             log("alarm.silenced_by_cheat_day", mapOf("eventId" to o.eventId))
             return true
         }
+        // A prayer whose time is already over (the device slept through it, or restarted after it) does not ring.
+        if (o.windowEndMs != null && o.windowEndMs <= now) {
+            log("alarm.skipped_window_closed", mapOf("eventId" to o.eventId))
+            return true
+        }
         // A new occurrence of an event that is still ringing is dropped. A snoozed occurrence is part of the same
         // ringing lifecycle, so it counts too.
         if (state.occurrences.any { it.eventId == o.eventId }) {
@@ -329,6 +444,7 @@ class EngineCore(
                 soundId = info.soundId,
                 kind = info.kind,
                 labelled = labelled,
+                windowEndMs = o.windowEndMs,
             )
         )
         log("alarm.ringing", mapOf("eventId" to o.eventId, "occurrenceAt" to o.at))

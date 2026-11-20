@@ -25,3 +25,26 @@ export async function fetchRecentCompletions(now: Date = new Date()): Promise<Re
   if (error) return fail(error.message);
   return ok(data ?? []);
 }
+
+/**
+ * Records a made-up prayer (qada): an ordinary 'done' completion of the missed occurrence, with done_at = now, which
+ * is after the prayer's window and so scores as a qada (see prayerTimingOf in core). First write wins, like the
+ * alarm engines' own upserts: if a row for the occurrence already exists nothing is written and the result is null
+ * (the caller reloads to show what is there). Online only; user_id comes from the session in the database.
+ */
+export async function insertQadaCompletion(
+  eventId: string,
+  occurrenceAt: string,
+  now: Date = new Date()
+): Promise<Result<CompletionRow | null>> {
+  const { data, error } = await supabase
+    .from('completions')
+    .upsert(
+      { event_id: eventId, occurrence_at: occurrenceAt, status: 'done', snoozes_used: 0, done_at: now.toISOString() },
+      { onConflict: 'event_id,occurrence_at', ignoreDuplicates: true }
+    )
+    .select(COMPLETION_COLUMNS)
+    .overrideTypes<CompletionRow[], { merge: false }>();
+  if (error) return fail(error.message);
+  return ok(data?.[0] ?? null);
+}

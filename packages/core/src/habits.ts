@@ -6,7 +6,14 @@ import {
   type OccurrenceSettings,
 } from './occurrences';
 import { instantMs } from './instant';
-import { prayerDayOf, resolvePrayerConfig } from './prayer-times';
+import {
+  PRAYER_ON_TIME_MINUTES,
+  PRAYER_WINDOW_TOLERANCE_MINUTES,
+  prayerDayOf,
+  prayerWindowEnd,
+  resolvePrayerConfig,
+  type PrayerConfig,
+} from './prayer-times';
 import {
   MAX_SHIFT_MS,
   applyModesToInstants,
@@ -15,8 +22,8 @@ import {
   type ModeTimelineSettings,
 } from './modes';
 import { nominalPeriodDays } from './period';
-import { dayNumberFromDateString, localDateString } from './time-zone';
-import type { CompletionRow, EventRow, ModeConfig, Settings } from './types';
+import { dateStringFromDayNumber, dayNumberFromDateString, localDateString } from './time-zone';
+import type { CompletionRow, EventRow, ModeConfig, PrayerName, Settings } from './types';
 
 export { instantMs, nominalPeriodDays };
 
@@ -35,6 +42,8 @@ export const HABIT_MIN_SCORED = 5;
 /** Credit of a done occurrence never drops below this, however many snoozes it used. */
 export const HABIT_MIN_CREDIT = 0.5;
 const CREDIT_LOST_PER_SNOOZE = 0.1;
+/** Credit of a prayer done after its first 15 minutes but inside its window. On time is 1, a qada is HABIT_MIN_CREDIT. */
+export const HABIT_PRAYER_LATE_CREDIT = 0.8;
 
 const MS_PER_MINUTE = 60_000;
 const MS_PER_DAY = 86_400_000;
@@ -65,7 +74,15 @@ export type HabitEvent = Pick<
   | 'group_id'
 >;
 
-export type HabitCompletion = Pick<CompletionRow, 'event_id' | 'occurrence_at' | 'status' | 'snoozes_used'>;
+/** `done_at` is what tells a prayer's timing apart; a row without it (a test fixture) counts as on time. */
+export type HabitCompletion = Pick<CompletionRow, 'event_id' | 'occurrence_at' | 'status' | 'snoozes_used'> &
+  Partial<Pick<CompletionRow, 'done_at'>>;
+
+/**
+ * When a prayer was prayed, from done_at: within PRAYER_ON_TIME_MINUTES of its time, inside its window
+ * (late), or after the window closed (qada, a made-up prayer). Derived, never stored.
+ */
+export type PrayerTiming = 'on_time' | 'late' | 'qada';
 
 /** The zone and grace window, plus the prayer fields (a prayer is scored from its times in them). */
 export type HabitSettings = Pick<Settings, 'timezone' | 'grace_minutes'> & OccurrenceSettings & ModeTimelineSettings;
@@ -76,6 +93,8 @@ export interface HabitOccurrence {
   outcome: OccurrenceOutcome;
   /** Snoozes the completion used; 0 when there is none. */
   snoozesUsed: number;
+  /** A done prayer only: on time, late or made up (qada). Absent for every other occurrence. */
+  timing?: PrayerTiming;
 }
 
 /** The id of the one pooled "Prayer" habit in a report: it stands for all five prayer events. */
@@ -115,6 +134,16 @@ export interface HabitStats {
    * the rank needs HABIT_MIN_SCORED of, so a single day of five prayers does not rank. Streaks count these days.
    */
   scoredDays?: number;
+  /** Pooled prayer habit only: the done prayers by timing, and the missed ones that can still be made up. */
+  prayerTimings?: PrayerTimings;
+}
+
+export interface PrayerTimings {
+  onTime: number;
+  late: number;
+  qada: number;
+  /** Prayers whose window closed with no completion at all: they can still be made up. */
+  openQada: number;
 }
 
 export interface HabitsReport {
@@ -136,6 +165,12 @@ export interface HabitsReport {
 /** Credit of one done occurrence: 1 minus 0.1 per snooze, never below 0.5. */
 export function doneCredit(snoozesUsed: number): number {
   return Math.max(HABIT_MIN_CREDIT, 1 - CREDIT_LOST_PER_SNOOZE * Math.max(0, snoozesUsed));
+}
+
+/** Credit of a done prayer by timing: on time 1, late 0.8, qada 0.5. Snoozes play no part for a prayer. */
+export function prayerCredit(timing: PrayerTiming): number {
+  if (timing === 'on_time') return 1;
+  return timing === 'late' ? HABIT_PRAYER_LATE_CREDIT : HABIT_MIN_CREDIT;
 }
 
 /**
@@ -241,6 +276,43 @@ export function classifyOccurrence(input: ClassifyInput): OccurrenceOutcome {
   return lateMs > input.graceMinutes * MS_PER_MINUTE ? 'missed' : 'pending';
 }
 
+export interface ClassifyPrayerInput {
+  at: Date;
+  /** When the prayer's window closes (prayerWindowEnd); null falls back to `at` plus the grace window. */
+  windowEnd: Date | null;
+  now: Date;
+  completion: Pick<HabitCompletion, 'status' | 'done_at'> | undefined;
+  graceMinutes: number;
+  /** A mode skipped it. Not possible for a prayer today; kept so the two classifiers behave alike. */
+  paused?: boolean;
+}
+
+/**
+ * Timing of a prayer done at `doneAt`: on time up to PRAYER_ON_TIME_MINUTES after `at`, late up to the window
+ * end plus PRAYER_WINDOW_TOLERANCE_MINUTES, qada after that. No done_at (or an unreadable one) is on time.
+ */
+export function prayerTimingOf(at: Date, windowEnd: Date, doneAt: string | undefined): PrayerTiming {
+  const doneMs = doneAt === undefined ? Number.NaN : instantMs(doneAt);
+  if (Number.isNaN(doneMs) || doneMs <= at.getTime() + PRAYER_ON_TIME_MINUTES * MS_PER_MINUTE) return 'on_time';
+  return doneMs <= windowEnd.getTime() + PRAYER_WINDOW_TOLERANCE_MINUTES * MS_PER_MINUTE ? 'late' : 'qada';
+}
+
+/**
+ * Outcome of one prayer occurrence. A done completion wins, with its timing. Otherwise it is pending while now
+ * is not past the window end, and missed after (a missed prayer can still be made up, see prayerLog).
+ */
+export function classifyPrayerOccurrence(input: ClassifyPrayerInput): {
+  outcome: OccurrenceOutcome;
+  timing?: PrayerTiming;
+} {
+  const windowEnd = input.windowEnd ?? new Date(input.at.getTime() + input.graceMinutes * MS_PER_MINUTE);
+  if (input.completion?.status === 'done') {
+    return { outcome: 'done', timing: prayerTimingOf(input.at, windowEnd, input.completion.done_at) };
+  }
+  if (input.paused === true) return { outcome: 'paused' };
+  return { outcome: input.now.getTime() > windowEnd.getTime() ? 'missed' : 'pending' };
+}
+
 /**
  * Longest and trailing runs of done occurrences. Pending ones are skipped and excused ones keep
  * a run alive without lengthening it, so cheat days cannot inflate a streak; a miss resets it.
@@ -256,7 +328,17 @@ function streaks(outcomes: readonly OccurrenceOutcome[]): { current: number; bes
   return { current: run, best };
 }
 
-/** The event's completions keyed by prayer-day; a done row beats a skipped one on the same day. */
+/** done_at as a sortable number; a row without one (a fixture) counts as the earliest, like "on time". */
+function doneAtMs(completion: HabitCompletion): number {
+  const ms = completion.done_at === undefined ? Number.NaN : instantMs(completion.done_at);
+  return Number.isNaN(ms) ? -Infinity : ms;
+}
+
+/**
+ * The event's completions keyed by prayer-day; a done row beats a skipped one on the same day, and among several
+ * done rows (a settings change can leave two instants for one prayer-day) the earliest done_at wins, so the result
+ * does not depend on the order the rows were read in.
+ */
 function completionsByPrayerDay(
   event: HabitEvent,
   completions: ReadonlyMap<string, HabitCompletion>,
@@ -270,7 +352,11 @@ function completionsByPrayerDay(
     const key = prayerDayKey(event, new Date(ms), settings);
     if (key === null) continue;
     const existing = byDay.get(key);
-    if (existing === undefined || (existing.status !== 'done' && completion.status === 'done')) byDay.set(key, completion);
+    const better =
+      existing === undefined ||
+      (existing.status !== 'done' && completion.status === 'done') ||
+      (existing.status === 'done' && completion.status === 'done' && doneAtMs(completion) < doneAtMs(existing));
+    if (better) byDay.set(key, completion);
   }
   return byDay;
 }
@@ -337,6 +423,8 @@ export function computeHabitStats(
   // A prayer's completion is matched by prayer-day, not exact instant: an offset or location change after
   // "prayed" moves the alarm by minutes and must not turn that prayer into a miss.
   const prayerCompletions = eventKindOf(event) === 'normal' ? null : completionsByPrayerDay(event, completions, settings);
+  // A prayer is scored by its window and timing instead of grace and snoozes.
+  const prayerConfig = eventKindOf(event) === 'prayer' && event.prayer != null ? resolvePrayerConfig(settings) : null;
   const counts = { done: 0, missed: 0, excused: 0, paused: 0, pending: 0 };
   const occurrences: HabitOccurrence[] = [];
   let earned = 0;
@@ -349,23 +437,36 @@ export function computeHabitStats(
       prayerCompletions === null
         ? completionNear(event, completions, at.getTime(), original.getTime(), timeline)
         : prayerCompletions.get(prayerDayKey(event, at, settings) ?? '');
-    const outcome = classifyOccurrence({
-      passable: isEventPassable(event),
-      at,
-      now,
-      completion,
-      cheatDays,
-      timezone: settings.timezone,
-      graceMinutes: settings.grace_minutes,
-      paused,
-    });
+    const prayer =
+      prayerConfig !== null && event.prayer != null
+        ? classifyPrayerOccurrence({
+            at,
+            windowEnd: prayerWindowEnd(prayerConfig, event.prayer, at, settings.timezone),
+            now,
+            completion,
+            graceMinutes: settings.grace_minutes,
+            paused,
+          })
+        : null;
+    const outcome =
+      prayer?.outcome ??
+      classifyOccurrence({
+        passable: isEventPassable(event),
+        at,
+        now,
+        completion,
+        cheatDays,
+        timezone: settings.timezone,
+        graceMinutes: settings.grace_minutes,
+        paused,
+      });
     const snoozesUsed = outcome === 'done' ? (completion?.snoozes_used ?? 0) : 0;
     counts[outcome] += 1;
-    occurrences.push({ at, outcome, snoozesUsed });
+    occurrences.push({ at, outcome, snoozesUsed, ...(prayer?.timing === undefined ? {} : { timing: prayer.timing }) });
 
     const weight = recencyWeight((now.getTime() - at.getTime()) / MS_PER_DAY, windowDays / 2);
     if (outcome === 'done') {
-      earned += weight * doneCredit(snoozesUsed);
+      earned += weight * (prayer?.timing === undefined ? doneCredit(snoozesUsed) : prayerCredit(prayer.timing));
       possible += weight;
     } else if (outcome === 'missed') {
       possible += weight * HABIT_MISS_WEIGHT;
@@ -395,12 +496,15 @@ export function computeHabitStats(
 
 /**
  * One prayer-day's outcome from its prayers' outcomes: a miss anywhere breaks it, a prayer still to come (or
- * inside its late window) leaves it open, and it is done once every prayer of that day is done. A day with
- * only excused or paused prayers keeps a streak alive without adding to it.
+ * inside its window) leaves it open, and it is done once every prayer of that day was prayed in time (on time or
+ * late). A day whose only shortfall is a qada ('qada' stands for a done prayer made up after its window), and a day
+ * with only excused or paused prayers, keeps a streak alive without adding to it.
  */
-export function prayerDayOutcome(outcomes: readonly OccurrenceOutcome[]): OccurrenceOutcome {
+export function prayerDayOutcome(outcomes: ReadonlyArray<OccurrenceOutcome | 'qada'>): OccurrenceOutcome {
   if (outcomes.includes('missed')) return 'missed';
   if (outcomes.includes('pending')) return 'pending';
+  // A made-up prayer is neutral: it keeps the streak alive (so making one up repairs a miss) without adding to it.
+  if (outcomes.includes('qada')) return 'excused';
   if (outcomes.includes('done')) return 'done';
   return outcomes.includes('excused') ? 'excused' : 'paused';
 }
@@ -428,23 +532,38 @@ function pooledPrayerHabit(
     .flatMap(({ event, stats }) => stats.occurrences.map((occurrence) => ({ event, occurrence })))
     .sort((a, b) => a.occurrence.at.getTime() - b.occurrence.at.getTime());
   const occurrences = tagged.map(({ occurrence }) => occurrence);
-  const days = new Map<number, OccurrenceOutcome[]>();
+  const days = new Map<number, Array<OccurrenceOutcome | 'qada'>>();
   for (const { event, occurrence } of tagged) {
     const day =
       config !== null && event.prayer != null
         ? prayerDayOf(config, event.prayer, occurrence.at, settings.timezone)
         : dayNumberFromDateString(localDateString(occurrence.at, settings.timezone));
-    days.set(day, [...(days.get(day) ?? []), occurrence.outcome]);
+    // A made-up prayer is told apart here so the day can stay neutral for the streak (see prayerDayOutcome).
+    days.set(day, [...(days.get(day) ?? []), occurrence.timing === 'qada' ? 'qada' : occurrence.outcome]);
   }
   const ordered = [...days].sort(([a], [b]) => a - b);
-  const dayOutcomes = ordered
+  const keptDays = ordered
     .filter(([, outcomes], index) => !(index === 0 && outcomes.length < parts.length))
     .map(([, outcomes], index, kept) => {
       const outcome = prayerDayOutcome(outcomes);
       const lastDayOpen = index === kept.length - 1 && outcomes.length < parts.length;
-      return lastDayOpen && outcome !== 'missed' ? 'pending' : outcome;
+      return {
+        outcome: lastDayOpen && outcome !== 'missed' ? ('pending' as const) : outcome,
+        hasQada: outcomes.includes('qada'),
+      };
     });
-  const scoredDays = dayOutcomes.filter((outcome) => outcome === 'done' || outcome === 'missed').length;
+  const dayOutcomes = keptDays.map((day) => day.outcome);
+  // A day settled with a made-up prayer is evidence too, though it neither adds to nor breaks the streak.
+  const scoredDays = keptDays.filter(
+    ({ outcome, hasQada }) => outcome === 'done' || outcome === 'missed' || (outcome === 'excused' && hasQada)
+  ).length;
+  const prayerTimings: PrayerTimings = { onTime: 0, late: 0, qada: 0, openQada: 0 };
+  for (const { outcome, timing } of occurrences) {
+    if (timing === 'on_time') prayerTimings.onTime += 1;
+    else if (timing === 'late') prayerTimings.late += 1;
+    else if (timing === 'qada') prayerTimings.qada += 1;
+    else if (outcome === 'missed') prayerTimings.openQada += 1;
+  }
   const sum = (pick: (part: HabitStats) => number): number => parts.reduce((total, part) => total + pick(part), 0);
   const earned = sum((part) => part.weightedEarned);
   const possible = sum((part) => part.weightedPossible);
@@ -473,6 +592,7 @@ function pooledPrayerHabit(
     occurrences,
     pooled: 'prayer',
     scoredDays,
+    prayerTimings,
   };
 }
 
@@ -519,4 +639,71 @@ export function computeHabitsReport(
   }
   const overallScore = possible > 0 ? (100 * earned) / possible : null;
   return { habits, overallScore, overallTier: tierForScore(overallScore), failed };
+}
+
+/** 'pending' is inside its window (or still to come), 'missed' is past it with no completion: a qada is open. */
+export type PrayerLogTier = PrayerTiming | 'pending' | 'missed';
+
+export interface PrayerLogEntry {
+  eventId: string;
+  prayer: PrayerName;
+  at: Date;
+  /**
+   * The prayer-day ('yyyy-MM-dd') the prayer belongs to (prayerDayOf), which is what a person calls its date and what
+   * `alarm-cal qada done --date` takes. It differs from the clock date of `at` for an Isha pushed past midnight.
+   */
+  day: string;
+  /** Null when the prayer settings give no usable window (the grace window applies instead). */
+  windowEnd: Date | null;
+  tier: PrayerLogTier;
+}
+
+/**
+ * Every prayer occurrence from `fromMs` to `toMs` (default: now), oldest first, with what became of it. One
+ * source for the app's Qada list and the CLI: a 'missed' entry is a prayer the person can still make up, a
+ * 'qada' one was made up. Starts no earlier than the prayers were switched on or their events created, like the
+ * score. A prayer event the settings cannot compute is left out, not an error.
+ */
+export function prayerLog(
+  events: readonly HabitEvent[],
+  completions: readonly HabitCompletion[],
+  settings: HabitSettings,
+  now: Date,
+  fromMs: number,
+  toMs: number = now.getTime()
+): PrayerLogEntry[] {
+  const index = indexCompletions(completions);
+  const enabledMs = settings.prayers_enabled_since ? instantMs(settings.prayers_enabled_since) : Number.NaN;
+  const entries: PrayerLogEntry[] = [];
+  for (const event of events) {
+    if (!event.active || eventKindOf(event) !== 'prayer' || event.prayer == null) continue;
+    try {
+      const config: PrayerConfig | null = resolvePrayerConfig(settings);
+      if (config === null) continue;
+      const createdMs = event.created_at === undefined ? Number.NaN : instantMs(event.created_at);
+      const floorMs = Math.max(
+        fromMs,
+        Number.isNaN(createdMs) ? -Infinity : createdMs,
+        Number.isNaN(enabledMs) ? -Infinity : enabledMs
+      );
+      const byDay = completionsByPrayerDay(event, index, settings);
+      // The range is half-open; +1 ms makes an occurrence exactly at `toMs` count.
+      for (const at of eventOccurrencesBetween(event, new Date(floorMs), new Date(toMs + 1), settings)) {
+        const windowEnd = prayerWindowEnd(config, event.prayer, at, settings.timezone);
+        const result = classifyPrayerOccurrence({
+          at,
+          windowEnd,
+          now,
+          completion: byDay.get(prayerDayKey(event, at, settings) ?? ''),
+          graceMinutes: settings.grace_minutes,
+        });
+        const tier: PrayerLogTier = result.timing ?? (result.outcome === 'missed' ? 'missed' : 'pending');
+        const day = dateStringFromDayNumber(prayerDayOf(config, event.prayer, at, settings.timezone));
+        entries.push({ eventId: event.id, prayer: event.prayer, at, day, windowEnd, tier });
+      }
+    } catch {
+      // Same policy as computeHabitsReport: one unusable event must not take the whole screen down.
+    }
+  }
+  return entries.sort((a, b) => a.at.getTime() - b.at.getTime());
 }

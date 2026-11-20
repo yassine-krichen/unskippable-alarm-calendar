@@ -22,7 +22,9 @@ Add `--json` to any command for one JSON document (errors too). Without it you g
 | `modes list` | Modes, their rules per alarm, running and planned activations, what is in effect now. |
 | `exams list [--all]` | Exams and their upcoming revision sessions. |
 | `settings get` | The settings row and the fields you may change. |
-| `stats` | Habit scores, tiers, streaks. |
+| `stats` | Habit scores, tiers, streaks. The Prayer habit also carries `prayer_timings` (on time, late, qada, open qada). |
+| `prayers [--date D] [--days N]` | Each prayer's `prayer_day`, time, when its window ends and its status: on time, late, qada (made up), missed, open (still inside its time) or to come. `--date` is a prayer-day. |
+| `qada list` | The prayers of the last 28 days whose time ran out with no record: the ones that can still be made up. Each has a `prayer_day`. |
 | `passes` | Pass wallet and cheat days. |
 | `history [--limit N]` | The local undo journal. |
 
@@ -41,6 +43,7 @@ Add `--json` to any command for one JSON document (errors too). Without it you g
 | `exams add --title T --date D [--time HH:mm] [--difficulty easy\|normal\|hard] [--session-time HH:mm] [--session-minutes N] [--lead N] [--key K]` | Creates an exam, its alarm and its revision sessions. |
 | `exams update <ref> [flags]` / `exams remove <ref>` | Regenerates the future alarms by diff / removes the exam and switches its alarms off. |
 | `settings set <field> <value> [<field> <value> ...]` | Writable settings only (see `settings get`). `prayers_enabled` switches the ten prayer alarms. |
+| `qada done <prayer> --date D` | `D` is the `prayer_day` that `prayers` and `qada list` print (an Isha after midnight belongs to the evening before, not to the clock date of its time). Records a missed prayer as made up (a completion done now). Refused for a prayer still inside its time, one that already has a record, one older than 28 days. Undo deletes the row. |
 | `plan check\|diff\|apply <file\|->` | Declarative alarms; `-` reads the plan from standard input. |
 | `undo [--steps N]` | Reverts the last N changes, newest first. Undoing a create switches the alarm off. |
 

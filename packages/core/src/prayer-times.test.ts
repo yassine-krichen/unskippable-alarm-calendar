@@ -214,7 +214,7 @@ describe('prayerOccurrencesBetween', () => {
 
   it('finds a pre-prayer alarm that lands before the range start day boundary', () => {
     // Fajr plus a 120 minute lead can fall on the previous local date; the day widening keeps it.
-    const config = configFor({ pre_prayer_minutes: 120 });
+    const config = configFor({ pre_prayer_minutes: 120, pre_prayer_skip_fajr: false });
     const from = new Date('2026-06-21T00:00:00.000Z');
     const to = new Date('2026-06-22T00:00:00.000Z');
     const pre = prayerOccurrencesBetween('pre_prayer', 'fajr', config, from, to, TUNIS);

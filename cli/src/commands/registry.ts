@@ -6,6 +6,7 @@ import { help, schema } from './help-commands';
 import { history, undo } from './journal-commands';
 import { modesNormal, modesRangeAdd, modesRangeRemove, modesRuleSet, modesSwitch } from './mode-commands';
 import { planApply, planCheck, planDiff } from './plan-commands';
+import { prayers, qadaDone, qadaList } from './prayer-commands';
 import { examsList, modesList, occurrences, passes, settingsGet, stats } from './read-commands';
 import { settingsSet } from './settings-commands';
 
@@ -40,6 +41,9 @@ export function allCommands(): CommandDef[] {
     settingsGet,
     settingsSet,
     stats,
+    prayers,
+    qadaList,
+    qadaDone,
     passes,
     planCheck,
     planDiff,

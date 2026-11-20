@@ -280,6 +280,13 @@ describe('settings', () => {
     expect(harness.store.settings).toMatchObject({ grace_minutes: 15, latitude: 36.8625, islamic_holidays: true });
   });
 
+  it('writes the Fajr reminder switch', async () => {
+    const result = await harness.run(['settings', 'set', 'pre_prayer_skip_fajr', 'off', '--json']);
+    expect(result.code).toBe(0);
+    expect(harness.store.settings['pre_prayer_skip_fajr']).toBe(false);
+    expect((await harness.run(['settings', 'get', '--json'])).json['writable_fields']).toContain('pre_prayer_skip_fajr');
+  });
+
   it('refuses read-only fields, out-of-range values and unknown names with exit 5', async () => {
     for (const args of [['pass_cap', '9'], ['grace_minutes', '-1'], ['latitude', '80'], ['timezone', 'Mars/Base'], ['colour', 'x'], ['holiday_country', 'TUN']]) {
       const result = await harness.run(['settings', 'set', ...args, '--json']);

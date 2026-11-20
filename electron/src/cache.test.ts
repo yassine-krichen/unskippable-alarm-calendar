@@ -56,6 +56,32 @@ describe('cache file', () => {
     expect(loadCache(file, log)).toEqual(cache);
   });
 
+  it('round-trips a prayer state with its window and last call, and loads an older one without them', () => {
+    const base = {
+      eventId: '11111111-1111-4111-8111-111111111111',
+      occurrenceAt: '2026-03-02T12:00:00.000Z',
+      snoozesUsed: 0,
+      phase: 'snoozed' as const,
+      wakeAt: '2026-03-02T14:40:00.000Z',
+      userId: '99999999-9999-4999-8999-999999999999',
+      title: 'Dhuhr',
+      notes: null,
+      maxSnoozes: 0,
+      snoozeMinutes: 5,
+      soundId: null,
+      kind: 'prayer' as const,
+    };
+    const cache = emptyCache();
+    cache.occurrences.push({ ...base, windowEnd: '2026-03-02T15:00:00.000Z', lastCall: true });
+    cache.occurrences.push({ ...base, eventId: '22222222-2222-4222-8222-222222222222' });
+    saveCache(file, cache);
+    const loaded = loadCache(file, log);
+    expect(loaded).toEqual(cache);
+    expect(loaded.occurrences[0]).toMatchObject({ windowEnd: '2026-03-02T15:00:00.000Z', lastCall: true });
+    expect(loaded.occurrences[1]).not.toHaveProperty('windowEnd');
+    expect(logged).toEqual([]);
+  });
+
   it('leaves no temp file behind after a save and replaces the old content', () => {
     saveCache(file, emptyCache());
     const next = emptyCache();

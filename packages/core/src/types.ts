@@ -133,7 +133,9 @@ export interface PrayerSettings {
   isha_offset_min: number;
   /** Minutes before each prayer for its pre-prayer alarm; 0 turns them off. */
   pre_prayer_minutes: number;
-  /** Snooze rules of the prayer and pre-prayer alarms; 0 snoozes by default. */
+  /** No reminder before Fajr (a night wake-up for it is the prayer alarm's job). Default true. */
+  pre_prayer_skip_fajr: boolean;
+  /** Snooze rules of the pre-prayer reminders; a prayer has its own Later / Can't now, see ScheduleOccurrence.windowEnd. */
   prayer_max_snoozes: number;
   prayer_snooze_minutes: number;
   /**
@@ -233,6 +235,12 @@ export interface ScheduleOccurrence {
    * from `at`). A completion recorded at that instant counts for it too.
    */
   originalAt?: string;
+  /**
+   * Only for a prayer: when its window closes (ISO, after `at`, at most 24 hours later; see prayerWindowEnd). Present
+   * means the prayer offers Later / Can't now instead of snoozes and is dismissed unprayed at this instant; absent
+   * (an older app, or a window the prayer settings make useless) means the plain alarm rules.
+   */
+  windowEnd?: string;
   /**
    * Text to show instead of the event's title, for an occurrence whose text depends on state when
    * the list was built (a pre-prayer alarm: "Asr in 15 min", or "You haven't logged Dhuhr ...").

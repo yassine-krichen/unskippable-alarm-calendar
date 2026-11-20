@@ -51,6 +51,15 @@ describe('updateSettings', () => {
     expect(String(fake.payloadOf('select:settings'))).toMatch(/show_prayers_in_calendar/);
   });
 
+  it('writes pre_prayer_skip_fajr and selects it back', async () => {
+    await updateSettings('u1', { pre_prayer_skip_fajr: false });
+    expect(fake.payloadOf('update:settings')).toEqual({ pre_prayer_skip_fajr: false });
+
+    fake.responses['select:settings'] = { data: row, error: null };
+    await fetchSettings();
+    expect(String(fake.payloadOf('select:settings'))).toMatch(/pre_prayer_skip_fajr/);
+  });
+
   it('drops pass_cap and user_id even if a caller smuggles them in, and never upserts', async () => {
     const sneaky = { timezone: 'Europe/Berlin', pass_cap: 99, user_id: 'someone-else' } as SettingsPatch;
 

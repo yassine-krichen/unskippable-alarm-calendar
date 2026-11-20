@@ -129,13 +129,27 @@ describe('prayer alarms in the scheduler', () => {
     expect(h.rings.some((view) => view.occurrenceId.startsWith(prayerId('prayer', 'dhuhr')))).toBe(true);
   });
 
-  it('allows snoozing when the prayer settings say so', () => {
+  it('offers Later and Can\'t now instead of snoozes, however many snoozes the settings allow', () => {
     const h = createHarness();
     h.push(PRAYER_EVENTS, [], { ...SETTINGS, prayer_max_snoozes: 2, prayer_snooze_minutes: 10 });
     h.scheduler.start();
     h.runTo(at('dhuhr'));
     const dhuhr = h.rings.find((view) => view.occurrenceId.startsWith(prayerId('prayer', 'dhuhr')))!;
-    expect(dhuhr.snoozeLabel).toBe('Snooze 10 min · 2 left');
+    expect(dhuhr.snoozeLabel).toBeNull();
+    expect(dhuhr.snoozeNotice).toBeNull();
+    expect(dhuhr.prayerChoices).toMatchObject({ laterMinutes: [20, 40, 60], cantNow: 'until_last_call' });
+    expect(dhuhr.prayerChoices?.windowEnd).toBe(new Date(at('asr')).toISOString());
+    expect(h.scheduler.snooze(dhuhr.occurrenceId)).toBe(false);
+  });
+
+  it('keeps the snooze rules for the reminder before the prayer', () => {
+    const h = createHarness();
+    h.push(PRAYER_EVENTS, [], { ...SETTINGS, prayer_max_snoozes: 2, prayer_snooze_minutes: 10 });
+    h.scheduler.start();
+    h.runTo(at('dhuhr'));
+    const reminder = h.rings.find((view) => view.occurrenceId.startsWith(prayerId('pre_prayer', 'dhuhr')))!;
+    expect(reminder.snoozeLabel).toBe('Snooze 10 min · 2 left');
+    expect(reminder.prayerChoices).toBeUndefined();
   });
 
   it('plays the prayer sound for the prayer and the normal sound for the reminder', () => {
@@ -155,12 +169,12 @@ describe('pre-prayer text decided when the alarm rings', () => {
     return h.rings.find((view) => view.occurrenceId.startsWith(prayerId('pre_prayer', 'asr')));
   }
 
-  it('reminds you of Dhuhr when it was never logged', () => {
+  it('stays plain when Dhuhr was never logged: its own last call carries that message', () => {
     const h = createHarness();
     h.push(PRAYER_EVENTS);
     h.scheduler.start();
     h.runTo(at('asr') - 15 * MINUTE);
-    expect(preAsr(h)?.title).toBe("You haven't logged Dhuhr — you have until Asr");
+    expect(preAsr(h)?.title).toBe('Asr in 15 min');
     expect(preAsr(h)?.kind).toBe('pre_prayer');
   });
 
@@ -185,7 +199,7 @@ describe('pre-prayer text decided when the alarm rings', () => {
 
     // The app pushes on every change; the list is rebuilt around the ringing alarm.
     h.push(PRAYER_EVENTS);
-    expect(h.scheduler.getAlarm(before.occurrenceId)?.title).toBe("You haven't logged Dhuhr — you have until Asr");
+    expect(h.scheduler.getAlarm(before.occurrenceId)?.title).toBe('Asr in 15 min');
   });
 
   it('dismisses a ringing prayer when prayers are switched off', () => {
@@ -272,10 +286,11 @@ describe('a refill knows what was done here and not flushed yet', () => {
     h.runTo(at('dhuhr'));
     const dhuhr = h.rings.find((view) => view.occurrenceId.startsWith(prayerId('prayer', 'dhuhr')))!;
 
-    // Without the Done, the refilled reminder carries the unlogged text for the engine.
+    // Dhuhr has a window, so its last call (not the Asr reminder) says it is unlogged: the reminder is plain.
     h.cache.schedule = null;
     h.scheduler.evaluate('test-refill-before-done');
-    expect(preAsrToday(h)?.labelIfUnlogged?.label).toBe("You haven't logged Dhuhr — you have until Asr");
+    expect(preAsrToday(h)).toMatchObject({ label: 'Asr in 15 min' });
+    expect(preAsrToday(h)?.labelIfUnlogged).toBeUndefined();
 
     expect(h.scheduler.done(dhuhr.occurrenceId)).toBe(true);
     expect(h.cache.pendingCompletions).toHaveLength(1);

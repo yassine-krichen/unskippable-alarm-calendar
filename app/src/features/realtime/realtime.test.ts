@@ -240,6 +240,15 @@ describe('realtime change reaches the alarm adapter', () => {
     expect(useSettingsStore.getState().settings).toEqual({ ...SETTINGS, grace_minutes: 90 });
   });
 
+  it('a settings update carries the Fajr reminder switch', () => {
+    const { client } = start();
+    client.deliver('settings', {
+      eventType: 'UPDATE',
+      new: { ...SETTINGS, pre_prayer_skip_fajr: false },
+    });
+    expect(useSettingsStore.getState().settings).toMatchObject({ pre_prayer_skip_fajr: false });
+  });
+
   it('a completion made on another device is pushed so this device will not ring it again', () => {
     const { client, pushes } = start();
     const done = {

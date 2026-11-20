@@ -1,7 +1,7 @@
 // The settings columns, in one place for the app and the agent CLI.
 
 const PRAYER_COLUMNS =
-  'prayers_enabled, prayers_enabled_since, latitude, longitude, location_label, fajr_angle, isha_angle, asr_factor, fajr_offset_min, dhuhr_offset_min, asr_offset_min, maghrib_offset_min, isha_offset_min, pre_prayer_minutes, prayer_max_snoozes, prayer_snooze_minutes, show_prayers_in_calendar';
+  'prayers_enabled, prayers_enabled_since, latitude, longitude, location_label, fajr_angle, isha_angle, asr_factor, fajr_offset_min, dhuhr_offset_min, asr_offset_min, maghrib_offset_min, isha_offset_min, pre_prayer_minutes, pre_prayer_skip_fajr, prayer_max_snoozes, prayer_snooze_minutes, show_prayers_in_calendar';
 
 const HOLIDAY_COLUMNS = 'holiday_country, islamic_holidays, hijri_offset_days';
 
@@ -31,6 +31,7 @@ export const WRITABLE_SETTINGS_COLUMNS = [
   'maghrib_offset_min',
   'isha_offset_min',
   'pre_prayer_minutes',
+  'pre_prayer_skip_fajr',
   'prayer_max_snoozes',
   'prayer_snooze_minutes',
   'show_prayers_in_calendar',

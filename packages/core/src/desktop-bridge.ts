@@ -1,3 +1,4 @@
+import type { CantNowChoice } from './prayer-times';
 import type { CompletionRow, EventKind, SchedulePayload } from './types';
 
 /**
@@ -20,6 +21,23 @@ export interface AlarmView {
   soundId: string | null;
   /** Absent for a normal alarm; the alarm screen says "Prayed" instead of "Done" for a prayer. */
   kind?: EventKind;
+  /**
+   * Only for a prayer that has a window (ScheduleOccurrence.windowEnd): the screen then shows Later and
+   * Can't now instead of the snooze button, and `snoozeLabel` / `snoozeNotice` are null.
+   */
+  prayerChoices?: PrayerChoices;
+}
+
+/** What the alarm screen of a prayer with a window offers (see prayerDeferralChoices). */
+export interface PrayerChoices {
+  /** The Later buttons, in minutes, ascending; may be empty near the end of the window. */
+  laterMinutes: number[];
+  /** 'until_last_call': Can't now quiets it until the last call; 'give_up': it ends the alarm, the prayer becomes a qada. */
+  cantNow: CantNowChoice;
+  /** ISO 8601: when the prayer's window closes. */
+  windowEnd: string;
+  /** ISO 8601: when the last call rings. */
+  lastCallAt: string;
 }
 
 /** The audio file the user chose for the prayer alarms, as main holds it. */
@@ -51,6 +69,14 @@ export interface AlarmApi {
   getAlarm(occurrenceId: string): Promise<AlarmView | null>;
   done(occurrenceId: string): Promise<ActionResult>;
   snooze(occurrenceId: string): Promise<ActionResult>;
+  /** A prayer with a window: ring again after `minutes` (one of PRAYER_LATER_MINUTES). Not counted as a snooze. */
+  later(occurrenceId: string, minutes: number): Promise<ActionResult>;
+  /**
+   * A prayer with a window: quiet until the last call, or end the alarm unprayed once it is that late. `shown` is
+   * the variant of the button the person pressed; if the clock has moved to the other one since, the engine
+   * refuses (`ok: false`) and the screen redraws, so a stale "last call" button never gives the prayer up.
+   */
+  cantNow(occurrenceId: string, shown: CantNowChoice): Promise<ActionResult>;
   /**
    * The user's own prayer sound, for the window of a ringing occurrence only. The renderer never
    * names a file: main reads the one it copied into its own data folder.

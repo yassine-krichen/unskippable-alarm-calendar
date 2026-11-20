@@ -53,6 +53,14 @@ export interface OccurrenceState {
    * refresh from the event info must not overwrite it with the generic title.
    */
   labelled?: boolean;
+  /**
+   * A prayer with a window (ScheduleOccurrence.windowEnd): ISO 8601 instant at which the prayer's time is over and
+   * this state is dropped with no completion. Absent for everything else, and for a state saved before windows;
+   * that one behaves as before. The state keeps its own copy because the schedule list moves on while it rings.
+   */
+  windowEnd?: string;
+  /** True once Can't now has quieted it until the last call: the next Can't now gives the prayer up. */
+  lastCall?: boolean;
 }
 
 /** The last precomputed schedule main holds (see SchedulePayload in core). */

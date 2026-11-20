@@ -31,6 +31,7 @@ See `alarm-cal help` or `.claude/skills/alarm-calendar/references/commands.md`. 
 ```
 login | logout | whoami | config show|set|unset
 events list|get|add|update|disable|enable      occurrences      stats      passes
+prayers [--date D] [--days n]                   qada list | qada done <prayer> --date D
 modes list | modes rule set | modes switch | modes normal | modes range add|remove
 exams list|add|update|remove                    settings get|set
 plan check|diff|apply <file|->                  undo [--steps n]      history
@@ -48,6 +49,9 @@ alarm-cal modes switch sick --since today --until 2026-11-12
 alarm-cal modes normal
 alarm-cal exams add --title "Maths final" --date 2026-12-10 --difficulty hard --key exams/maths
 alarm-cal settings set grace_minutes 15
+alarm-cal prayers --date 2026-11-09 --json               # each prayer's time, window end and status
+alarm-cal qada list --json                               # missed prayers of the last 28 days
+alarm-cal qada done maghrib --date 2026-11-05            # record one as made up (undoable)
 alarm-cal occurrences --from 2026-11-09 --to 2026-11-15 --json
 alarm-cal undo
 ```
@@ -78,11 +82,18 @@ A plan is a JSON file: a `namespace`, `prune`, and items keyed by agent key (`wo
 
 Full field reference: `.claude/skills/alarm-calendar/references/plan-format.md`. Ready-made plans: `references/workout.plan.json`, `medication.plan.json`, `study.plan.json`, `birthdays.plan.json` (all of them are applied to an empty calendar in the tests).
 
+## Prayers and qada
+
+Dates are prayer-days: `prayers --date`, the `prayer_day` field of `prayers` and `qada list`, and `qada done --date` all use the day a prayer belongs to, so an Isha pushed past local midnight by an offset is listed with, and recorded for, the evening before (its clock time is in `at`).
+
+`prayers` lists each prayer of a day (default today, `--days` up to 31) with its time, when its window ends and what became of it: `on time` (done within 15 minutes), `late` (inside the window), `qada` (done after it), `missed` (window over, no record), `open` (inside its window) or `to come`. `qada list` is the `missed` ones of the last 28 days. `qada done <prayer> --date yyyy-MM-dd` writes a completion with `done_at` now, so it scores as a qada; it is refused (exit 5) for a prayer still inside its time, (exit 6) for one that already has a record, and for one older than 28 days or from before the prayers were switched on. It is journalled and `undo` deletes the row, which makes the prayer missed again. `stats` shows `prayer_timings` for the pooled Prayer habit. The setting `pre_prayer_skip_fajr` is writable with `settings set`.
+
 ## Limits
 
 - Plans cover alarms and their mode rules. Exams, modes' ranges and settings have their own commands. Custom modes cannot be created from the CLI (rules can name one that exists).
 - An alarm made by an agent birthday template is two plain yearly alarms (no `group_id`), so the app edits them separately.
 - `passes` reads the wallet row; a weekly grant shows up after the app next syncs.
+- `qada done` is the one command that writes a completion; it never edits or deletes an existing one except by undoing its own row.
 - Undo restores the rows it recorded and refuses (exit 6) when something changed them since, unless `--force`. Hard deletes never happen, so nothing is lost.
 - The session file holds a refresh token. It is private to your user (the restrictive ACL or mode is re-applied on every write), never printed, and `alarm-cal logout` revokes it.
 - A plan file or standard-input plan is limited to 1 MB and 200 items; `--key-prefix` must not be empty.

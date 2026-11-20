@@ -57,6 +57,21 @@ describe('showing the prayers in the calendar (form mapping)', () => {
   });
 });
 
+describe('skipping the Fajr reminder (form mapping)', () => {
+  it('starts off for a row that predates the column, as core reads it, and follows the column otherwise', () => {
+    expect(prayerFormValues(BASE).skipFajrReminder).toBe(false);
+    expect(prayerFormValues({ ...BASE, pre_prayer_skip_fajr: true }).skipFajrReminder).toBe(true);
+    expect(prayerFormValues({ ...BASE, pre_prayer_skip_fajr: false }).skipFajrReminder).toBe(false);
+  });
+
+  it('writes the switch as settings.pre_prayer_skip_fajr', () => {
+    expect(prayerFormToPatch({ ...prayerFormValues(BASE), skipFajrReminder: false })).toMatchObject({
+      pre_prayer_skip_fajr: false,
+    });
+    expect(prayerFormToPatch(prayerFormValues(BASE))).toMatchObject({ pre_prayer_skip_fajr: false });
+  });
+});
+
 describe('prayerFormToPatch', () => {
   it('writes the settings columns, trims the place name and leaves the on/off switch to the RPC', () => {
     const patch = prayerFormToPatch({ ...prayerFormValues(BASE), locationLabel: '  Tunis  ', ishaOffset: -2 });

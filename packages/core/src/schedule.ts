@@ -1,6 +1,8 @@
 import { MAX_SHIFT_MS, applyModesToInstants, buildModeTimeline } from './modes';
 import { eventKindOf, eventOccurrencesBetween, prayerDayKey } from './occurrences';
 import {
+  prayerFinalCallAt,
+  prayerWindowEnd,
   prePrayerLabel,
   previousPrayer,
   resolvePrayerConfig,
@@ -225,6 +227,10 @@ export function expandSchedule(input: ExpandScheduleInput): ExpandedSchedule {
       };
       const original = originals.get(at.getTime());
       if (original !== undefined) occurrence.originalAt = original.toISOString();
+      if (kind === 'prayer' && prayerConfig !== null && event.prayer != null) {
+        const windowEnd = prayerWindowEnd(prayerConfig, event.prayer, at, settings.timezone);
+        if (windowEnd !== null) occurrence.windowEnd = windowEnd.toISOString();
+      }
       if (kind === 'pre_prayer' && prayerConfig !== null && event.prayer != null) {
         Object.assign(
           occurrence,
@@ -371,6 +377,12 @@ function prePrayerText(
   if (previous === null || previousEvent === undefined) return { label: plain };
   const previousMs = previous.at.getTime();
   if (previousMs > at.getTime()) return { label: plain };
+  // A prayer with a window has had its own last call by now: that call, not this reminder, is where
+  // "you haven't prayed it" is said.
+  const previousEnd = prayerWindowEnd(config, previous.prayer, previous.at, tz);
+  if (previousEnd !== null && prayerFinalCallAt(previous.at, previousEnd).getTime() <= at.getTime()) {
+    return { label: plain };
+  }
   if (config.enabledSinceMs !== null && previousMs < config.enabledSinceMs) return { label: plain };
   if (isCompleted(previousEvent, previous.at)) return { label: plain };
   return {

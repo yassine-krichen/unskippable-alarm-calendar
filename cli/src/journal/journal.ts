@@ -4,7 +4,7 @@ import { createFileLock } from '../auth/file-lock';
 import type { ConfigPaths } from '../config/paths';
 import { ensurePrivateDir, readJsonFile, writeJsonFile } from '../config/private-files';
 
-export type JournalTable = 'events' | 'exams' | 'mode_rules' | 'mode_activations' | 'settings' | 'prayers';
+export type JournalTable = 'events' | 'exams' | 'mode_rules' | 'mode_activations' | 'settings' | 'prayers' | 'completions';
 
 /** One row-level change. `before` / `after` are the rows (or, for settings, the touched columns) around it. */
 export interface JournalOp {
@@ -30,7 +30,7 @@ export interface JournalEntry {
 }
 
 const opSchema = z.object({
-  table: z.enum(['events', 'exams', 'mode_rules', 'mode_activations', 'settings', 'prayers']),
+  table: z.enum(['events', 'exams', 'mode_rules', 'mode_activations', 'settings', 'prayers', 'completions']),
   kind: z.enum(['insert', 'update', 'delete']),
   id: z.string(),
   before: z.record(z.string(), z.unknown()).nullable(),

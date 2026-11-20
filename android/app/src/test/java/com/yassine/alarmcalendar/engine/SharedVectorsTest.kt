@@ -53,26 +53,45 @@ class SharedVectorsTest(private val name: String, private val scenario: JSONObje
                     "done" -> rig.runtime.done(id)
                     "snooze" -> rig.runtime.snooze(id)
                     "close" -> rig.runtime.windowClosed(id)
+                    "later" -> rig.runtime.later(id, step.getInt("minutes"))
+                    "cantNow" -> rig.runtime.cantNow(
+                        id,
+                        if (step.has("variant")) step.getString("variant") else rig.runtime.activeRinging().firstOrNull { it.occurrenceId == id }?.cantNow ?: EngineCore.CANT_NOW_UNTIL_LAST_CALL,
+                    )
                     else -> error("unknown action")
                 }
             }
             if (step.has("ringing")) {
-                val actual = rig.runtime.activeRinging()
-                    .map { "${keyOf(it.occurrenceId.substringBefore('@'))}|${it.occurrenceAt}|${it.title}|${it.snoozesLeft}|${it.snoozeLabel}|${it.snoozeNotice != null}" }
-                    .sorted()
                 val expectedArray = step.getJSONArray("ringing")
-                val expected = (0 until expectedArray.length()).map {
-                    val r = expectedArray.getJSONObject(it)
-                    "${r.getString("event")}|${r.getString("at")}|${r.getString("title")}|${r.getInt("snoozesLeft")}|${if (r.isNull("snoozeLabel")) null else r.getString("snoozeLabel")}|${r.getBoolean("noticeShown")}"
+                // laterMinutes and cantNow are compared only for a row that names them (null: no prayer choices).
+                val named = (0 until expectedArray.length()).map { expectedArray.getJSONObject(it) }.associateBy { it.getString("event") }
+                val actual = rig.runtime.activeRinging().map {
+                    val key = keyOf(it.occurrenceId.substringBefore('@'))
+                    val row = named[key]
+                    val choices = buildString {
+                        if (row?.has("laterMinutes") == true) append("|later=").append(it.laterMinutes)
+                        if (row?.has("cantNow") == true) append("|cantNow=").append(it.cantNow)
+                    }
+                    "$key|${it.occurrenceAt}|${it.title}|${it.snoozesLeft}|${it.snoozeLabel}|${it.snoozeNotice != null}$choices"
+                }.sorted()
+                val expected = named.values.map { r ->
+                    val choices = buildString {
+                        if (r.has("laterMinutes")) append("|later=").append(if (r.isNull("laterMinutes")) null else r.getJSONArray("laterMinutes").let { a -> (0 until a.length()).map(a::getInt) })
+                        if (r.has("cantNow")) append("|cantNow=").append(if (r.isNull("cantNow")) null else r.getString("cantNow"))
+                    }
+                    "${r.getString("event")}|${r.getString("at")}|${r.getString("title")}|${r.getInt("snoozesLeft")}|${if (r.isNull("snoozeLabel")) null else r.getString("snoozeLabel")}|${r.getBoolean("noticeShown")}$choices"
                 }.sorted()
                 assertEquals(where, expected, actual)
             }
             if (step.has("pending")) {
-                val actual = rig.runtime.peekCompletions().map { "${keyOf(it.eventId)}|${it.occurrenceAt}|${it.snoozesUsed}" }.sorted()
                 val expectedArray = step.getJSONArray("pending")
-                val expected = (0 until expectedArray.length()).map {
-                    val p = expectedArray.getJSONObject(it)
-                    "${p.getString("event")}|${p.getString("at")}|${p.getInt("snoozesUsed")}"
+                // doneAt is compared only for a row that names it.
+                val named = (0 until expectedArray.length()).map { expectedArray.getJSONObject(it) }
+                val withDoneAt = named.any { it.has("doneAt") }
+                val actual = rig.runtime.peekCompletions()
+                    .map { "${keyOf(it.eventId)}|${it.occurrenceAt}|${it.snoozesUsed}${if (withDoneAt) "|${it.doneAt}" else ""}" }.sorted()
+                val expected = named.map { p ->
+                    "${p.getString("event")}|${p.getString("at")}|${p.getInt("snoozesUsed")}${if (withDoneAt) "|${p.optString("doneAt")}" else ""}"
                 }.sorted()
                 assertEquals(where, expected, actual)
             }
@@ -90,6 +109,7 @@ class SharedVectorsTest(private val name: String, private val scenario: JSONObje
                 .also { json ->
                     if (o.has("originalAt")) json.put("originalAt", o.getString("originalAt"))
                     if (o.has("label")) json.put("label", o.getString("label"))
+                    if (o.has("windowEnd")) json.put("windowEnd", o.getString("windowEnd"))
                     o.optJSONObject("labelIfUnlogged")?.let { u ->
                         val (key, instant) = u.getString("id").split('@')
                         json.put("labelIfUnlogged", JSONObject().put("id", "${idOf(key)}@$instant").put("label", u.getString("label")))

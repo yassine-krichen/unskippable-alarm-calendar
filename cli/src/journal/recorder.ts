@@ -1,4 +1,5 @@
 import type {
+  CompletionRow,
   EventRow,
   EventWriteInput,
   ExamRow,
@@ -81,6 +82,13 @@ export class Recorder {
       after: pick(asRecord(after), columns),
     });
     return after;
+  }
+
+  /** A made-up prayer: a completion of the missed occurrence, done now. Undone by deleting the row. */
+  async createCompletion(input: { event_id: string; occurrence_at: string; done_at: string }): Promise<CompletionRow> {
+    const row = await this.store.insertCompletion(input);
+    this.ops.push({ table: 'completions', kind: 'insert', id: row.id, before: null, after: asRecord(row) });
+    return row;
   }
 
   async setPrayersEnabled(before: boolean, enabled: boolean): Promise<void> {
