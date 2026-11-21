@@ -18,7 +18,8 @@ afterEach(() => harness.cleanup());
 
 describe('the skill', () => {
   it('has the frontmatter Claude Code needs', () => {
-    const text = readFileSync(join(skillDir, 'SKILL.md'), 'utf8');
+    // A Windows checkout with core.autocrlf turns the committed LF file into CRLF.
+    const text = readFileSync(join(skillDir, 'SKILL.md'), 'utf8').replace(/\r\n/g, '\n');
     expect(text).toMatch(/^---\nname: alarm-calendar\ndescription: .{80,}\n---\n/);
   });
 
