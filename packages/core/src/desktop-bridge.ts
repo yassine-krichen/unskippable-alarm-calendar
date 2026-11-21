@@ -133,4 +133,19 @@ export interface DesktopApi {
   clearCustomSound(): Promise<void>;
   /** The chosen file's bytes, for the preview button in Settings. */
   readCustomSound(): Promise<CustomSoundData | null>;
+  /** The installed app's version (`app.getVersion()`), `x.y.z`. */
+  getAppVersion(): Promise<string>;
+  /** Asks GitHub from main (the renderer's CSP does not allow it) whether a newer release exists. Never rejects for a network problem. */
+  checkForUpdate(): Promise<DesktopUpdateCheck>;
+  /**
+   * Opens the project's latest-release page in the browser. Takes no address: main opens one fixed URL, so the
+   * renderer can never make it open anything else.
+   */
+  openReleasePage(): Promise<void>;
 }
+
+/** What main found out about updates; `available` is only ever returned for a version newer than the installed one. */
+export type DesktopUpdateCheck =
+  | { status: 'available'; latestVersion: string; notes: string; htmlUrl: string }
+  | { status: 'current' }
+  | { status: 'unavailable'; reason: 'not-packaged' | 'offline' | 'rate-limited' | 'invalid' };

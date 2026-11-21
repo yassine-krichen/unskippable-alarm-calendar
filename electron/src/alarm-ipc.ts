@@ -24,6 +24,9 @@ export const DESKTOP_CHANNELS = {
   chooseCustomSound: 'desktop:choose-custom-sound',
   clearCustomSound: 'desktop:clear-custom-sound',
   readCustomSound: 'desktop:read-custom-sound',
+  getAppVersion: 'desktop:get-app-version',
+  checkForUpdate: 'desktop:check-for-update',
+  openReleasePage: 'desktop:open-release-page',
 } as const;
 
 export type { ActionResult, AlarmApi, AlarmView } from '@alarm-calendar/core';

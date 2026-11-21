@@ -1,5 +1,5 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { ArrowLeftIcon, LogOutIcon, MoonIcon, SlidersHorizontalIcon, SunIcon } from 'lucide-react';
+import { ArrowLeftIcon, InfoIcon, LogOutIcon, MoonIcon, SlidersHorizontalIcon, SunIcon } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router';
@@ -23,6 +23,7 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { signOut } from '@/features/auth/auth-api';
 import { useAuthStore } from '@/features/auth/auth-store';
 import { PermissionsPanel } from '@/features/permissions/permissions-panel';
+import { useUpdateStore } from '@/features/updates/update-store';
 import { detectPlatform } from '@/lib/platform';
 
 import { holidayFormToPatch, holidayFormValues } from './holiday-settings';
@@ -57,6 +58,7 @@ export function SettingsPage() {
   const userId = useAuthStore((state) => state.session?.user.id ?? null);
   const { theme, setTheme } = useTheme();
   const platform = detectPlatform();
+  const updateAvailable = useUpdateStore((state) => state.latest !== null);
   const [signingOut, setSigningOut] = useState(false);
   const [soundId, setSoundId] = useState(getSoundId);
   const desktop = platform === 'electron' ? window.desktopApi : undefined;
@@ -416,6 +418,24 @@ export function SettingsPage() {
             </FieldSet>
           </>
         ) : null}
+
+        <Separator />
+
+        <FieldSet>
+          <FieldLegend>About</FieldLegend>
+          <Field orientation="horizontal">
+            <div className="flex flex-1 flex-col gap-1">
+              <FieldLabel>Version and updates</FieldLabel>
+              <FieldDescription>
+                {updateAvailable ? 'A new version is available.' : 'See which version you have and look for a new one.'}
+              </FieldDescription>
+            </div>
+            <Button type="button" variant="outline" onClick={() => navigate('/about')}>
+              <InfoIcon data-icon="inline-start" />
+              About and updates
+            </Button>
+          </Field>
+        </FieldSet>
 
         <Separator />
 

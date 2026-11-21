@@ -1,5 +1,22 @@
+import groovy.json.JsonSlurper
+
 apply plugin: 'com.android.application'
 apply plugin: 'org.jetbrains.kotlin.android'
+
+// One version for the whole project: the root package.json (task version:bump writes it). 0.2.0 -> versionCode 200;
+// minor and patch stay below 100, which scripts/release-lib.mjs enforces, so a later version is always a larger code.
+def appVersion = new JsonSlurper().parse(rootProject.file('../package.json')).version as String
+def versionParts = appVersion.tokenize('.')
+if (versionParts.size() != 3 || !versionParts.every { it ==~ /\d+/ }) {
+    throw new GradleException("The root package.json version '${appVersion}' is not x.y.z")
+}
+def appVersionCode = versionParts[0].toInteger() * 10000 + versionParts[1].toInteger() * 100 + versionParts[2].toInteger()
+
+// Release signing: properties first (~/.gradle/gradle.properties), then the environment (so a CI could pass them).
+// Values are never printed; only the names appear in the error below.
+def signingNames = ['ALARMCAL_STORE_FILE', 'ALARMCAL_STORE_PASSWORD', 'ALARMCAL_KEY_ALIAS', 'ALARMCAL_KEY_PASSWORD']
+def signingValue = { String name -> (findProperty(name) ?: System.getenv(name)) as String }
+def releaseSigningReady = signingNames.every { !(signingValue(it) ?: '').isEmpty() }
 
 android {
     namespace = "com.yassine.alarmcalendar"
@@ -8,8 +25,8 @@ android {
         applicationId "com.yassine.alarmcalendar"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode appVersionCode
+        versionName appVersion
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -17,11 +34,31 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        if (releaseSigningReady) {
+            release {
+                storeFile file(signingValue('ALARMCAL_STORE_FILE'))
+                storePassword signingValue('ALARMCAL_STORE_PASSWORD')
+                keyAlias signingValue('ALARMCAL_KEY_ALIAS')
+                keyPassword signingValue('ALARMCAL_KEY_PASSWORD')
+            }
+        }
+    }
     buildTypes {
         release {
+            if (releaseSigningReady) signingConfig signingConfigs.release
+            // R8 could strip the plugin classes Capacitor finds by reflection; the APK is small anyway.
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
+    }
+}
+
+// A release build without the signing properties must fail, not quietly produce an unsigned APK nobody can update from.
+gradle.taskGraph.whenReady { graph ->
+    def wantsRelease = graph.allTasks.any { it.project == project && it.name ==~ /(assemble|bundle|package)Release/ }
+    if (wantsRelease && !releaseSigningReady) {
+        throw new GradleException("Release signing is not configured. Set ${signingNames.join(', ')} in ~/.gradle/gradle.properties (or the environment). See docs/releasing.md.")
     }
 }
 

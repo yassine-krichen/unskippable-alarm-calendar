@@ -5,6 +5,7 @@ import type {
   CustomSoundData,
   CustomSoundInfo,
   DesktopApi,
+  DesktopUpdateCheck,
   ScheduleResult,
 } from '@alarm-calendar/core';
 
@@ -28,6 +29,9 @@ const desktopApi: DesktopApi = {
     ipcRenderer.invoke(DESKTOP_CHANNELS.chooseCustomSound) as Promise<ChooseCustomSoundResult>,
   clearCustomSound: () => ipcRenderer.invoke(DESKTOP_CHANNELS.clearCustomSound) as Promise<void>,
   readCustomSound: () => ipcRenderer.invoke(DESKTOP_CHANNELS.readCustomSound) as Promise<CustomSoundData | null>,
+  getAppVersion: () => ipcRenderer.invoke(DESKTOP_CHANNELS.getAppVersion) as Promise<string>,
+  checkForUpdate: () => ipcRenderer.invoke(DESKTOP_CHANNELS.checkForUpdate) as Promise<DesktopUpdateCheck>,
+  openReleasePage: () => ipcRenderer.invoke(DESKTOP_CHANNELS.openReleasePage) as Promise<void>,
 };
 
 contextBridge.exposeInMainWorld('desktopApi', desktopApi);

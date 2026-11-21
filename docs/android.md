@@ -14,7 +14,9 @@ All from the project folder (or `task alarm-calendar:<task>` from the personal r
 | `task android:build` | `android:web`, then the debug APK in `android/app/build/outputs/apk/debug/`. |
 | `task android:install` | `android:build`, then `adb install -r` on the connected device. With a phone and an emulator attached, pass `DEVICE=<serial>` (from `adb devices`). |
 | `task android:run` | `android:install`, then starts the app. |
-| `task android:test` | The Kotlin engine tests on the JVM. |
+| `task android:release` | `android:web`, then the **signed** release APK in `android/app/build/outputs/apk/release/`. Needs the `ALARMCAL_*` signing properties (see `docs/releasing.md`); fails without them. |
+| `task android:install:release` | `android:release`, then `adb install -r`. |
+| `task android:test` | The Kotlin engine and updater-rule tests on the JVM. |
 | `task android:logcat` | The engine's log (tag `AlarmEngine`). |
 
 `--mode android` loads `.env`, `.env.local`, `.env.android` and `.env.android.local` from `app/` through Vite's normal env loading (later files win); a variable already set in the shell wins over every file. Nothing is printed.
@@ -22,6 +24,10 @@ All from the project folder (or `task alarm-calendar:<task>` from the personal r
 The first sign-in needs the real project URL and key in `app/.env`, so a build without that file fails at startup with the
 readable configuration screen. A quick check that the APK holds the real project and not a dummy: the project ref appears in
 the JavaScript under `assets/public/assets/` of the APK, and `example.supabase.co` does not.
+
+The debug build and the release build share one app id but are signed with different keys, so `adb install -r` of one over the other
+fails on the signature: `adb uninstall com.yassine.alarmcalendar` first (open the app online beforehand so pending Dones are
+uploaded). Releasing, the keystore and the in-app updater are in `docs/releasing.md`; the version comes from the root `package.json`.
 
 HyperOS refuses `adb install` until Developer options has "Install via USB" (and "USB debugging (Security settings)") switched
 on. That is a phone setting, the task cannot change it.

@@ -2,10 +2,16 @@ import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { app, dialog, ipcMain, Menu, nativeImage, powerMonitor, session, Tray } from 'electron';
+import { app, dialog, ipcMain, Menu, nativeImage, net, powerMonitor, session, shell, Tray } from 'electron';
 import type { BrowserWindow, IpcMainInvokeEvent } from 'electron';
-import { buildSchedulePayload } from '@alarm-calendar/core';
-import type { ChooseCustomSoundResult, CustomSoundData, CustomSoundInfo, ScheduleResult } from '@alarm-calendar/core';
+import { buildSchedulePayload, LATEST_RELEASE_PAGE_URL } from '@alarm-calendar/core';
+import type {
+  ChooseCustomSoundResult,
+  CustomSoundData,
+  CustomSoundInfo,
+  DesktopUpdateCheck,
+  ScheduleResult,
+} from '@alarm-calendar/core';
 
 import { AlarmWindows } from './alarm-window';
 import { ALARM_CHANNELS, DESKTOP_CHANNELS, parseOccurrenceId } from './alarm-ipc';
@@ -39,6 +45,7 @@ import { createLogger } from './logger';
 import { MainWindow } from './main-window';
 import { AlarmScheduler, realTimers } from './scheduler';
 import { SupabaseCompletionSink } from './supabase-sink';
+import { createUpdateCheck } from './update-check';
 
 const config = resolveConfig(process.env, app.isPackaged, process.argv);
 const appLocation = resolveAppLocation(config.appUrl);
@@ -444,6 +451,35 @@ function registerDesktopIpc(
   ipcMain.handle(DESKTOP_CHANNELS.readCustomSound, (event): CustomSoundData | null => {
     requireTrusted(event);
     return customSound.read();
+  });
+
+  // Updates are "a newer version exists, here is its page": the renderer's CSP allows Supabase only, so the
+  // check runs here, and the installer is downloaded and run by the owner from the release page.
+  const checkForUpdate = createUpdateCheck({
+    fetch: (url, init) => net.fetch(url, init),
+    currentVersion: app.getVersion(),
+    isPackaged: app.isPackaged,
+  });
+
+  ipcMain.handle(DESKTOP_CHANNELS.getAppVersion, (event, ...args: unknown[]): string => {
+    requireTrusted(event);
+    if (!parseNoArguments(args).ok) throw new Error('unexpected arguments');
+    return app.getVersion();
+  });
+
+  ipcMain.handle(DESKTOP_CHANNELS.checkForUpdate, async (event, ...args: unknown[]): Promise<DesktopUpdateCheck> => {
+    requireTrusted(event);
+    if (!parseNoArguments(args).ok) throw new Error('unexpected arguments');
+    const result = await checkForUpdate();
+    log('desktop.update_checked', { status: result.status });
+    return result;
+  });
+
+  // No address from the renderer: one fixed page, so this channel cannot be used to open anything else.
+  ipcMain.handle(DESKTOP_CHANNELS.openReleasePage, async (event, ...args: unknown[]): Promise<void> => {
+    requireTrusted(event);
+    if (!parseNoArguments(args).ok) throw new Error('unexpected arguments');
+    await shell.openExternal(LATEST_RELEASE_PAGE_URL);
   });
 }
 

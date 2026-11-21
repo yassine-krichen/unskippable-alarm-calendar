@@ -19,9 +19,9 @@ tasks:
       - pnpm install
 
   test:
-    desc: Run every workspace test suite (core recurrence/snooze/wallet logic)
+    desc: Run every workspace test suite (core recurrence/snooze/wallet logic) and the release script tests
     cmds:
-      - pnpm -r test
+      - pnpm test
 
   dev:
     desc: Run the React app in the browser on port {{.PORT}}
@@ -106,12 +106,48 @@ tasks:
       - task: android:install
       - '"{{.ANDROID_SDK}}\platform-tools\adb.exe" shell am start -n com.yassine.alarmcalendar/.MainActivity'
 
+  android:release:
+    desc: Build the web bundle and the SIGNED release APK (android/app/build/outputs/apk/release/app-release.apk). Needs the ALARMCAL_* signing properties in ~/.gradle/gradle.properties (docs/releasing.md); fails without them, never builds an unsigned APK
+    deps: [android:web]
+    dir: android
+    env:
+      JAVA_HOME: '{{.JDK21}}'
+      ANDROID_HOME: '{{.ANDROID_SDK}}'
+    cmds:
+      - cmd /c '.\gradlew.bat' :app:assembleRelease --console=plain
+
+  android:install:release:
+    desc: "Build the signed release APK and install it over the connected device's release install (pass DEVICE=<serial> when several are attached). Over a DEBUG install this fails on the signature, so uninstall first, see docs/releasing.md"
+    deps: [android:release]
+    env:
+      ANDROID_SERIAL: '{{.DEVICE}}'
+    cmds:
+      - '"{{.ANDROID_SDK}}\platform-tools\adb.exe" install -r android/app/build/outputs/apk/release/app-release.apk'
+
   android:logcat:
     desc: Follow the alarm engine log of the connected device (tag AlarmEngine plus crashes)
     env:
       ANDROID_SERIAL: '{{.DEVICE}}'
     cmds:
       - '"{{.ANDROID_SDK}}\platform-tools\adb.exe" logcat -v time AlarmEngine:I AndroidRuntime:E *:S'
+
+  version:bump:
+    desc: 'Set the one version everywhere (root, app, electron; Android reads the root file). Pass patch, minor, major or x.y.z after --, e.g. task version:bump -- patch. Needs a clean tree'
+    cmds:
+      - node scripts/bump-version.mjs {{.CLI_ARGS}}
+
+  release:
+    desc: 'LOCAL RELEASE, run by hand only: checks, all tests, NSIS installer, signed APK, SHA256SUMS, then a DRAFT GitHub release (nothing is published, nothing is pushed). Needs a clean, pushed commit and no existing tag for the version. See docs/releasing.md'
+    prompt: This builds everything and creates a DRAFT release on GitHub (it stays hidden until you publish it). Continue?
+    cmds:
+      - node scripts/release.mjs preflight
+      - task: test
+      - task: android:test
+      - task: package
+      - task: android:release
+      - node scripts/release.mjs verify
+      - node scripts/release.mjs assemble
+      - node scripts/release.mjs draft
 
   cli:build:
     desc: Bundle the agent CLI (cli/) into the single file cli/dist/alarm-cal.cjs and refresh cli/plan.schema.json. Skipped when nothing changed

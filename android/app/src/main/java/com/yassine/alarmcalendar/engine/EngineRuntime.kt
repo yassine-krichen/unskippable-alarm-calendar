@@ -94,6 +94,9 @@ class EngineRuntime(
         core.activeRinging().map { core.viewOf(it, now) }
     }
 
+    /** True while any alarm is ringing, snoozed or waiting to ring again: the app updater does not install then. */
+    fun hasLiveAlarm(): Boolean = synchronized(lock) { core.state.occurrences.isNotEmpty() }
+
     fun done(occurrenceId: String): Boolean = mutate { core.done(occurrenceId, it) }
     fun snooze(occurrenceId: String): Boolean = mutate { core.snooze(occurrenceId, it) }
     fun later(occurrenceId: String, minutes: Int): Boolean = mutate { core.later(occurrenceId, minutes, it) }

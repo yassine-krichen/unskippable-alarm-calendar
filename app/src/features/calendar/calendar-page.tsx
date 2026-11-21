@@ -35,6 +35,8 @@ import { PermissionChip } from '@/features/permissions/permission-chip';
 import { PassDialog } from '@/features/passes/pass-dialog';
 import { usePassesStore } from '@/features/passes/passes-store';
 import { useSettingsStore } from '@/features/settings/settings-store';
+import { UpdateBanner } from '@/features/updates/update-banner';
+import { useUpdateStore } from '@/features/updates/update-store';
 import { useIsDesktop } from '@/hooks/use-media-query';
 import { zonedDate, zonedParts } from '@/lib/zoned-time';
 
@@ -73,6 +75,7 @@ export function CalendarPage() {
   const eventsStatus = useEventsStore((state) => state.status);
   const cheatDays = usePassesStore((state) => state.cheatDays);
   const openQada = useOpenQadaCount();
+  const updateAvailable = useUpdateStore((state) => state.latest !== null);
 
   const [formTarget, setFormTarget] = useState<EventFormTarget | null>(null);
   const [passDialogOpen, setPassDialogOpen] = useState(false);
@@ -187,12 +190,22 @@ export function CalendarPage() {
               </Badge>
             ) : null}
           </Button>
-          <Button variant="ghost" size="icon" aria-label="Settings" onClick={() => navigate('/settings')}>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="relative"
+            aria-label={updateAvailable ? 'Settings, an update is available' : 'Settings'}
+            onClick={() => navigate('/settings')}
+          >
             <SettingsIcon />
+            {updateAvailable ? (
+              <span aria-hidden="true" className="absolute top-1 right-1 size-2 rounded-full bg-primary" />
+            ) : null}
           </Button>
         </div>
       </header>
 
+      <UpdateBanner />
       <PermissionChip />
 
       <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 sm:px-6">

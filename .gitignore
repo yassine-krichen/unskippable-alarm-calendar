@@ -17,6 +17,8 @@ android/app/build/
 *.apk
 *.keystore
 *.jks
+# local release output (task release): the installer, the APK and SHA256SUMS.txt per version
+release/
 # supabase cli
 supabase/.temp/
 supabase/.branches/

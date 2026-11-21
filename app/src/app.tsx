@@ -24,6 +24,8 @@ import { resetHabitCompletions } from '@/features/habits/habits-store';
 import { usePassesStore } from '@/features/passes/passes-store';
 import { SettingsPage } from '@/features/settings/settings-page';
 import { useSettingsStore } from '@/features/settings/settings-store';
+import { AboutPage } from '@/features/updates/about-page';
+import { useUpdateAutoCheck } from '@/features/updates/use-update-check';
 
 import { useAppData, type BootStatus } from './app-data';
 import { useCompletionSync, useDesktopSession, useLiveSync } from './use-live-sync';
@@ -65,6 +67,7 @@ function SignedInApp() {
   useLiveSync(status === 'ready');
   useCompletionSync();
   usePermissionChecks();
+  useUpdateAutoCheck();
   useEffect(() => {
     useBootStatusStore.setState({ bootStatus: status });
     return () => useBootStatusStore.setState({ bootStatus: null });
@@ -106,6 +109,7 @@ function SignedInScreens({ status, error, retry }: { status: BootStatus; error: 
         <Route path="/modes" element={<ModesPage />} />
         <Route path="/stats" element={<StatsPage />} />
         <Route path="/settings" element={<SettingsPage />} />
+        <Route path="/about" element={<AboutPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </HashRouter>

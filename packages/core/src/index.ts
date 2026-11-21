@@ -27,3 +27,4 @@ export {
 } from './time-zone';
 export type { WallClock } from './time-zone';
 export * from './desktop-bridge';
+export * from './releases';
