@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { decideBackAction, hashPathname, historyIndexOf, type BackContext } from './back-action';
+import { decideBackAction, hashPathname, historyIndexOf, homePath, type BackContext } from './back-action';
 
 const READY: BackContext = {
   overlayOpen: false,
@@ -8,6 +8,7 @@ const READY: BackContext = {
   bootStatus: 'ready',
   pathname: '/',
   historyIndex: 0,
+  phoneLayout: false,
 };
 
 const on = (overrides: Partial<BackContext>): BackContext => ({ ...READY, ...overrides });
@@ -22,13 +23,64 @@ describe('decideBackAction in the app', () => {
     expect(decideBackAction(on({ pathname: '/settings', historyIndex: 1 }))).toBe('previous-screen');
   });
 
-  it('lands on the calendar, never on a blank page, when a screen was the first entry', () => {
-    expect(decideBackAction(on({ pathname: '/exams', historyIndex: 0 }))).toBe('calendar');
-    expect(decideBackAction(on({ pathname: '/exams', historyIndex: null }))).toBe('calendar');
+  it('lands on home, never on a blank page, when a screen was the first entry', () => {
+    expect(decideBackAction(on({ pathname: '/exams', historyIndex: 0 }))).toBe('home');
+    expect(decideBackAction(on({ pathname: '/exams', historyIndex: null }))).toBe('home');
+  });
+
+  it('treats the desktop layout pages as pushed screens, including /stats', () => {
+    expect(decideBackAction(on({ pathname: '/stats', historyIndex: 1 }))).toBe('previous-screen');
+    expect(decideBackAction(on({ pathname: '/stats', historyIndex: 0 }))).toBe('home');
+    expect(decideBackAction(on({ pathname: '/more', historyIndex: 0 }))).toBe('home');
   });
 
   it('moves the app to the background from the calendar', () => {
     expect(decideBackAction(on({ pathname: '/', historyIndex: 4 }))).toBe('minimize');
+  });
+});
+
+describe('decideBackAction in the phone layout', () => {
+  const phone = (overrides: Partial<BackContext>): BackContext => on({ phoneLayout: true, ...overrides });
+
+  it('moves the app to the background from Today, whichever address it has', () => {
+    expect(decideBackAction(phone({ pathname: '/today', historyIndex: 0 }))).toBe('minimize');
+    expect(decideBackAction(phone({ pathname: '/', historyIndex: 0 }))).toBe('minimize');
+  });
+
+  it('goes to Today from the other tab roots, even when the history has an entry before them', () => {
+    for (const pathname of ['/calendar', '/stats', '/more']) {
+      expect(decideBackAction(phone({ pathname, historyIndex: 0 }))).toBe('home');
+      expect(decideBackAction(phone({ pathname, historyIndex: 3 }))).toBe('home');
+    }
+  });
+
+  it('goes to the previous screen from a pushed screen under More, else home', () => {
+    for (const pathname of ['/exams', '/modes', '/settings', '/about']) {
+      expect(decideBackAction(phone({ pathname, historyIndex: 1 }))).toBe('previous-screen');
+      expect(decideBackAction(phone({ pathname, historyIndex: 0 }))).toBe('home');
+    }
+  });
+
+  it('walks the whole matrix: More, Settings, back, back, back', () => {
+    // Today (idx 0) -> More replaces it (idx 0) -> Settings is pushed (idx 1).
+    expect(decideBackAction(phone({ pathname: '/settings', historyIndex: 1 }))).toBe('previous-screen');
+    expect(decideBackAction(phone({ pathname: '/more', historyIndex: 0 }))).toBe('home');
+    expect(decideBackAction(phone({ pathname: '/today', historyIndex: 0 }))).toBe('minimize');
+  });
+
+  it('closes an open sheet first, on any tab', () => {
+    expect(decideBackAction(phone({ pathname: '/calendar', overlayOpen: true }))).toBe('close-overlay');
+  });
+
+  it('does nothing while loading, like the desktop layout', () => {
+    expect(decideBackAction(phone({ pathname: '/more', bootStatus: 'loading' }))).toBe('nothing');
+  });
+});
+
+describe('homePath', () => {
+  it('is Today on the phone layout and the calendar on the desktop layout', () => {
+    expect(homePath(true)).toBe('/today');
+    expect(homePath(false)).toBe('/');
   });
 });
 

@@ -2,23 +2,18 @@ import { TicketIcon, Undo2Icon } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 
+import { ResponsiveDialog } from '@/components/responsive-dialog';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
 import { Separator } from '@/components/ui/separator';
 import { dayImpact } from '@/features/calendar/calendar-events';
 import { useEventsStore } from '@/features/events/events-store';
 import { useModeTimeline } from '@/features/modes/use-modes';
 import { useSettingsStore } from '@/features/settings/settings-store';
 import { dateFromString, formatDay, pickerWeekStart, stringFromDate } from '@/lib/zoned-time';
+import { hapticSuccess } from '@/lib/haptics';
 
 import { passErrorMessage } from './pass-errors';
 import { nextPassLabel, passChipLabel } from './pass-status';
@@ -63,6 +58,7 @@ export function PassDialog({ open, onOpenChange }: PassDialogProps) {
       return;
     }
     const left = result.data.balance;
+    hapticSuccess();
     toast.success(`Cheat day set for ${formatDay(selected)}. ${left} ${left === 1 ? 'pass' : 'passes'} left.`);
     setSelected(null);
   }
@@ -75,19 +71,18 @@ export function PassDialog({ open, onOpenChange }: PassDialogProps) {
       toast.error(passErrorMessage(result.error));
       return;
     }
+    hapticSuccess();
     toast.success(`Pass refunded. ${formatDay(day)} is a normal day again.`);
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[92dvh] overflow-y-auto sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Cheat passes</DialogTitle>
-          <DialogDescription>
-            A pass turns one day into a cheat day. Alarms marked "cheat day can skip this" stay silent
-            that day. Everything else still rings.
-          </DialogDescription>
-        </DialogHeader>
+    <ResponsiveDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title="Cheat passes"
+      description={'A pass turns one day into a cheat day. Alarms marked "cheat day can skip this" stay silent that day. Everything else still rings.'}
+      contentClassName="max-h-[92dvh] overflow-y-auto sm:max-w-md"
+    >
 
         <div className="flex items-center gap-2 text-sm">
           <TicketIcon className="size-4" />
@@ -180,7 +175,6 @@ export function PassDialog({ open, onOpenChange }: PassDialogProps) {
             </ul>
           )}
         </section>
-      </DialogContent>
-    </Dialog>
+    </ResponsiveDialog>
   );
 }

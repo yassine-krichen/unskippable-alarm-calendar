@@ -4,21 +4,16 @@ import { useNavigate } from 'react-router';
 import { toast } from 'sonner';
 
 import { DatePicker } from '@/components/date-picker';
+import { ResponsiveDialog } from '@/components/responsive-dialog';
 import { Button } from '@/components/ui/button';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+import { DialogFooter } from '@/components/ui/dialog';
 import { Field, FieldContent, FieldDescription, FieldLabel, FieldLegend, FieldSet, FieldTitle } from '@/components/ui/field';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { useExamsStore } from '@/features/exams/exams-store';
 import { useSettingsStore } from '@/features/settings/settings-store';
 import { addDays, formatDay, pickerWeekStart, zonedDate } from '@/lib/zoned-time';
+import { hapticSuccess } from '@/lib/haptics';
 
 import { ModeIcon } from './mode-icon';
 import { NORMAL_LABEL, defaultBehaviorSummary, switchableModes } from './mode-meta';
@@ -45,18 +40,15 @@ export function ModeDialog({ open, onOpenChange }: ModeDialogProps) {
   const settings = useSettingsStore((state) => state.settings);
   if (settings === null) return null;
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[92dvh] overflow-y-auto sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Mode</DialogTitle>
-          <DialogDescription>
-            A mode changes how your alarms behave for a while: pause some, move or shorten others. Alarms that always
-            ring, like medication and prayers, are never paused.
-          </DialogDescription>
-        </DialogHeader>
-        <ModeSwitchForm settings={settings} onDone={() => onOpenChange(false)} />
-      </DialogContent>
-    </Dialog>
+    <ResponsiveDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title="Mode"
+      description="A mode changes how your alarms behave for a while: pause some, move or shorten others. Alarms that always ring, like medication and prayers, are never paused."
+      contentClassName="max-h-[92dvh] overflow-y-auto sm:max-w-md"
+    >
+      <ModeSwitchForm settings={settings} onDone={() => onOpenChange(false)} />
+    </ResponsiveDialog>
   );
 }
 
@@ -98,6 +90,7 @@ function ModeSwitchForm({ settings, onDone }: { settings: Settings; onDone: () =
       toast.error(modeErrorMessage(result.error));
       return;
     }
+    hapticSuccess();
     toast.success(chosen === null ? 'Back to normal' : `${chosen.name} is on`);
     onDone();
   }
@@ -219,7 +212,7 @@ function ModeSwitchForm({ settings, onDone }: { settings: Settings; onDone: () =
         </div>
       ) : null}
 
-      <DialogFooter className="items-center sm:justify-between">
+      <DialogFooter className="sm:items-center sm:justify-between">
         <Button
           type="button"
           variant="ghost"

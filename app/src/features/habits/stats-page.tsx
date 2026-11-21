@@ -8,7 +8,6 @@ import {
   type HabitsReport,
 } from '@alarm-calendar/core';
 import {
-  ArrowLeftIcon,
   CheckIcon,
   ClockIcon,
   FlameIcon,
@@ -27,7 +26,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
+import { PageHeader } from '@/features/app-shell/page-header';
 import { useEventsStore } from '@/features/events/events-store';
+import { useIsPhoneLayout } from '@/hooks/use-media-query';
 
 import { sortHabits, unrankedProgress, weeksLabel } from './habit-view';
 import { loadHabitCompletions, useHabitCompletionsStore } from './habits-store';
@@ -44,6 +45,7 @@ const BAR = '[&_[data-slot=progress-track]]:h-2';
 /** Habits and ranks: how each repeating alarm has gone over the last four weeks. */
 export function StatsPage() {
   const navigate = useNavigate();
+  const phone = useIsPhoneLayout();
   const view = useHabitsReport();
   const completionsStatus = useHabitCompletionsStore((state) => state.status);
   const completionsError = useHabitCompletionsStore((state) => state.error);
@@ -53,13 +55,8 @@ export function StatsPage() {
     view === null || eventsStatus !== 'ready' || completionsStatus === 'idle' || completionsStatus === 'loading';
 
   return (
-    <div className="mx-auto flex min-h-dvh w-full max-w-2xl flex-col">
-      <header className="flex items-center gap-2 border-b px-4 py-2 pt-[max(0.5rem,env(safe-area-inset-top))] sm:px-6">
-        <Button variant="ghost" size="icon" aria-label="Back to calendar" onClick={() => navigate('/')}>
-          <ArrowLeftIcon />
-        </Button>
-        <h1 className="text-lg font-semibold tracking-tight">Habits</h1>
-      </header>
+    <div className="mx-auto flex min-h-[calc(100dvh-var(--tab-bar-h,0px))] w-full max-w-2xl flex-col">
+      <PageHeader title="Habits" tabRoot />
 
       <main className="flex flex-1 flex-col gap-6 px-4 py-6 pb-12 sm:px-6">
         {completionsStatus === 'error' ? (
@@ -76,7 +73,7 @@ export function StatsPage() {
         ) : loading ? (
           <StatsSkeleton />
         ) : view.report.habits.length + view.pending.length + view.report.failed.length === 0 ? (
-          <NoHabits onBack={() => navigate('/')} />
+          <NoHabits onBack={() => navigate(phone ? '/calendar' : '/', { replace: phone })} />
         ) : (
           <>
             {view.report.failed.length > 0 ? (

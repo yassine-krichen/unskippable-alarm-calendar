@@ -1,3 +1,4 @@
+import type { Settings } from '@alarm-calendar/core';
 import {
   AlarmClockIcon,
   ChartNoAxesColumnIcon,
@@ -9,7 +10,7 @@ import {
   PlusIcon,
   SettingsIcon,
 } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 
 import { Badge } from '@/components/ui/badge';
@@ -18,141 +19,166 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Toggle } from '@/components/ui/toggle';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { NewAlarmFab } from '@/features/app-shell/new-alarm-fab';
 import { EventSheet } from '@/features/events/event-sheet';
-import type { EventFormTarget } from '@/features/events/event-form-view';
 import { loadEvents, useEventsStore } from '@/features/events/events-store';
-import { useExamsStore } from '@/features/exams/exams-store';
-import { findRelationshipGroup } from '@/features/events/relationship-template';
+import { useEventSheet } from '@/features/events/use-event-sheet';
 import { useOpenQadaCount } from '@/features/habits/use-prayer-log';
-import { toHolidayCalendarEvents } from '@/features/holidays/holiday-events';
-import { useHolidays } from '@/features/holidays/use-holidays';
 import { ModeChip } from '@/features/modes/mode-chip';
 import { ModeDialog } from '@/features/modes/mode-dialog';
-import { modesByDay } from '@/features/modes/mode-status';
-import { useModeTimeline } from '@/features/modes/use-modes';
 import { PassChip } from '@/features/passes/pass-chip';
 import { PermissionChip } from '@/features/permissions/permission-chip';
 import { PassDialog } from '@/features/passes/pass-dialog';
-import { usePassesStore } from '@/features/passes/passes-store';
 import { useSettingsStore } from '@/features/settings/settings-store';
 import { UpdateBanner } from '@/features/updates/update-banner';
 import { useUpdateStore } from '@/features/updates/update-store';
-import { useIsDesktop } from '@/hooks/use-media-query';
-import { zonedDate, zonedParts } from '@/lib/zoned-time';
+import { ignoreAfterSwipe, useHorizontalSwipe } from '@/hooks/use-horizontal-swipe';
+import { useIsPhoneLayout } from '@/hooks/use-media-query';
+import { zonedDate } from '@/lib/zoned-time';
 
 import { AgendaView } from './agenda-view';
-import {
-  expandOccurrences,
-  hasHiddenAlarms,
-  hiddenAlarmCount,
-  toCalendarEvent,
-  visibleOccurrences,
-} from './calendar-events';
 import { CalendarGrid } from './calendar-grid';
 import {
   AGENDA_DAYS,
+  DESKTOP_VIEWS,
+  PHONE_VIEWS,
   parseCalendarView,
-  rangeToInstants,
+  resolveCalendarView,
   shiftAnchor,
   viewTitle,
-  visibleDayRange,
   type CalendarView,
 } from './calendar-range';
-import { nextFullHour, type EventSlot } from './new-event-slot';
-import { useShowHiddenStore } from './show-hidden-preference';
+import { useCalendarData } from './use-calendar-data';
 
-const VIEW_LABELS: Record<CalendarView, string> = { week: 'Week', month: 'Month', agenda: 'Agenda' };
-const PERIOD_NOUN: Record<CalendarView, string> = { week: 'week', month: 'month', agenda: 'two weeks' };
+const VIEW_LABELS: Record<CalendarView, string> = {
+  day: 'Day',
+  'three-day': '3 days',
+  week: 'Week',
+  month: 'Month',
+  agenda: 'Agenda',
+};
+const PERIOD_NOUN: Record<CalendarView, string> = {
+  day: 'day',
+  'three-day': 'three days',
+  week: 'week',
+  month: 'month',
+  agenda: 'two weeks',
+};
 
-/** The main screen: Week, Month and Agenda over the same occurrences, plus the pass chip. */
+/**
+ * The calendar. Desktop: Week, Month and Agenda with the header navigation. Phone: Day, 3 days and Month under a
+ * compact toolbar; swipe sideways to move, tap a day in Month to open it (Today is the phone's agenda).
+ */
 export function CalendarPage() {
-  const navigate = useNavigate();
-  const isDesktop = useIsDesktop();
-  const [searchParams, setSearchParams] = useSearchParams();
   const settings = useSettingsStore((state) => state.settings);
+  if (!settings) return null;
+  return <CalendarScreen settings={settings} />;
+}
+
+function CalendarScreen({ settings }: { settings: Settings }) {
+  const navigate = useNavigate();
+  const phone = useIsPhoneLayout();
+  const [searchParams, setSearchParams] = useSearchParams();
   const events = useEventsStore((state) => state.events);
-  const exams = useExamsStore((state) => state.exams);
   const eventsStatus = useEventsStore((state) => state.status);
-  const cheatDays = usePassesStore((state) => state.cheatDays);
   const openQada = useOpenQadaCount();
   const updateAvailable = useUpdateStore((state) => state.latest !== null);
 
-  const [formTarget, setFormTarget] = useState<EventFormTarget | null>(null);
   const [passDialogOpen, setPassDialogOpen] = useState(false);
   const [modeDialogOpen, setModeDialogOpen] = useState(false);
   const [anchorOverride, setAnchorOverride] = useState<string | null>(null);
+  const sheet = useEventSheet(settings);
 
-  const tz = settings?.timezone ?? 'UTC';
-  const weekStartsOn = settings?.week_starts_on ?? 0;
+  const tz = settings.timezone;
+  const weekStartsOn = settings.week_starts_on;
   const todayInZone = zonedDate(new Date(), tz);
   const anchor = anchorOverride ?? todayInZone;
 
-  // Week on desktop, Agenda on phones, unless the URL says otherwise.
-  const view = parseCalendarView(searchParams.get('view')) ?? (isDesktop ? 'week' : 'agenda');
+  // Week on desktop and Day on the phone, unless the address names a view this layout offers.
+  const view = resolveCalendarView(searchParams.get('view'), phone);
+  const data = useCalendarData(view, anchor, settings);
+  const { allOccurrences, occurrences, skipped, holidays, holidayEvents, modeDays } = data;
 
-  const modeTimeline = useModeTimeline();
-  const cheatDaySet = useMemo(() => new Set(cheatDays), [cheatDays]);
-  const range = useMemo(() => visibleDayRange(view, anchor, weekStartsOn), [view, anchor, weekStartsOn]);
-  const showHidden = useShowHiddenStore((state) => state.showHidden);
-  const setShowHidden = useShowHiddenStore((state) => state.setShowHidden);
-  const { allOccurrences, skipped } = useMemo(() => {
-    if (!settings) return { allOccurrences: [], skipped: null };
-    const failed: string[] = [];
-    const expanded = expandOccurrences(
-      events,
-      rangeToInstants(range, tz),
-      settings,
-      cheatDays,
-      (event) => failed.push(event.kind ?? 'normal'),
-      modeTimeline
-    );
-    return { allOccurrences: expanded, skipped: skippedNotice(failed) };
-  }, [events, range, tz, cheatDays, settings, modeTimeline]);
-  // Hidden alarms still ring; the calendar only leaves them out unless this device asked to see them.
-  const occurrences = useMemo(() => visibleOccurrences(allOccurrences, showHidden), [allOccurrences, showHidden]);
-  const hiddenInRange = showHidden ? 0 : hiddenAlarmCount(allOccurrences);
-  const offerShowHidden = useMemo(() => (settings ? hasHiddenAlarms(events, settings) : false), [events, settings]);
-  const calendarEvents = useMemo(() => occurrences.map(toCalendarEvent), [occurrences]);
-  // Holidays are display only: they never reach the alarm schedule, the habits or the pass logic.
-  const holidays = useHolidays(range.start, range.end);
-  const holidayEvents = useMemo(() => toHolidayCalendarEvents(holidays.holidays), [holidays.holidays]);
-  // The days a mode covers most of, marked quietly in the grid and the agenda.
-  const modeDays = useMemo(
-    () => modesByDay(modeTimeline, range.start, range.end, tz),
-    [modeTimeline, range, tz]
+  const swipe = useHorizontalSwipe((direction) =>
+    setAnchorOverride(shiftAnchor(view, anchor, direction === 'next' ? 1 : -1))
   );
-
-  if (!settings) return null;
 
   function changeView(next: CalendarView): void {
     setSearchParams({ view: next }, { replace: true });
   }
 
-  function openCreate(slot?: EventSlot): void {
-    const fallback = zonedParts(new Date(), tz);
-    setFormTarget({
-      event: null,
-      slot: slot ?? { date: todayInZone, time: nextFullHour(fallback.time) },
-    });
+  function openAlarm(eventId: string, key?: string): void {
+    sheet.openEdit(eventId, key === undefined ? null : (allOccurrences.find((item) => item.key === key) ?? null));
   }
 
-  function openEdit(eventId: string): void {
-    const event = events.find((candidate) => candidate.id === eventId);
-    if (event && settings) {
-      const slot = { date: todayInZone, time: '09:00' };
-      // An alarm of an exam (its own alarm, a session, a catch-up) edits as that exam.
-      const exam = event.exam_id ? exams.find((candidate) => candidate.id === event.exam_id) : undefined;
-      if (exam) {
-        setFormTarget({ event, exam, slot });
-        return;
-      }
-      // An alarm made by the birthday / anniversary template edits as that pair.
-      const group = findRelationshipGroup(event, events);
-      setFormTarget({ event, group, slot });
-    }
+  function openDay(day: string): void {
+    setAnchorOverride(day);
+    changeView('day');
   }
 
   const loading = eventsStatus === 'idle' || eventsStatus === 'loading';
+  const offeredViews = phone ? PHONE_VIEWS : DESKTOP_VIEWS;
+  const phoneGridView = view === 'agenda' || view === 'week' ? 'day' : view;
+
+  const periodButtons = (
+    <>
+      <Button
+        variant="outline"
+        size="icon"
+        aria-label={`Previous ${PERIOD_NOUN[view]}`}
+        onClick={() => setAnchorOverride(shiftAnchor(view, anchor, -1))}
+      >
+        <ChevronLeftIcon />
+      </Button>
+      <Button variant="outline" onClick={() => setAnchorOverride(null)}>
+        Today
+      </Button>
+      <Button
+        variant="outline"
+        size="icon"
+        aria-label={`Next ${PERIOD_NOUN[view]}`}
+        onClick={() => setAnchorOverride(shiftAnchor(view, anchor, 1))}
+      >
+        <ChevronRightIcon />
+      </Button>
+    </>
+  );
+
+  const showHiddenToggle = data.offerShowHidden ? (
+    <Toggle
+      variant="outline"
+      pressed={data.showHidden}
+      onPressedChange={data.setShowHidden}
+      aria-label="Show hidden alarms"
+    >
+      {data.showHidden ? <EyeIcon data-icon="inline-start" /> : <EyeOffIcon data-icon="inline-start" />}
+      Show hidden
+    </Toggle>
+  ) : null;
+
+  const viewTabs = (
+    <TabsList className="w-full sm:w-fit">
+      {offeredViews.map((key) => (
+        <TabsTrigger key={key} value={key} className="flex-1 sm:flex-none">
+          {VIEW_LABELS[key]}
+        </TabsTrigger>
+      ))}
+    </TabsList>
+  );
+
+  const gridProps = {
+    anchor,
+    tz,
+    weekStartsOn,
+    events: data.calendarEvents,
+    cheatDays: data.cheatDaySet,
+    modeDays,
+    holidayEvents,
+    stretchDays: holidays.stretches,
+    // FullCalendar reports the tap that ends a swipe as a dateClick / eventClick (not a click), so each is guarded.
+    onCreate: ignoreAfterSwipe(swipe.tracker, sheet.openCreate),
+    onEdit: ignoreAfterSwipe(swipe.tracker, openAlarm),
+  } as const;
 
   return (
     <Tabs
@@ -161,97 +187,80 @@ export function CalendarPage() {
         const parsed = parseCalendarView(String(next));
         if (parsed) changeView(parsed);
       }}
-      className="h-dvh gap-0"
+      className="h-[calc(100dvh-var(--tab-bar-h,0px))] gap-0"
     >
-      <header className="flex shrink-0 items-center gap-2 border-b px-4 py-2 pt-[max(0.5rem,env(safe-area-inset-top))] sm:px-6">
-        <AlarmClockIcon className="size-5" aria-hidden="true" />
-        <span className="hidden text-sm font-semibold tracking-tight sm:inline">Alarm Calendar</span>
-        <div className="ml-auto flex items-start gap-2">
-          <ModeChip onOpen={() => setModeDialogOpen(true)} />
-          <PassChip onOpen={() => setPassDialogOpen(true)} />
-          <Button className="hidden sm:inline-flex" onClick={() => openCreate()}>
-            <PlusIcon data-icon="inline-start" />
-            New alarm
-          </Button>
-          <Button variant="ghost" size="icon" aria-label="Exams" onClick={() => navigate('/exams')}>
-            <GraduationCapIcon />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="relative"
-            aria-label={openQada ? `Habits and ranks, ${openQada} prayers to make up` : 'Habits and ranks'}
-            onClick={() => navigate('/stats')}
-          >
-            <ChartNoAxesColumnIcon />
-            {openQada ? (
-              <Badge variant="secondary" aria-hidden="true" className="absolute -top-1 -right-1 h-4 min-w-4 px-1 text-[10px]">
-                {openQada}
-              </Badge>
-            ) : null}
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="relative"
-            aria-label={updateAvailable ? 'Settings, an update is available' : 'Settings'}
-            onClick={() => navigate('/settings')}
-          >
-            <SettingsIcon />
-            {updateAvailable ? (
-              <span aria-hidden="true" className="absolute top-1 right-1 size-2 rounded-full bg-primary" />
-            ) : null}
-          </Button>
+      {phone ? (
+        <div className="shrink-0 px-2 pt-[max(0.5rem,env(safe-area-inset-top))] pb-2">
+          <div className="flex items-center gap-1.5">
+            <h1 className="min-w-0 flex-1 truncate pl-2 text-lg font-semibold tabular-nums tracking-tight">
+              {viewTitle(view, anchor, weekStartsOn)}
+            </h1>
+            {periodButtons}
+          </div>
+          <div className="mt-2 flex items-center gap-2 px-2">
+            <div className="min-w-0 flex-1">{viewTabs}</div>
+            {showHiddenToggle}
+          </div>
         </div>
-      </header>
+      ) : (
+        <header className="flex shrink-0 items-center gap-2 border-b px-4 py-2 pt-[max(0.5rem,env(safe-area-inset-top))] sm:px-6">
+          <AlarmClockIcon className="size-5" aria-hidden="true" />
+          <span className="hidden text-sm font-semibold tracking-tight sm:inline">Alarm Calendar</span>
+          <div className="ml-auto flex items-start gap-2">
+            <ModeChip onOpen={() => setModeDialogOpen(true)} />
+            <PassChip onOpen={() => setPassDialogOpen(true)} />
+            <Button className="hidden sm:inline-flex" onClick={() => sheet.openCreate()}>
+              <PlusIcon data-icon="inline-start" />
+              New alarm
+            </Button>
+            <Button variant="ghost" size="icon" aria-label="Exams" onClick={() => navigate('/exams')}>
+              <GraduationCapIcon />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="relative"
+              aria-label={openQada ? `Habits and ranks, ${openQada} prayers to make up` : 'Habits and ranks'}
+              onClick={() => navigate('/stats')}
+            >
+              <ChartNoAxesColumnIcon />
+              {openQada ? (
+                <Badge variant="secondary" aria-hidden="true" className="absolute -top-1 -right-1 h-4 min-w-4 px-1 text-[10px]">
+                  {openQada}
+                </Badge>
+              ) : null}
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="relative"
+              aria-label={updateAvailable ? 'Settings, an update is available' : 'Settings'}
+              onClick={() => navigate('/settings')}
+            >
+              <SettingsIcon />
+              {updateAvailable ? (
+                <span aria-hidden="true" className="absolute top-1 right-1 size-2 rounded-full bg-primary" />
+              ) : null}
+            </Button>
+          </div>
+        </header>
+      )}
 
-      <UpdateBanner />
-      <PermissionChip />
+      {phone ? null : (
+        <>
+          <UpdateBanner />
+          <PermissionChip />
 
-      <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 sm:px-6">
-        <div className="flex items-center gap-1">
-          <Button
-            variant="outline"
-            size="icon"
-            aria-label={`Previous ${PERIOD_NOUN[view]}`}
-            onClick={() => setAnchorOverride(shiftAnchor(view, anchor, -1))}
-          >
-            <ChevronLeftIcon />
-          </Button>
-          <Button variant="outline" onClick={() => setAnchorOverride(null)}>
-            Today
-          </Button>
-          <Button
-            variant="outline"
-            size="icon"
-            aria-label={`Next ${PERIOD_NOUN[view]}`}
-            onClick={() => setAnchorOverride(shiftAnchor(view, anchor, 1))}
-          >
-            <ChevronRightIcon />
-          </Button>
-        </div>
-        <h1 className="min-w-0 flex-1 basis-40 truncate text-lg font-semibold tabular-nums tracking-tight">
-          {viewTitle(view, anchor, weekStartsOn)}
-        </h1>
-        {offerShowHidden ? (
-          <Toggle
-            variant="outline"
-            pressed={showHidden}
-            onPressedChange={setShowHidden}
-            aria-label="Show hidden alarms"
-          >
-            {showHidden ? <EyeIcon data-icon="inline-start" /> : <EyeOffIcon data-icon="inline-start" />}
-            Show hidden
-          </Toggle>
-        ) : null}
-        <TabsList className="w-full sm:w-fit">
-          {(Object.keys(VIEW_LABELS) as CalendarView[]).map((key) => (
-            <TabsTrigger key={key} value={key} className="flex-1 sm:flex-none">
-              {VIEW_LABELS[key]}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-      </div>
+          <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 sm:px-6">
+            <div className="flex items-center gap-1">{periodButtons}</div>
+            <h1 className="min-w-0 flex-1 basis-40 truncate text-lg font-semibold tabular-nums tracking-tight">
+              {viewTitle(view, anchor, weekStartsOn)}
+            </h1>
+            {showHiddenToggle}
+            {viewTabs}
+          </div>
+        </>
+      )}
 
       {skipped !== null ? (
         <p role="status" className="shrink-0 px-4 pb-2 text-sm text-destructive sm:px-6">
@@ -279,37 +288,26 @@ export function CalendarPage() {
         </div>
       ) : loading ? (
         <CalendarSkeleton />
+      ) : phone ? (
+        // One grid for every phone view, remounted per view so FullCalendar starts on the right one. touch-pan-y
+        // (and the rule in index.css for its inner scroller) keeps the vertical scroll native and leaves sideways
+        // movement to the swipe hook.
+        <div className="swipe-x min-h-0 flex-1 touch-pan-y px-1 pb-1" {...swipe.handlers}>
+          <CalendarGrid
+            key={phoneGridView}
+            view={phoneGridView}
+            compact
+            onPickDay={ignoreAfterSwipe(swipe.tracker, openDay)}
+            {...gridProps}
+          />
+        </div>
       ) : (
         <>
           <TabsContent value="week" className="min-h-0 flex-1 px-2 pb-2 sm:px-4">
-            <CalendarGrid
-              view="week"
-              anchor={anchor}
-              tz={tz}
-              weekStartsOn={weekStartsOn}
-              events={calendarEvents}
-              cheatDays={cheatDaySet}
-              modeDays={modeDays}
-              holidayEvents={holidayEvents}
-              stretchDays={holidays.stretches}
-              onCreate={openCreate}
-              onEdit={openEdit}
-            />
+            <CalendarGrid view="week" {...gridProps} />
           </TabsContent>
           <TabsContent value="month" className="min-h-0 flex-1 px-2 pb-2 sm:px-4">
-            <CalendarGrid
-              view="month"
-              anchor={anchor}
-              tz={tz}
-              weekStartsOn={weekStartsOn}
-              events={calendarEvents}
-              cheatDays={cheatDaySet}
-              modeDays={modeDays}
-              holidayEvents={holidayEvents}
-              stretchDays={holidays.stretches}
-              onCreate={openCreate}
-              onEdit={openEdit}
-            />
+            <CalendarGrid view="month" {...gridProps} />
           </TabsContent>
           <TabsContent value="agenda" className="min-h-0 flex-1 overflow-y-auto">
             <AgendaView
@@ -319,41 +317,25 @@ export function CalendarPage() {
               tz={tz}
               events={events}
               occurrences={occurrences}
-              hiddenCount={hiddenInRange}
-              cheatDays={cheatDaySet}
+              hiddenCount={data.hiddenInRange}
+              cheatDays={data.cheatDaySet}
               modeDays={modeDays}
-              holidayDays={holidays.byDay}
-              stretchDays={holidays.stretches}
-              onEdit={openEdit}
-              onCreate={() => openCreate()}
+              holidayDays={data.holidayDays}
+              stretchDays={data.stretchDays}
+              onEdit={openAlarm}
+              onCreate={() => sheet.openCreate()}
             />
           </TabsContent>
         </>
       )}
 
-      <Button
-        size="icon-lg"
-        className="fixed right-4 bottom-[max(1rem,env(safe-area-inset-bottom))] z-40 rounded-full shadow-lg sm:hidden"
-        aria-label="New alarm"
-        onClick={() => openCreate()}
-      >
-        <PlusIcon />
-      </Button>
+      {phone ? <NewAlarmFab onClick={() => sheet.openCreate()} /> : null}
 
-      <EventSheet target={formTarget} settings={settings} onClose={() => setFormTarget(null)} />
+      <EventSheet target={sheet.target} settings={settings} onClose={sheet.close} />
       <PassDialog open={passDialogOpen} onOpenChange={setPassDialogOpen} />
       <ModeDialog open={modeDialogOpen} onOpenChange={setModeDialogOpen} />
     </Tabs>
   );
-}
-
-/** One line for alarms the calendar had to leave out, or null when it showed everything. */
-function skippedNotice(failedKinds: readonly string[]): string | null {
-  if (failedKinds.length === 0) return null;
-  if (failedKinds.some((kind) => kind !== 'normal')) {
-    return "Prayer times couldn't be calculated, so the prayer alarms are not shown. Check your location in Settings.";
-  }
-  return "Some alarms couldn't be shown because their settings are not valid.";
 }
 
 /** Mirrors the week grid so nothing jumps when the real calendar replaces it. */

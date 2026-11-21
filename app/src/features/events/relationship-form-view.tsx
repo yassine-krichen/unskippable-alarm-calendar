@@ -5,6 +5,7 @@ import { useMemo, useState } from 'react';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import { toast } from 'sonner';
 
+import { FormFooter, FormFooterActions } from '@/components/form-footer';
 import { NumberStepper } from '@/components/number-stepper';
 import { TimeInput } from '@/components/time-input';
 import {
@@ -34,6 +35,7 @@ import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { formatDay, formatTimeInZone, zonedDate } from '@/lib/zoned-time';
+import { hapticSuccess, hapticWarning } from '@/lib/haptics';
 
 import { removeEventGroup, saveEventGroup, saveNewEventGroup } from './events-store';
 import {
@@ -104,6 +106,7 @@ export function RelationshipFormView({ group, slotDate, settings, onDone }: Rela
         toast.error("Couldn't save both alarms. Your changes are still here, try again.");
         return;
       }
+      hapticSuccess();
       toast.success('Both alarms updated');
       onDone();
       return;
@@ -115,6 +118,7 @@ export function RelationshipFormView({ group, slotDate, settings, onDone }: Rela
       toast.error("Couldn't add the alarms. Your changes are still here, try again.");
       return;
     }
+    hapticSuccess();
     toast.success(`Added 2 alarms for ${submitted.personName.trim()}`);
     onDone();
   }
@@ -128,6 +132,7 @@ export function RelationshipFormView({ group, slotDate, settings, onDone }: Rela
       toast.error("Couldn't delete the alarms. Check your connection and try again.");
       return;
     }
+    hapticWarning();
     toast.success('Deleted both alarms');
     setConfirmingDelete(false);
     onDone();
@@ -343,22 +348,22 @@ export function RelationshipFormView({ group, slotDate, settings, onDone }: Rela
         </FieldGroup>
       </form>
 
-      <div className="flex items-center gap-2 border-t px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+      <FormFooter>
         {group ? (
           <Button type="button" variant="destructive" onClick={() => setConfirmingDelete(true)}>
             <Trash2Icon data-icon="inline-start" />
             Delete
           </Button>
         ) : null}
-        <div className="ml-auto flex gap-2">
+        <FormFooterActions>
           <Button type="button" variant="outline" onClick={onDone}>
             Cancel
           </Button>
           <Button type="submit" form="relationship-form" disabled={form.formState.isSubmitting}>
             {group ? 'Save changes' : 'Add 2 alarms'}
           </Button>
-        </div>
-      </div>
+        </FormFooterActions>
+      </FormFooter>
 
       <AlertDialog open={confirmingDelete} onOpenChange={setConfirmingDelete}>
         <AlertDialogContent>

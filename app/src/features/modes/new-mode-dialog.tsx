@@ -2,18 +2,13 @@ import type { ModeRow } from '@alarm-calendar/core';
 import { useState } from 'react';
 import { toast } from 'sonner';
 
+import { ResponsiveDialog } from '@/components/responsive-dialog';
 import { Button } from '@/components/ui/button';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+import { DialogFooter } from '@/components/ui/dialog';
 import { Field, FieldDescription, FieldError, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { hapticSuccess } from '@/lib/haptics';
 
 import { MODE_NAME_MAX, validateModeName } from './mode-name';
 import { modeErrorMessage } from './mode-switch';
@@ -31,17 +26,15 @@ interface NewModeDialogProps {
 /** A custom mode starts as a name and one choice; its rules and dates are set in the editor that opens next. */
 export function NewModeDialog({ open, onOpenChange, onCreated }: NewModeDialogProps) {
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>New mode</DialogTitle>
-          <DialogDescription>
-            For anything the built-in modes do not cover, like a hackathon week or a night shift.
-          </DialogDescription>
-        </DialogHeader>
-        <NewModeForm onDone={() => onOpenChange(false)} onCreated={onCreated} />
-      </DialogContent>
-    </Dialog>
+    <ResponsiveDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title="New mode"
+      description="For anything the built-in modes do not cover, like a hackathon week or a night shift."
+      contentClassName="sm:max-w-md"
+    >
+      <NewModeForm onDone={() => onOpenChange(false)} onCreated={onCreated} />
+    </ResponsiveDialog>
   );
 }
 
@@ -62,6 +55,7 @@ function NewModeForm({ onDone, onCreated }: { onDone: () => void; onCreated: (mo
       toast.error(modeErrorMessage(result.error));
       return;
     }
+    hapticSuccess();
     toast.success(`Created "${result.data.name}"`);
     onDone();
     onCreated(result.data);

@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { insertQadaCompletion } from '@/features/completions/completions-api';
 import { formatDay } from '@/lib/zoned-time';
+import { hapticSuccess } from '@/lib/haptics';
 
 import type { HabitCompletionRow } from './habits-api';
 import { loadHabitCompletions, upsertHabitCompletion } from './habits-store';
@@ -40,6 +41,7 @@ export function QadaList() {
       return;
     }
     upsertHabitCompletion(result.data as HabitCompletionRow);
+    hapticSuccess();
     toast.success(`${PRAYER_LABELS[entry.prayer]} marked as made up`);
   }
 

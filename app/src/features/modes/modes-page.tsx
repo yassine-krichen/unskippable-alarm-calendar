@@ -1,7 +1,6 @@
 import type { ModeRow } from '@alarm-calendar/core';
-import { ArrowLeftIcon, PencilIcon, PlusIcon } from 'lucide-react';
+import { PencilIcon, PlusIcon } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router';
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -9,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
+import { PageHeader } from '@/features/app-shell/page-header';
 import { useExamsStore } from '@/features/exams/exams-store';
 import { useSettingsStore } from '@/features/settings/settings-store';
 import { useNow } from '@/hooks/use-now';
@@ -23,7 +23,6 @@ import { useModeTimeline } from './use-modes';
 
 /** Modes: what each one does to your alarms, when they switch on, and the rules per alarm. */
 export function ModesPage() {
-  const navigate = useNavigate();
   const settings = useSettingsStore((state) => state.settings);
   const modes = useModesStore((state) => state.modes);
   const status = useModesStore((state) => state.status);
@@ -47,16 +46,12 @@ export function ModesPage() {
 
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-2xl flex-col">
-      <header className="flex items-center gap-2 border-b px-4 py-2 pt-[max(0.5rem,env(safe-area-inset-top))] sm:px-6">
-        <Button variant="ghost" size="icon" aria-label="Back to calendar" onClick={() => navigate('/')}>
-          <ArrowLeftIcon />
-        </Button>
-        <h1 className="text-lg font-semibold tracking-tight">Modes</h1>
-        <Button className="ml-auto" onClick={() => setCreating(true)} disabled={status !== 'ready'}>
+      <PageHeader title="Modes">
+        <Button onClick={() => setCreating(true)} disabled={status !== 'ready'}>
           <PlusIcon data-icon="inline-start" />
           New mode
         </Button>
-      </header>
+      </PageHeader>
 
       <main className="flex flex-1 flex-col gap-6 px-4 py-6 pb-12 sm:px-6">
         {status === 'error' ? (

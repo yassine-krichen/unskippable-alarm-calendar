@@ -17,3 +17,11 @@ export function useMediaQuery(query: string): boolean {
 export function useIsDesktop(): boolean {
   return useMediaQuery('(min-width: 768px)');
 }
+
+/**
+ * Phone layout: a bottom tab bar instead of the header navigation. The negation of {@link useIsDesktop}, so a
+ * tablet 768px or wider keeps the desktop layout.
+ */
+export function useIsPhoneLayout(): boolean {
+  return !useIsDesktop();
+}

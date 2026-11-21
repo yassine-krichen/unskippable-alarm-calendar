@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 
 import { DatePicker } from '@/components/date-picker';
+import { FormFooter, FormFooterActions } from '@/components/form-footer';
 import { NumberStepper } from '@/components/number-stepper';
 import { ResponsiveSheet } from '@/components/responsive-sheet';
 import {
@@ -37,6 +38,7 @@ import { useAuthStore } from '@/features/auth/auth-store';
 import { useEventsStore } from '@/features/events/events-store';
 import { saveSettings, useSettingsStore } from '@/features/settings/settings-store';
 import { addDays, formatDay, pickerWeekStart, zonedDate } from '@/lib/zoned-time';
+import { hapticSuccess, hapticWarning } from '@/lib/haptics';
 
 import { MODE_NAME_MAX, validateModeName } from './mode-name';
 import { modePurpose } from './mode-meta';
@@ -126,6 +128,7 @@ function ModeEditor({ mode, onDone }: { mode: ModeRow; onDone: () => void }) {
       toast.error(`Couldn't save the mode. ${modeErrorMessage(failure)}`);
       return;
     }
+    hapticSuccess();
     toast.success('Mode saved');
     onDone();
   }
@@ -138,6 +141,7 @@ function ModeEditor({ mode, onDone }: { mode: ModeRow; onDone: () => void }) {
       toast.error(`Couldn't delete the mode. ${modeErrorMessage(result.error)}`);
       return;
     }
+    hapticWarning();
     toast.success(`Deleted "${mode.name}"`);
     setConfirmingDelete(false);
     onDone();
@@ -262,22 +266,22 @@ function ModeEditor({ mode, onDone }: { mode: ModeRow; onDone: () => void }) {
         </FieldGroup>
       </form>
 
-      <div className="flex items-center gap-2 border-t px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+      <FormFooter>
         {isBuiltin ? null : (
           <Button type="button" variant="destructive" onClick={() => setConfirmingDelete(true)}>
             <Trash2Icon data-icon="inline-start" />
             Delete
           </Button>
         )}
-        <div className="ml-auto flex gap-2">
+        <FormFooterActions>
           <Button type="button" variant="outline" onClick={onDone}>
             Cancel
           </Button>
           <Button type="submit" form="mode-form" disabled={saving}>
             Save changes
           </Button>
-        </div>
-      </div>
+        </FormFooterActions>
+      </FormFooter>
 
       <AlertDialog open={confirmingDelete} onOpenChange={setConfirmingDelete}>
         <AlertDialogContent>
@@ -410,6 +414,7 @@ function RangesSection({ mode }: { mode: ModeRow }) {
       toast.error(`Couldn't add the dates. ${modeErrorMessage(result.error)}`);
       return;
     }
+    hapticSuccess();
     toast.success('Dates added');
   }
 

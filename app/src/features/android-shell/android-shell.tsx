@@ -1,12 +1,20 @@
 import { App } from '@capacitor/app';
 import { SystemBars, SystemBarsStyle } from '@capacitor/core';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 
 import { useTheme } from '@/components/theme-provider';
 import { useAuthStore } from '@/features/auth/auth-store';
+import { useIsPhoneLayout } from '@/hooks/use-media-query';
 import { detectPlatform } from '@/lib/platform';
 
-import { decideBackAction, hashPathname, historyIndexOf, pressEscapeOn, topOpenOverlay } from './back-action';
+import {
+  decideBackAction,
+  hashPathname,
+  historyIndexOf,
+  homePath,
+  pressEscapeOn,
+  topOpenOverlay,
+} from './back-action';
 import { useBootStatusStore } from './boot-status';
 
 /**
@@ -16,6 +24,13 @@ import { useBootStatusStore } from './boot-status';
  * router through the address, which the router follows (a fragment navigation fires popstate).
  */
 export function useAndroidBackButton(): void {
+  const phoneLayout = useIsPhoneLayout();
+  // The listener is added once; the layout it reads at press time comes through a ref, so a rotation or a window
+  // resize never removes and re-adds it (a gap in which a press would go to the WebView's own history).
+  const phoneLayoutRef = useRef(phoneLayout);
+  useEffect(() => {
+    phoneLayoutRef.current = phoneLayout;
+  }, [phoneLayout]);
   useEffect(() => {
     if (detectPlatform() !== 'android') return;
     const handle = App.addListener('backButton', () => {
@@ -26,10 +41,11 @@ export function useAndroidBackButton(): void {
         bootStatus: useBootStatusStore.getState().bootStatus,
         pathname: hashPathname(window.location.hash),
         historyIndex: historyIndexOf(window.history.state),
+        phoneLayout: phoneLayoutRef.current,
       });
       if (action === 'close-overlay' && overlay !== null) pressEscapeOn(overlay);
       else if (action === 'previous-screen') window.history.back();
-      else if (action === 'calendar') window.location.replace('#/');
+      else if (action === 'home') window.location.replace(`#${homePath(phoneLayoutRef.current)}`);
       else if (action === 'minimize') void App.minimizeApp();
     });
     return () => {

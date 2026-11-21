@@ -381,3 +381,56 @@
 .dark {
   color-scheme: dark;
 }
+
+/*
+ * Touch sizing, in one place. A coarse pointer (a finger) gets at least 44px for what it taps; the shadcn
+ * primitives stay as they are, so a mouse keeps the compact desktop density. The sheet footer's main button and
+ * the New alarm button go further (48px and 56px). The layout switch (the tab bar, the sheets) follows the width
+ * instead: see useIsPhoneLayout.
+ */
+@media (pointer: coarse) {
+  /* Buttons that a primitive re-labels when it renders them (a drawer's close, a popover's trigger) carry its slot. */
+  [data-slot='button'],
+  [data-slot='drawer-close'],
+  [data-slot='dialog-close'],
+  [data-slot='popover-trigger'],
+  [data-slot='alert-dialog-action'],
+  [data-slot='alert-dialog-cancel'],
+  [data-slot='input'],
+  [data-slot='input-group'],
+  [data-slot='select-trigger'],
+  [data-slot='toggle'],
+  [data-slot='toggle-group-item'] {
+    min-height: 44px;
+  }
+  /* A segmented control's triggers sit inside its padding, so the list is taller for them to reach 44px. */
+  [data-slot='tabs-list'] {
+    min-height: 50px;
+  }
+  [data-slot='button'],
+  [data-slot='drawer-close'],
+  [data-slot='dialog-close'],
+  [data-slot='toggle'],
+  [data-slot='toggle-group-item'] {
+    min-width: 44px;
+  }
+  /* The footer's main button is the thing the thumb comes back to. */
+  [data-slot='form-footer'] [data-slot='button'][type='submit'] {
+    min-height: 48px;
+  }
+}
+
+/* A native scrollbar inside a bottom sheet (the phone layout) looks like a desktop page; the content still scrolls. */
+[data-slot='drawer-popup'],
+[data-slot='drawer-popup'] * {
+  scrollbar-width: none;
+}
+[data-slot='drawer-popup'] *::-webkit-scrollbar {
+  display: none;
+}
+
+/* Swipe-to-change-period area: the browser keeps vertical panning, the swipe hook gets the sideways movement. */
+.swipe-x,
+.swipe-x * {
+  touch-action: pan-y;
+}

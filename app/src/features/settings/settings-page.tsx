@@ -1,5 +1,5 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { ArrowLeftIcon, InfoIcon, LogOutIcon, MoonIcon, SlidersHorizontalIcon, SunIcon } from 'lucide-react';
+import { InfoIcon, LogOutIcon, MoonIcon, SlidersHorizontalIcon, SunIcon } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router';
@@ -20,10 +20,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { PageHeader } from '@/features/app-shell/page-header';
 import { signOut } from '@/features/auth/auth-api';
 import { useAuthStore } from '@/features/auth/auth-store';
 import { PermissionsPanel } from '@/features/permissions/permissions-panel';
 import { useUpdateStore } from '@/features/updates/update-store';
+import { useIsPhoneLayout } from '@/hooks/use-media-query';
 import { detectPlatform } from '@/lib/platform';
 
 import { holidayFormToPatch, holidayFormValues } from './holiday-settings';
@@ -53,6 +55,8 @@ function labelFor(options: readonly Option[], value: number): string {
 /** Settings: how time, weeks and alarms behave, plus appearance and the account. */
 export function SettingsPage() {
   const navigate = useNavigate();
+  // On the phone layout About and updates is a row on the More tab, not a second entry point here.
+  const phone = useIsPhoneLayout();
   const settings = useSettingsStore((state) => state.settings);
   const email = useAuthStore((state) => state.session?.user.email ?? null);
   const userId = useAuthStore((state) => state.session?.user.id ?? null);
@@ -155,12 +159,7 @@ export function SettingsPage() {
 
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-2xl flex-col">
-      <header className="flex items-center gap-2 border-b px-4 py-2 pt-[max(0.5rem,env(safe-area-inset-top))] sm:px-6">
-        <Button variant="ghost" size="icon" aria-label="Back to calendar" onClick={() => navigate('/')}>
-          <ArrowLeftIcon />
-        </Button>
-        <h1 className="text-lg font-semibold tracking-tight">Settings</h1>
-      </header>
+      <PageHeader title="Settings" />
 
       <form
         noValidate
@@ -421,23 +420,27 @@ export function SettingsPage() {
 
         <Separator />
 
-        <FieldSet>
-          <FieldLegend>About</FieldLegend>
-          <Field orientation="horizontal">
-            <div className="flex flex-1 flex-col gap-1">
-              <FieldLabel>Version and updates</FieldLabel>
-              <FieldDescription>
-                {updateAvailable ? 'A new version is available.' : 'See which version you have and look for a new one.'}
-              </FieldDescription>
-            </div>
-            <Button type="button" variant="outline" onClick={() => navigate('/about')}>
-              <InfoIcon data-icon="inline-start" />
-              About and updates
-            </Button>
-          </Field>
-        </FieldSet>
+        {phone ? null : (
+          <>
+            <FieldSet>
+              <FieldLegend>About</FieldLegend>
+              <Field orientation="horizontal">
+                <div className="flex flex-1 flex-col gap-1">
+                  <FieldLabel>Version and updates</FieldLabel>
+                  <FieldDescription>
+                    {updateAvailable ? 'A new version is available.' : 'See which version you have and look for a new one.'}
+                  </FieldDescription>
+                </div>
+                <Button type="button" variant="outline" onClick={() => navigate('/about')}>
+                  <InfoIcon data-icon="inline-start" />
+                  About and updates
+                </Button>
+              </Field>
+            </FieldSet>
 
-        <Separator />
+            <Separator />
+          </>
+        )}
 
         <FieldSet>
           <FieldLegend>Account</FieldLegend>

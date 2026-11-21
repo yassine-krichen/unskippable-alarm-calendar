@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import { HashRouter, Navigate, Route, Routes } from 'react-router';
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -8,6 +8,8 @@ import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { useAndroidBackButton, useSystemBarsStyle } from '@/features/android-shell/android-shell';
 import { useBootStatusStore } from '@/features/android-shell/boot-status';
+import { AppLayout } from '@/features/app-shell/app-layout';
+import { MorePage } from '@/features/app-shell/more-page';
 import { signOut } from '@/features/auth/auth-api';
 import { AuthScreen } from '@/features/auth/auth-screen';
 import { startAuthListener, useAuthStore } from '@/features/auth/auth-store';
@@ -24,8 +26,10 @@ import { resetHabitCompletions } from '@/features/habits/habits-store';
 import { usePassesStore } from '@/features/passes/passes-store';
 import { SettingsPage } from '@/features/settings/settings-page';
 import { useSettingsStore } from '@/features/settings/settings-store';
+import { TodayPage } from '@/features/today/today-page';
 import { AboutPage } from '@/features/updates/about-page';
 import { useUpdateAutoCheck } from '@/features/updates/use-update-check';
+import { useIsPhoneLayout } from '@/hooks/use-media-query';
 
 import { useAppData, type BootStatus } from './app-data';
 import { useCompletionSync, useDesktopSession, useLiveSync } from './use-live-sync';
@@ -57,8 +61,25 @@ export function App() {
       {status === 'loading' ? <BootSkeleton /> : null}
       {status === 'signed-out' ? <AuthScreen /> : null}
       {status === 'signed-in' ? <SignedInApp /> : null}
-      <Toaster position="top-center" />
+      <AppToaster />
     </TooltipProvider>
+  );
+}
+
+// Above the tab bar and the gesture-bar inset. Passed as both offsets: sonner switches from `offset` to `mobileOffset`
+// at 600px, and the phone layout reaches 767px.
+const PHONE_TOAST_OFFSET = { bottom: 'calc(env(safe-area-inset-bottom) + 4.5rem)' };
+
+/**
+ * Top-center on the desktop layout. On the phone layout toasts sit at the bottom, above the tab bar and the
+ * gesture-bar inset, where the thumb and the eyes already are (sonner's mobileOffset is for narrow screens).
+ */
+function AppToaster() {
+  const phone = useIsPhoneLayout();
+  return phone ? (
+    <Toaster position="bottom-center" offset={PHONE_TOAST_OFFSET} mobileOffset={PHONE_TOAST_OFFSET} />
+  ) : (
+    <Toaster position="top-center" />
   );
 }
 
@@ -104,16 +125,33 @@ function SignedInScreens({ status, error, retry }: { status: BootStatus; error: 
   return (
     <HashRouter>
       <Routes>
-        <Route path="/" element={<CalendarPage />} />
-        <Route path="/exams" element={<ExamsPage />} />
-        <Route path="/modes" element={<ModesPage />} />
-        <Route path="/stats" element={<StatsPage />} />
-        <Route path="/settings" element={<SettingsPage />} />
-        <Route path="/about" element={<AboutPage />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route element={<AppLayout />}>
+          <Route path="/" element={<Home />} />
+          <Route path="/today" element={<TodayPage />} />
+          <Route path="/calendar" element={<PhoneOnly><CalendarPage /></PhoneOnly>} />
+          <Route path="/more" element={<PhoneOnly><MorePage /></PhoneOnly>} />
+          <Route path="/exams" element={<ExamsPage />} />
+          <Route path="/modes" element={<ModesPage />} />
+          <Route path="/stats" element={<StatsPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/about" element={<AboutPage />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Route>
       </Routes>
     </HashRouter>
   );
+}
+
+/** `/` is the calendar on the desktop layout and Today on the phone layout. */
+function Home() {
+  const phone = useIsPhoneLayout();
+  return phone ? <Navigate to="/today" replace /> : <CalendarPage />;
+}
+
+/** Calendar and More are phone tabs; the desktop layout's calendar is `/` and it reaches the rest from its header. */
+function PhoneOnly({ children }: { children: ReactNode }) {
+  const phone = useIsPhoneLayout();
+  return phone ? children : <Navigate to="/" replace />;
 }
 
 /** Shaped like the calendar screen, so the real one replaces it without a jump. */

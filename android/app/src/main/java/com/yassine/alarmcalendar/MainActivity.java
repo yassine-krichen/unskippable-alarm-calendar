@@ -5,6 +5,7 @@ import android.os.Bundle;
 import com.getcapacitor.BridgeActivity;
 import com.yassine.alarmcalendar.alarm.AlarmController;
 import com.yassine.alarmcalendar.alarm.AlarmEnginePlugin;
+import com.yassine.alarmcalendar.pickers.NativePickersPlugin;
 import com.yassine.alarmcalendar.update.AppUpdatePlugin;
 
 public class MainActivity extends BridgeActivity {
@@ -13,6 +14,7 @@ public class MainActivity extends BridgeActivity {
         // A plugin of this app (not an npm package) is not discovered automatically.
         registerPlugin(AlarmEnginePlugin.class);
         registerPlugin(AppUpdatePlugin.class);
+        registerPlugin(NativePickersPlugin.class);
         super.onCreate(savedInstanceState);
     }
 

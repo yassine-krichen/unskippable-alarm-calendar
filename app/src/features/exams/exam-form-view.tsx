@@ -6,6 +6,7 @@ import { Controller, useForm, useWatch } from 'react-hook-form';
 import { toast } from 'sonner';
 
 import { DatePicker } from '@/components/date-picker';
+import { FormFooter, FormFooterActions } from '@/components/form-footer';
 import { NumberStepper } from '@/components/number-stepper';
 import { TimeInput } from '@/components/time-input';
 import {
@@ -35,6 +36,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { useEventsStore } from '@/features/events/events-store';
 import { formatDay, formatTimeInZone, zonedDate } from '@/lib/zoned-time';
+import { hapticSuccess, hapticWarning } from '@/lib/haptics';
 
 import { addExam, editExam, removeExam } from './exam-actions';
 import {
@@ -103,6 +105,7 @@ export function ExamFormView({ exam, slotDate, settings, onDone }: ExamFormViewP
       toast.error("Couldn't save the exam. Your changes are still here, try again.");
       return;
     }
+    hapticSuccess();
     toast.success(exam ? 'Exam updated' : 'Exam added');
     onDone();
   }
@@ -116,6 +119,7 @@ export function ExamFormView({ exam, slotDate, settings, onDone }: ExamFormViewP
       toast.error("Couldn't delete the exam. Check your connection and try again.");
       return;
     }
+    hapticWarning();
     toast.success(`Deleted "${exam.title}"`);
     setConfirmingDelete(false);
     onDone();
@@ -339,22 +343,22 @@ export function ExamFormView({ exam, slotDate, settings, onDone }: ExamFormViewP
         </FieldGroup>
       </form>
 
-      <div className="flex items-center gap-2 border-t px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+      <FormFooter>
         {exam ? (
           <Button type="button" variant="destructive" onClick={() => setConfirmingDelete(true)}>
             <Trash2Icon data-icon="inline-start" />
             Delete
           </Button>
         ) : null}
-        <div className="ml-auto flex gap-2">
+        <FormFooterActions>
           <Button type="button" variant="outline" onClick={onDone}>
             Cancel
           </Button>
           <Button type="submit" form="exam-form" disabled={form.formState.isSubmitting}>
             {exam ? 'Save changes' : 'Add exam'}
           </Button>
-        </div>
-      </div>
+        </FormFooterActions>
+      </FormFooter>
 
       <AlertDialog open={confirmingDelete} onOpenChange={setConfirmingDelete}>
         <AlertDialogContent>

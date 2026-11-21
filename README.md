@@ -105,7 +105,7 @@ docs/                 spec.md, decisions.md, acceptance.md
 | Technology | Role | Why |
 | --- | --- | --- |
 | React + Vite + TypeScript | Shared UI | One UI for Electron and Capacitor |
-| shadcn/ui (`b0` preset), lucide-react | Components, icons | No native form controls anywhere |
+| shadcn/ui (`b0` preset), lucide-react | Components, icons | No native form controls, except the Android time and date dialogs |
 | FullCalendar | Week / Month views | Occurrences come from our own recurrence function, not its rrule plugin |
 | Electron 44 | Windows shell | Main-process scheduler outlives the window |
 | electron-builder 26 | Installer | See [decisions.md](docs/decisions.md): config-only NSIS output and built-in fuses |

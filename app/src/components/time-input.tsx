@@ -1,8 +1,10 @@
 import { ClockIcon } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
+import { Button } from '@/components/ui/button';
 import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/input-group';
 import { parseTimeInput } from '@/features/events/time-input-parser';
+import { useNativePickers } from '@/features/native-pickers/use-native-pickers';
 
 interface TimeInputProps {
   id: string;
@@ -13,9 +15,47 @@ interface TimeInputProps {
   describedBy?: string;
 }
 
-// shadcn has no time picker and native time inputs are banned, so this is a text input
+// shadcn has no time picker and native HTML time inputs are banned, so this is a text input
 // in an input group that understands '8', '830', '8:30 pm' and '20:15' and normalizes to HH:mm.
-export function TimeInput({ id, value, onChange, invalid, describedBy }: TimeInputProps) {
+// In the Android app it is a button that opens the phone's own time dialog instead (NativePickers plugin).
+export function TimeInput(props: TimeInputProps) {
+  const pickers = useNativePickers();
+  return pickers.available ? (
+    <NativeTimeButton {...props} pick={pickers.pickTime} />
+  ) : (
+    <TypedTimeInput {...props} />
+  );
+}
+
+function NativeTimeButton({
+  id,
+  value,
+  onChange,
+  invalid,
+  describedBy,
+  pick,
+}: TimeInputProps & { pick: (fieldValue: string) => Promise<string | null> }) {
+  return (
+    <Button
+      id={id}
+      type="button"
+      variant="outline"
+      aria-invalid={invalid}
+      aria-describedby={describedBy}
+      className="w-full justify-start font-normal tabular-nums"
+      onClick={() => {
+        void pick(value).then((picked) => {
+          if (picked !== null) onChange(picked);
+        });
+      }}
+    >
+      <ClockIcon data-icon="inline-start" />
+      {value === '' ? <span className="text-muted-foreground">Set time</span> : (parseTimeInput(value) ?? value)}
+    </Button>
+  );
+}
+
+function TypedTimeInput({ id, value, onChange, invalid, describedBy }: TimeInputProps) {
   const [text, setText] = useState(value);
 
   // Follow outside changes (reset, switching events) without overwriting a half-typed value

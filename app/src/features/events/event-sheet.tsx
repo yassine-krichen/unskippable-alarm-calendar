@@ -5,7 +5,12 @@ import { ResponsiveSheet } from '@/components/responsive-sheet';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 import { ExamFormView } from '@/features/exams/exam-form-view';
+import { useIsPhoneLayout } from '@/hooks/use-media-query';
+import { detectPlatform } from '@/lib/platform';
+import { zonedDate } from '@/lib/zoned-time';
 
+import { describeWhen } from './event-details';
+import { EventDetailsView } from './event-details-view';
 import { EventFormView, type EventFormTarget } from './event-form-view';
 import { useGroupIdSupport } from './events-api';
 import { PrayerAlarmInfo } from './prayer-alarm-info';
@@ -26,21 +31,33 @@ function targetKey(target: EventFormTarget): string {
   );
 }
 
+/** What the alarm screen looks like, in the words of the platform the person is on. */
+function ringDescription(): string {
+  return detectPlatform() === 'android'
+    ? 'It rings full-screen, even on the lock screen, and can only be stopped with Done or Snooze.'
+    : 'It will ring on a centered panel and can only be stopped with Done or Snooze.';
+}
+
 /**
- * The event form: a side sheet on desktop, a bottom drawer on phones. A new alarm can be a plain
- * alarm, a "Birthday / anniversary" template (two linked yearly alarms) or an exam (its alarm plus
+ * The event form: a side sheet on desktop, a bottom drawer on phones. On the phone an existing alarm opens its
+ * details first and Edit swaps that for the form in the same drawer; the desktop goes straight to the form.
+ * A new alarm can be a plain alarm, a "Birthday / anniversary" template (two linked yearly alarms) or an exam (its alarm plus
  * revision sessions); an alarm that came from a template or an exam opens that form, so the alarms that
  * belong together are edited together.
  */
 export function EventSheet({ target, settings, onClose }: EventSheetProps) {
   // The picked mode belongs to one target, so reopening the sheet starts on a plain alarm again.
   const [picked, setPicked] = useState<{ key: string; mode: NewEventMode } | null>(null);
+  // The target whose Edit was pressed: until then, the phone shows the details of an existing alarm.
+  const [editRequestedFor, setEditRequestedFor] = useState<string | null>(null);
+  const phone = useIsPhoneLayout();
 
   // Until the group_id column exists, a birthday could not be saved, so the tab is off.
   const groupsUnavailable = useGroupIdSupport((state) => state.missing);
 
   function close(): void {
     setPicked(null);
+    setEditRequestedFor(null);
     onClose();
   }
 
@@ -62,9 +79,17 @@ export function EventSheet({ target, settings, onClose }: EventSheetProps) {
   // A prayer or its reminder has no time of its own to edit: it opens a short summary instead.
   const prayerEvent = editing !== null && editing.kind !== undefined && editing.kind !== 'normal' ? editing : null;
 
+  const showDetails = phone && editing !== null && prayerEvent === null && key !== null && editRequestedFor !== key;
+
   let title = 'New alarm';
-  let description = 'It will ring on a centered panel and can only be stopped with Done or Snooze.';
-  if (prayerEvent) {
+  let description = ringDescription();
+  if (showDetails && editing !== null) {
+    title = editing.title;
+    description =
+      target?.occurrence != null
+        ? describeWhen(target.occurrence.start, editing.duration_min, settings.timezone, zonedDate(new Date(), settings.timezone))
+        : 'Alarm';
+  } else if (prayerEvent) {
     title = prayerEvent.kind === 'prayer' ? `${prayerEvent.title} prayer` : 'Prayer reminder';
     description = 'Prayer alarms follow the prayer times in Settings.';
   } else if (exam) {
@@ -95,6 +120,15 @@ export function EventSheet({ target, settings, onClose }: EventSheetProps) {
     >
       {target && key && prayerEvent ? (
         <PrayerAlarmInfo key={key} event={prayerEvent} onDone={close} />
+      ) : target && key && showDetails && editing ? (
+        <EventDetailsView
+          key={key}
+          event={editing}
+          occurrence={target.occurrence ?? null}
+          canDelete={group === null && exam === null}
+          onEdit={() => setEditRequestedFor(key)}
+          onDone={close}
+        />
       ) : target && key ? (
         <>
           {creating ? (

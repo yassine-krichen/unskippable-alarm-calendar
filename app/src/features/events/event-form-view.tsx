@@ -6,6 +6,7 @@ import { Controller, useForm, useWatch } from 'react-hook-form';
 import { toast } from 'sonner';
 
 import { DatePicker } from '@/components/date-picker';
+import { FormFooter, FormFooterActions } from '@/components/form-footer';
 import { NumberStepper } from '@/components/number-stepper';
 import { TimeInput } from '@/components/time-input';
 import {
@@ -34,8 +35,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import type { Occurrence } from '@/features/calendar/calendar-events';
 import { EventRank } from '@/features/habits/event-rank';
 import { formatDay, weekdayName, weekdayShortName } from '@/lib/zoned-time';
+import { hapticSuccess, hapticWarning } from '@/lib/haptics';
 
 import { CATEGORY_LABELS, alarmCategoryOf } from './category-colors';
 import { EVENT_COLORS } from './event-colors';
@@ -77,6 +80,8 @@ export interface EventFormTarget {
   exam?: ExamRow | null;
   /** A new target that opens on the Exam tab, for the Exams screen's "New exam". */
   startOn?: 'exam';
+  /** The ring that was tapped, so the phone's details sheet can say when and what state it is in. */
+  occurrence?: Occurrence | null;
 }
 
 interface EventFormViewProps {
@@ -134,6 +139,7 @@ export function EventFormView({ target, settings, onDone }: EventFormViewProps) 
       toast.error("Couldn't save the alarm. Your changes are still here, try again.");
       return;
     }
+    hapticSuccess();
     toast.success(editing ? 'Alarm updated' : 'Alarm added');
     onDone();
   }
@@ -147,6 +153,7 @@ export function EventFormView({ target, settings, onDone }: EventFormViewProps) 
       toast.error("Couldn't delete the alarm. Check your connection and try again.");
       return;
     }
+    hapticWarning();
     toast.success(`Deleted "${editing.title}"`);
     setConfirmingDelete(false);
     onDone();
@@ -552,22 +559,22 @@ export function EventFormView({ target, settings, onDone }: EventFormViewProps) 
         </FieldGroup>
       </form>
 
-      <div className="flex items-center gap-2 border-t px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+      <FormFooter>
         {editing ? (
           <Button type="button" variant="destructive" onClick={() => setConfirmingDelete(true)}>
             <Trash2Icon data-icon="inline-start" />
             Delete
           </Button>
         ) : null}
-        <div className="ml-auto flex gap-2">
+        <FormFooterActions>
           <Button type="button" variant="outline" onClick={onDone}>
             Cancel
           </Button>
           <Button type="submit" form="event-form" disabled={form.formState.isSubmitting}>
             {editing ? 'Save changes' : 'Add alarm'}
           </Button>
-        </div>
-      </div>
+        </FormFooterActions>
+      </FormFooter>
 
       <AlertDialog open={confirmingDelete} onOpenChange={setConfirmingDelete}>
         <AlertDialogContent>

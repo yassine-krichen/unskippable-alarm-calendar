@@ -1,7 +1,19 @@
 /** Elements base-ui marks as open overlays: dialogs, sheets, drawers, popovers (dialog) and select / combobox lists. */
 const OPEN_OVERLAY_SELECTOR = '[data-open][role="dialog"], [data-open][role="alertdialog"], [data-open][role="listbox"]';
 
-export type BackAction = 'close-overlay' | 'nothing' | 'minimize' | 'previous-screen' | 'calendar';
+export type BackAction = 'close-overlay' | 'nothing' | 'minimize' | 'previous-screen' | 'home';
+
+/**
+ * The phone layout's tab roots (features/app-shell/nav-items.ts). `/` is Today there too: it redirects to
+ * `/today`, but the address can be `/` for a moment, and a press must never be misread in between.
+ */
+const TODAY_PATHS: readonly string[] = ['/', '/today'];
+const OTHER_TAB_PATHS: readonly string[] = ['/calendar', '/stats', '/more'];
+
+/** Where "home" is: Today on the phone layout, the calendar (`/`) on the desktop layout. */
+export function homePath(phoneLayout: boolean): string {
+  return phoneLayout ? '/today' : '/';
+}
 
 export interface BackContext {
   overlayOpen: boolean;
@@ -11,25 +23,36 @@ export interface BackContext {
   pathname: string;
   /** react-router's position in this session's history (0 = the first entry). */
   historyIndex: number | null;
+  /** The phone layout (narrower than 768px) has tabs; a tablet or desktop layout has none. */
+  phoneLayout: boolean;
 }
 
 /**
  * What the Android back button does, in order: close the topmost sheet, dialog or list (a dialog that
  * cannot be dismissed, like the permission dialog while something required is missing, swallows it);
  * on the sign-in screen move the app to the background; while the app is loading or showing its load
- * error do nothing, so a stray press never closes the activity under a half-started session; on the
- * app's screens go to the previous one, else (a screen opened directly, nothing before it) to the
- * calendar, and on the calendar itself move the app to the background. Never a blank page: there is
- * always an entry to land on.
+ * error do nothing, so a stray press never closes the activity under a half-started session; then on
+ * the app's screens:
+ * - phone layout: Today moves the app to the background; Calendar, Habits and More (the other tab
+ *   roots) go to Today, because switching tabs replaces the entry and there is nothing "before" them;
+ * - every other screen (Exams, Modes, Settings and About under More, or the desktop layout's pages)
+ *   goes to the previous screen, else (a screen opened directly, nothing before it) to home;
+ * - the desktop layout's calendar (`/`) moves the app to the background.
+ * Never a blank page: there is always an entry to land on.
  */
 export function decideBackAction(context: BackContext): BackAction {
-  const { overlayOpen, authStatus, bootStatus, pathname, historyIndex } = context;
+  const { overlayOpen, authStatus, bootStatus, pathname, historyIndex, phoneLayout } = context;
   if (overlayOpen) return 'close-overlay';
   if (authStatus === 'loading') return 'nothing';
   if (authStatus === 'signed-out') return 'minimize';
   if (bootStatus !== 'ready') return 'nothing';
-  if (pathname === '/') return 'minimize';
-  return historyIndex !== null && historyIndex > 0 ? 'previous-screen' : 'calendar';
+  if (phoneLayout) {
+    if (TODAY_PATHS.includes(pathname)) return 'minimize';
+    if (OTHER_TAB_PATHS.includes(pathname)) return 'home';
+  } else if (pathname === '/') {
+    return 'minimize';
+  }
+  return historyIndex !== null && historyIndex > 0 ? 'previous-screen' : 'home';
 }
 
 /** The route of the hash router, from the address (`#/settings?x=1` is `/settings`). */

@@ -1,13 +1,13 @@
 import { dayNumberFromDateString, type ExamRow } from '@alarm-calendar/core';
-import { ArrowLeftIcon, GraduationCapIcon, PencilIcon, PlusIcon } from 'lucide-react';
+import { GraduationCapIcon, PencilIcon, PlusIcon } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router';
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { PageHeader } from '@/features/app-shell/page-header';
 import { CategoryIcon } from '@/features/events/category-icon';
 import { EventSheet } from '@/features/events/event-sheet';
 import type { EventFormTarget } from '@/features/events/event-form-view';
@@ -30,7 +30,6 @@ function whenLabel(exam: ExamRow, now: Date, tz: string): string {
 
 /** The exams, upcoming first, each with how its revision sessions are going. Adding and editing use the alarm sheet. */
 export function ExamsPage() {
-  const navigate = useNavigate();
   const settings = useSettingsStore((state) => state.settings);
   const exams = useExamsStore((state) => state.exams);
   const status = useExamsStore((state) => state.status);
@@ -61,16 +60,12 @@ export function ExamsPage() {
 
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-2xl flex-col">
-      <header className="flex items-center gap-2 border-b px-4 py-2 pt-[max(0.5rem,env(safe-area-inset-top))] sm:px-6">
-        <Button variant="ghost" size="icon" aria-label="Back to calendar" onClick={() => navigate('/')}>
-          <ArrowLeftIcon />
-        </Button>
-        <h1 className="text-lg font-semibold tracking-tight">Exams</h1>
-        <Button className="ml-auto" onClick={openCreate}>
+      <PageHeader title="Exams">
+        <Button onClick={openCreate}>
           <PlusIcon data-icon="inline-start" />
           New exam
         </Button>
-      </header>
+      </PageHeader>
 
       <main className="flex flex-1 flex-col gap-6 px-4 py-6 pb-12 sm:px-6">
         {status === 'error' ? (

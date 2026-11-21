@@ -16,12 +16,17 @@ import { zonedDate } from '@/lib/zoned-time';
 
 import { slotFromClick, type EventSlot } from './new-event-slot';
 import type { CalendarEvent } from './calendar-events';
+import { initialScrollTime } from './calendar-range';
 
 import '@fullcalendar/react/skeleton.css';
 import '@fullcalendar/react/themes/classic/theme.css';
 
+type GridView = 'day' | 'three-day' | 'week' | 'month';
+
 interface CalendarGridProps {
-  view: 'week' | 'month';
+  view: GridView;
+  /** The phone layout: Month shows compact chips and a tap on a day opens that day instead of a new alarm. */
+  compact?: boolean;
   /** The day the grid should show, 'yyyy-MM-dd'. */
   anchor: string;
   tz: string;
@@ -36,8 +41,21 @@ interface CalendarGridProps {
   /** The days inside a stretch such as Ramadan, tinted and numbered. */
   stretchDays: ReadonlyMap<string, StretchDay>;
   onCreate: (slot: EventSlot) => void;
-  onEdit: (eventId: string) => void;
+  /** An alarm was tapped; `key` is the occurrence's key. */
+  onEdit: (eventId: string, key: string) => void;
+  /** Compact Month only: a day was tapped. */
+  onPickDay?: (day: string) => void;
 }
+
+const INITIAL_VIEW: Record<GridView, string> = {
+  day: 'timeGridDay',
+  'three-day': 'threeDay',
+  week: 'timeGridWeek',
+  month: 'dayGridMonth',
+};
+
+// FullCalendar has no built-in three-day grid: a timeGrid view that lasts three days.
+const CUSTOM_VIEWS = { threeDay: { type: 'timeGrid', duration: { days: 3 } } } as const;
 
 const TIME_24H = { hour: '2-digit', minute: '2-digit', hour12: false } as const;
 
@@ -48,6 +66,7 @@ const TIME_24H = { hour: '2-digit', minute: '2-digit', hour12: false } as const;
  */
 export function CalendarGrid({
   view,
+  compact = false,
   anchor,
   tz,
   weekStartsOn,
@@ -58,7 +77,9 @@ export function CalendarGrid({
   stretchDays,
   onCreate,
   onEdit,
+  onPickDay,
 }: CalendarGridProps) {
+  const compactMonth = compact && view === 'month';
   const controller = useCalendarController();
   // A cheat day is hatched; a day under a mode is tinted; a day of Ramadan is washed green. Any can share a day.
   const dayClass = (day: string): string =>
@@ -85,7 +106,8 @@ export function CalendarGrid({
     <FullCalendar
       controller={controller}
       plugins={plugins}
-      initialView={view === 'week' ? 'timeGridWeek' : 'dayGridMonth'}
+      initialView={INITIAL_VIEW[view]}
+      views={CUSTOM_VIEWS}
       initialDate={anchor}
       timeZone={tz}
       // FullCalendar counts Sunday as 0; settings count Monday as 0.
@@ -96,10 +118,10 @@ export function CalendarGrid({
       // The all-day row exists for holidays only, so it appears when the visible days have one.
       allDaySlot={holidayEvents.length > 0}
       nowIndicator
-      scrollTime="07:00:00"
+      scrollTime={initialScrollTime(compact, anchor, new Date(), tz)}
       slotDuration="00:30:00"
       // A number, not true: "auto" makes FullCalendar render an `inert=""` probe that React 19 warns about.
-      dayMaxEvents={3}
+      dayMaxEvents={compactMonth ? 2 : 3}
       eventTimeFormat={TIME_24H}
       slotHeaderFormat={TIME_24H}
       events={allEvents}
@@ -186,11 +208,19 @@ export function CalendarGrid({
           </>
         );
       }}
-      dateClick={(info) => onCreate(slotFromClick({ instant: info.date, allDay: info.allDay }, tz, new Date()))}
+      dateClick={(info) => {
+        if (compactMonth && onPickDay) onPickDay(zonedDate(info.date, tz));
+        else onCreate(slotFromClick({ instant: info.date, allDay: info.allDay }, tz, new Date()));
+      }}
       eventClick={(info) => {
+        // A chip is too small to hit on its own in the compact Month: any tap in a cell opens that day.
+        if (compactMonth && onPickDay && info.event.start) {
+          onPickDay(zonedDate(info.event.start, tz));
+          return;
+        }
         if (info.event.extendedProps['holiday'] === true) return;
         const eventId: unknown = info.event.extendedProps['eventId'];
-        if (typeof eventId === 'string') onEdit(eventId);
+        if (typeof eventId === 'string') onEdit(eventId, info.event.id);
       }}
     />
   );

@@ -29,7 +29,8 @@ interface AgendaViewProps {
   /** Holidays by day (display only), and the days inside a stretch such as Ramadan. */
   holidayDays: ReadonlyMap<string, readonly CalendarHoliday[]>;
   stretchDays: ReadonlyMap<string, StretchDay>;
-  onEdit: (eventId: string) => void;
+  /** An alarm was tapped; `key` is the occurrence's key. */
+  onEdit: (eventId: string, key: string) => void;
   onCreate: () => void;
 }
 
@@ -129,7 +130,7 @@ export function AgendaView({
                       <Button
                         variant="ghost"
                         className={`h-auto min-h-11 w-full justify-start gap-3 px-2 py-2 text-left font-normal ${occurrence.hidden ? 'opacity-60' : ''}`}
-                        onClick={() => onEdit(occurrence.eventId)}
+                        onClick={() => onEdit(occurrence.eventId, occurrence.key)}
                       >
                         <span className="w-12 shrink-0 text-sm tabular-nums">
                           {formatTimeInZone(occurrence.start, tz)}
